@@ -1,0 +1,16 @@
+* TODO
+** Infix syntax
+
+   Parse to full application, understand fixity declarations, parse
+   with precedence to disambiguate applications.
+
+   Use exact rationals for precedence, not integers!
+
+** Tabled ~for~ syntax
+
+   As a declaration form.
+
+** Analysis to rule out inductive data types.
+
+   Unless they turn out to be useful, in which case we will need to
+   understand their semantics.
