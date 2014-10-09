@@ -11,10 +11,9 @@ sig tToM :: forall (a ∷ ⋆) (m ∷ ⋆ → ⋆) . T a → m a
 sig id :: forall (a :: *) . a -> a
 
 -- fun declarations provide a definition.
--- fun id x = x
+fun id x = x
 
-{- fun h (i ∷ ∀ a ∷ ⋆ . a) = -- bindings are of the form v or (v :: ty)
-                            -- and you may use Unicode
+fun h i = -- bindings are of the form v or (v :: ty)
   let
     { myid = id      {- value assignment -}
     ; x ~ flip 0.5   {- sampling from a distribution -}
@@ -24,4 +23,4 @@ sig id :: forall (a :: *) . a -> a
 
 
 fun i v w = λ x y . x w (y v)
--}
+

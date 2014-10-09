@@ -14,3 +14,59 @@
 
    Unless they turn out to be useful, in which case we will need to
    understand their semantics.
+
+* Ideas about syntax
+
+  http://ppaml.cs.tufts.edu/Sean%E2%80%99s%20simple%20model%20notation
+
+** Abstraction of model
+
+  sbs: It would be helpful to separate the model from the query form and from
+    the definitions of the observations.
+
+
+** Example:
+
+  -- this is a big joint distribution (with some kinda ML-module like
+  -- dependent record type) called "T"
+
+  dist T is
+     N ∷ ℕ
+     type classes ∷ enum N
+     - mu' ∷ ℝ
+     - σ' ∷ ℝ⁺
+     M ∷ ℕ
+     type object ∷ enum M
+     class ∷ object → classes
+     awesomeness ∷ object → ℝ
+     mu ∷ classes → ℝ
+     σ ∷ classes → ℝ⁺
+
+  the model gives the joint distribution over this type.
+  there might be nuisance variables that noone will condition or query on.
+
+  this might be the /model type/.   And we may want to mark μ' and σ' distinctly
+  since they will not be exposed from the model type.
+
+  This is akin to a ML module.
+
+  There is a step here (not yet shown) to turn it into a conditional
+  distribution.
+
+  Two observation forms:
+
+  observe (P :: T → Bool) :: (Dist T → Dist T)
+
+  observe v (where v is a value (of type T?) for some restricted set
+            of types T.  Maybe just polynomials of Int and Real)
+
+
+  Actually the idea is more like a type-directed operator "observe τ" where τ is the type
+  of some path into a model.  Given by a judgment  ⌜T⊢ τ → (a → Dist T → Dist T)⌝.
+
+** Signature ascription-like thing to represent which part of a model will be subject to observation.
+
+  So the idea is if we have a model M with model type T, then if S is
+  a super-type (dropped components) then something like "observable M
+  S" means that we promise to only observe the S components.
+
