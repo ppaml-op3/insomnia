@@ -1,0 +1,16 @@
+-- N ~ poisson 9
+-- enum classes = C [1..N]
+-- data LP = A | B
+
+-- forall class in classes .  
+--   mu class A ~ gaussian mu' sigma'
+--   mu class B ~ gaussian (mu' + 0.7) sigma'
+
+-- forall class in ℝ⁺
+
+-- f x = let y ~ e
+--       in y
+
+-- -- clausal dictionary definition
+-- f x1 x2 x3 ~ e
+-- -- f [x1] [x2] [x3] := let v ~ e in v

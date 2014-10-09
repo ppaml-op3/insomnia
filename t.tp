@@ -1,0 +1,27 @@
+-- Example tprob file.
+
+data T (a :: ⋆) = L a | R a
+
+data Mu (c :: ⋆ → ⋆) = Mu (c (Mu c))
+
+-- sig declarations declare the type of an identifier.
+sig tToM :: forall (a ∷ ⋆) (m ∷ ⋆ → ⋆) . T a → m a
+
+-- There's also an ASCII syntax
+sig id :: forall (a :: *) . a -> a
+
+-- fun declarations provide a definition.
+-- fun id x = x
+
+{- fun h (i ∷ ∀ a ∷ ⋆ . a) = -- bindings are of the form v or (v :: ty)
+                            -- and you may use Unicode
+  let
+    { myid = id      {- value assignment -}
+    ; x ~ flip 0.5   {- sampling from a distribution -}
+    ; y ~ flip 0.9
+    }
+  in or x y
+
+
+fun i v w = λ x y . x w (y v)
+-}

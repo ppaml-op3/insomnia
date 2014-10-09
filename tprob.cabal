@@ -37,3 +37,10 @@ library
   hs-source-dirs:      src      
   ghc-options:         -Wall
   default-language:    Haskell2010
+
+executable tprob
+  main-is:            Main.hs
+  build-depends:      base,
+                      tprob
+  ghc-options:        -Wall
+  
