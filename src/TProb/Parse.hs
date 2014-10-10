@@ -18,8 +18,14 @@ import Text.Parsec.Prim ((<?>), try, parse, parseTest)
 import Text.Parsec.Combinator (eof, sepBy1)
 import Text.Parsec.Expr
 
+import TProb.Types
 import TProb.AST
 import qualified Unbound.Generics.LocallyNameless as U
+
+import Data.Format (Format)
+
+-- orphan
+instance Format ParseError
 
 tprobLang :: GenLanguageDef Text () Identity
 tprobLang = LanguageDef {

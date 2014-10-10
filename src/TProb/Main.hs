@@ -3,6 +3,9 @@ module TProb.Main where
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
 
+import Data.Format (Format)
+import qualified Data.Format as F
+
 import TProb.Parse
 import TProb.Typecheck
 
@@ -43,8 +46,8 @@ parseAndCheck fp = do
     Right elab -> return elab
   putStrLn "Typechecked OK."
 
-showErrorAndDie :: (Show err) => String -> err -> IO a
+showErrorAndDie :: (Format err) => String -> err -> IO a
 showErrorAndDie phase msg = do
   putStrLn $ "Encountered error while " ++ phase
-  print msg
+  F.putStrDoc (F.format msg)
   exitFailure

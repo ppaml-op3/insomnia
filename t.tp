@@ -13,6 +13,10 @@ sig id :: forall (a :: *) . a -> a
 -- fun declarations provide a definition.
 fun id x = x
 
+sig flip :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
+
+fun flip x y κ = κ y x
+
 fun h i = -- bindings are of the form v or (v :: ty)
   let
     { myid = id      {- value assignment -}

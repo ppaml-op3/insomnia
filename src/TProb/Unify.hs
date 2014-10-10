@@ -101,6 +101,8 @@ class (Functor m, Monad m) => MonadUnify u m | m -> u where
   solveUnification :: m b -> m (UnificationResult u b)
   (-?=) :: (Partial u, Unifiable u m u) => (UVar u) -> u -> m ()
 
+infix 4 =?=
+
 -- | Types that are instances of partial may contain a unification
 -- variable as one of their immediate constructors.
 class Partial u where

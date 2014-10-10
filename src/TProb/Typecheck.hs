@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings,
              FlexibleInstances, MultiParamTypeClasses,
+             ViewPatterns,
              TemplateHaskell
   #-}
 module TProb.Typecheck where
@@ -12,8 +13,9 @@ import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Control.Monad.Error.Class (MonadError(..))
 import Control.Monad.Trans.Except (Except, runExcept)
+import Data.Format (Format(..))
 import qualified Data.Map as M
-import Data.Monoid (Monoid(..), (<>))
+import Data.Monoid (Monoid(..), (<>), First(..))
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -21,11 +23,14 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 
+import TProb.Types
 import TProb.AST
 import TProb.Unify
 
 newtype TCError = TCError { getTCError :: Text }
-                  deriving (Show)
+
+instance Format TCError where
+  format = format . getTCError
 
 -- each constructor C of type D has the form:
 --  ∀ (α₁ ∷ K₁, … αᵢ ∷ Kᵢ) . T₁ → T₂ → ⋯ → D α₁ ⋯ αᵢ
@@ -108,6 +113,14 @@ lookupTyVar tv = do
 lookupGlobal :: Var -> TC (Maybe Type)
 lookupGlobal v = view (envGlobals . at v)
 
+lookupLocal :: Var -> TC (Maybe Type)
+lookupLocal v = view (envLocals . at v)
+
+lookupVar :: Var -> TC (Maybe Type)
+lookupVar v = do
+  tl <- First <$> lookupLocal v
+  tg <- First <$> lookupGlobal v
+  return $ getFirst (tl <> tg)
 
 -- | ensure that the first kind is a subtype of the second.
 ensureSubkind :: (Type, Kind) -> Kind -> TC ()
@@ -208,16 +221,38 @@ checkSigDecl v t = do
   t' <- checkType t KType
   return $ SigDecl v t'
 
+-- | Given a type ∀ α1∷K1 ⋯ αN∷KN . τ, freshen αᵢ and add them to the
+-- local type context in the given continuation which is passed
+-- τ[αfresh/α]
+openAbstract :: Maybe Type -> (Maybe Type -> TC a) -> TC a
+openAbstract Nothing kont = kont Nothing
+openAbstract (Just ty) kont =
+  case ty of
+    TForall bnd -> U.lunbind bnd $ \ ((tv,k), ty') ->
+      extendTyVarCtx tv k $ openAbstract (Just ty') kont
+    _ -> kont (Just ty)
+
+-- | Given a type ∀ α1∷K1 ⋯ αN∷KN . τ, pick fresh unification vars u1,…,uN
+-- and pass τ[u/α] to the given continuation.
+instantiate :: Type -> (Type -> TC a) -> TC a
+instantiate ty kont =
+  case ty of
+    TForall bnd -> U.lunbind bnd $ \ ((tv, k), ty') -> do
+      tu <- freshUnificationVar k
+      instantiate (U.subst tv tu ty') kont
+    _ -> kont ty
+
 checkFunDecl :: Var -> Expr -> TC Decl
 checkFunDecl v e = do
-  msig <- lookupGlobal v
+  msig_ <- lookupGlobal v
   ensureNoDefn v
   res <- solveUnification $ do
     tu <- freshUnificationVar KType
-    case msig of
-      Just ty -> tu =?= ty
-      Nothing -> return ()
-    U.avoid [U.AnyName v] $ checkExpr e tu
+    openAbstract msig_ $ \msig -> do
+      case msig of
+        Just ty -> tu =?= ty
+        Nothing -> return ()
+      U.avoid [U.AnyName v] $ checkExpr e tu
   case res of
     UOkay e' -> return $ FunDecl v e'
     UFail err -> typeError ("when checking " <> formatErr v
@@ -239,8 +274,59 @@ checkConstructor (ConstructorDef ccon args) = do
   args' <- forM args $ \arg -> checkType arg KType
   return (ConstructorDef ccon args')
 
+unifyAnn :: Type -> Annot -> TC ()
+unifyAnn t1 (Annot (Just t2)) = t1 =?= t2
+unifyAnn _ _ = return ()
+
+functionT :: Type -> TC (Type, Type)
+functionT t = do
+  tdom <- freshUnificationVar KType
+  tcod <- freshUnificationVar KType
+  t =?= TC conArrow `TApp` tdom `TApp` tcod
+  return (tdom, tcod)
+
 checkExpr :: Expr -> Type -> TC Expr
-checkExpr _e _t = unimplemented "checkExpr"
+checkExpr e_ t_ = case e_ of
+  Lam bnd ->
+    U.lunbind bnd $ \ ((v, U.unembed -> ann), e) -> do
+      (tdom, tcod) <- functionT t_
+      unifyAnn tdom ann
+      e' <- extendLocalCtx v tdom $ checkExpr e tcod
+      return $ Lam (U.bind (v, U.embed $ Annot $ Just tdom) e')
+  V v -> do
+    mt <- lookupVar v
+    case mt of
+      Nothing -> typeError ("unbound variable " <> formatErr v)
+      Just tv -> instantiate tv $ \t' -> do
+        t_ =?= t'
+        return $ V v
+  App e1_ e2_ -> do
+    (t1, e1') <- inferExpr e1_
+    (tdom, tcod) <- functionT t1
+    e2' <- checkExpr e2_ tdom
+    tcod =?= t_
+    return $ App e1' e2'
+  _ -> unimplemented ("checkExpr for " <> formatErr e_)
+
+inferExpr :: Expr -> TC (Type, Expr)
+inferExpr e_ = case e_ of
+  V v -> do
+    mt <- lookupVar v
+    case mt of
+      Nothing -> typeError ("unbound variable " <> formatErr v)
+      Just tv -> instantiate tv $ \t' -> 
+        return (t', V v)
+  App e1_ e2_ -> do
+    (t1, e1') <- inferExpr e1_
+    (tdom, tcod) <- functionT t1
+    e2' <- checkExpr e2_ tdom
+    return (tcod, App e1' e2')
+  Ann e1_ t_ -> do
+    t <- checkType t_ KType
+    e1' <- checkExpr e1_ t
+    return (t, Ann e1' t)
+  _ -> typeError ("cannot infer type of " <> formatErr e_
+                  <> " try adding a type annotation")
 
 -- | Construct a fresh unification var and apply it to fresh
 -- unification vars for each of the arguments if it is of higher kind.
@@ -306,6 +392,12 @@ extendTyVarsCtx vks = local (envTys %~ M.union (M.fromList vks))
 -- of the given data type with the given kind
 extendDConCtx :: Con -> Kind -> TC a -> TC a
 extendDConCtx dcon k = local (envDCons . at dcon ?~ k)
+
+-- | Extend the local variables environment by adding the given
+-- variable (assumed to be free and fresh) with the given type (which may be
+-- a UVar)
+extendLocalCtx :: Var -> Type -> TC a -> TC a
+extendLocalCtx v t = local (envLocals . at v ?~ t)
 
 extendConstructorsCtx :: [(Con, Constructor)] -> TC a -> TC a
 extendConstructorsCtx cconstrs =
