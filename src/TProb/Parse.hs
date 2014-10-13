@@ -39,7 +39,7 @@ tprobLang = LanguageDef {
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , reservedNames = ["forall", "∀",
                      "→", "⋆", "∷",
-                     "data", "fun", "sig",
+                     "data","fun", "sig",
                      "let", "in", "case", "of",
                      "λ"
                      ]
@@ -244,7 +244,7 @@ lit :: Parser Expr
 lit = L <$> literal
 
 literal :: Parser Literal
-literal = DoubleL <$> try float
+literal = RealL <$> try float
           <|> IntL <$> try integer
           <?> "literal double or integer"
 

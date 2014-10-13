@@ -68,7 +68,7 @@ baseEnv = emptyEnv
           & (envDCons . at conArrow) .~ Just (KType `KArr` KType `KArr` KType)
           & (envDCons . at conDist) .~ Just (KType `KArr` KType)
           & (envDCons . at conInt) .~ Just KType
-          & (envDCons . at conDouble) .~ Just KType
+          & (envDCons . at conReal) .~ Just KType
 
 -- | Base data constructors
 conArrow :: Con
@@ -80,8 +80,8 @@ conDist = Con "Dist"
 conInt :: Con
 conInt = Con "Int"
 
-conDouble :: Con
-conDouble = Con "Double"
+conReal :: Con
+conReal = Con "Real"
 
 functionT :: Type -> Type -> Type
 functionT t1 t2 = TC conArrow `TApp` t1 `TApp` t2
@@ -92,8 +92,8 @@ distT tsample = TC conDist `TApp` tsample
 intT :: Type
 intT = TC conInt
 
-doubleT :: Type
-doubleT = TC conDouble
+realT :: Type
+realT = TC conReal
 
 
 -- | The typechecking monad sand unification
@@ -344,7 +344,7 @@ unifyDistT t = do
 
 checkLiteral :: Literal -> Type -> TC ()
 checkLiteral (IntL {}) t = t =?= intT
-checkLiteral (DoubleL {}) t = t =?= doubleT
+checkLiteral (RealL {}) t = t =?= realT
 
 checkExpr :: Expr -> Type -> TC Expr
 checkExpr e_ t_ = case e_ of

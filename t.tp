@@ -27,15 +27,14 @@ sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
 
 fun swap x y κ = κ y x
 
-sig flip :: Double -> Dist Bool
+sig flip :: Real -> Dist Bool
 
 fun h i = -- bindings are of the form v or (v :: ty)
   let
-    { (fair :: Double) = 0.5      {- value assignment -}
-    ; (biased :: Double) = 0.9
+    { (fair :: Real) = 0.5      {- value assignment -}
+    ; (biased :: Real) = 0.9
     ; x ~ flip fair   {- sampling from a distribution -}
     ; y ~ flip biased
     }
   in or x y
-
 

@@ -32,7 +32,7 @@ data ConstructorDef = ConstructorDef !Con [Type]
                     deriving (Show, Typeable, Generic)
 
 data Literal = IntL Integer
-             | DoubleL Double
+             | RealL Double
              deriving (Show, Typeable, Generic)
                       
 data Expr = V Var
