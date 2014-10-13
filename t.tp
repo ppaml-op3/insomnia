@@ -1,5 +1,15 @@
 -- Example tprob file.
 
+data Bool = True | False
+
+-- "sig" introduces value typing annotations at the top level that is in scope
+-- for the rest of the toplevel declarations.
+-- We don't require a definition for every "sig" and so we can use the
+-- definitions to talk about functions we haven't implemented (or which we assume are primitive)
+sig or :: Bool -> Bool -> Bool
+sig eqInt :: Int -> Int -> Bool
+sig boolToInt :: Bool -> Int
+
 data T (a :: ⋆) = L a | R a
 
 data Mu (c :: ⋆ → ⋆) = Mu (c (Mu c))
@@ -11,20 +21,21 @@ sig tToM :: forall (a ∷ ⋆) (m ∷ ⋆ → ⋆) . T a → m a
 sig id :: forall (a :: *) . a -> a
 
 -- fun declarations provide a definition.
-fun id x = x
+fun id x = id x
 
-sig flip :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
+sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
 
-fun flip x y κ = κ y x
+fun swap x y κ = κ y x
+
+sig flip :: Double -> Dist Bool
 
 fun h i = -- bindings are of the form v or (v :: ty)
   let
-    { myid = id      {- value assignment -}
-    ; x ~ flip 0.5   {- sampling from a distribution -}
-    ; y ~ flip 0.9
+    { (fair :: Double) = 0.5      {- value assignment -}
+    ; (biased :: Double) = 0.9
+    ; x ~ flip fair   {- sampling from a distribution -}
+    ; y ~ flip biased
     }
   in or x y
 
-
-fun i v w = λ x y . x w (y v)
 

@@ -92,6 +92,22 @@ instance HasUVars Type Type where
         (vk, t) = UU.unsafeUnbind bnd
         in (TForall . bind vk) <$> allUVars f t
 
+-- | Construct a fresh unification var and apply it to fresh
+-- unification vars for each of the arguments if it is of higher kind.
+--   freshUnificationVar ⋆ = u
+--   freshUnificationVar (k1 → ⋯ → kN → ⋆) = u·(map freshUnificationVar ks)
+--
+--  for example: ⌞a -> (b -> ⋆)⌟ = (u·⌞a⌟)·⌞b⌟
+freshUnificationVar :: MonadUnify Type m => Kind -> m Type
+freshUnificationVar = \ k -> do
+  u <- unconstrained
+  go k (TUVar u)
+  where
+    go KType thead = return thead
+    go (KArr kdom kcod) thead = do
+      targ <- freshUnificationVar kdom
+      go kcod (thead `TApp` targ)
+
 instance (MonadUnify Type m,
           MonadUnificationExcept Type m,
           LFresh m)
@@ -119,6 +135,12 @@ instance (MonadUnify Type m,
                                                ++ show t1
                                                ++ " ≟ "
                                                ++ show t2))
+      (TForall bnd1, _) ->
+        lunbind bnd1 $ \ ((v1, k1), t1_) -> do
+          tu1 <- freshUnificationVar k1
+          let t1' = subst v1 tu1 t1_
+          t1' =?= t2
+      (ty1, TForall {}) -> t2 =?= t1
       _ -> throwUnificationFailure
-           $ Unsimplifiable (T.pack ("unimplemented simplification for "
+           $ Unsimplifiable (T.pack ("cannot unify "
                                      ++ show t1 ++ " ≟ " ++ show t2))

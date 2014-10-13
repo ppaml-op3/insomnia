@@ -40,7 +40,7 @@ data Expr = V Var
           | L !Literal
           | Lam (Bind AnnVar Expr)
           | App Expr Expr
-          | Let (Bind [Binding] Expr)
+          | Let (Bind Bindings Expr)
           | Sample (Bind (Var, Embed Expr) Expr)
           | Ann Expr Type
             deriving (Show, Typeable, Generic)
@@ -50,6 +50,13 @@ type AnnVar = (Var, Embed Annot)
 newtype Annot = Annot (Maybe Type)
               deriving (Show, Typeable, Generic)
 
+-- | A sequence of bindings, each of which brings variables into scope in the
+-- RHSs of the rest.  (ie, let* from Scheme)
+data Bindings = NilBs
+              | ConsBs (Rebind Binding Bindings)
+                deriving (Show, Typeable, Generic)
+
+-- | A single binding that binds the result of some kind of RHS to a variable.
 data Binding = LetB AnnVar (Embed Expr)
              | SampleB AnnVar (Embed Expr)
              deriving (Show, Typeable, Generic)
@@ -59,6 +66,7 @@ data Binding = LetB AnnVar (Embed Expr)
 -- term and type variables.
 instance Alpha Expr
 instance Alpha Literal
+instance Alpha Bindings
 instance Alpha Binding
 instance Alpha Annot
 instance Alpha ConstructorDef
@@ -68,10 +76,12 @@ instance Subst Expr Expr where
   isvar (V v) = Just (SubstName v)
   isvar _ = Nothing
 
+instance Subst Expr Bindings
 instance Subst Expr Binding
 
 instance Subst Type Expr
 instance Subst Type Annot
+instance Subst Type Bindings
 instance Subst Type Binding
 instance Subst Type ConstructorDef
 

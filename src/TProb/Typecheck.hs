@@ -7,12 +7,13 @@ module TProb.Typecheck where
 
 import Control.Lens
 import Control.Applicative ((<$>))
-import Control.Monad (forM)
+import Control.Monad (forM, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Control.Monad.Error.Class (MonadError(..))
 import Control.Monad.Trans.Except (Except, runExcept)
+import Data.List (foldl')
 import Data.Format (Format(..))
 import qualified Data.Map as M
 import Data.Monoid (Monoid(..), (<>), First(..))
@@ -65,10 +66,35 @@ emptyEnv = Env mempty mempty mempty mempty mempty mempty
 baseEnv :: Env
 baseEnv = emptyEnv
           & (envDCons . at conArrow) .~ Just (KType `KArr` KType `KArr` KType)
+          & (envDCons . at conDist) .~ Just (KType `KArr` KType)
+          & (envDCons . at conInt) .~ Just KType
+          & (envDCons . at conDouble) .~ Just KType
 
 -- | Base data constructors
 conArrow :: Con
 conArrow = Con "->"
+
+conDist :: Con
+conDist = Con "Dist"
+
+conInt :: Con
+conInt = Con "Int"
+
+conDouble :: Con
+conDouble = Con "Double"
+
+functionT :: Type -> Type -> Type
+functionT t1 t2 = TC conArrow `TApp` t1 `TApp` t2
+
+distT :: Type -> Type
+distT tsample = TC conDist `TApp` tsample
+
+intT :: Type
+intT = TC conInt
+
+doubleT :: Type
+doubleT = TC conDouble
+
 
 -- | The typechecking monad sand unification
 type TCSimple = ReaderT Env (LFreshMT (Except TCError))
@@ -101,6 +127,13 @@ lookupDCon d = do
   case m of
     Just k -> return k
     Nothing -> typeError $ "no data type " <> formatErr d
+
+lookupCCon :: Con -> TC Constructor
+lookupCCon c = do
+  m <- view (envCCons . at c)
+  case m of
+    Just constr -> return constr
+    Nothing -> typeError $ "no datatype defines a constructor " <> formatErr c
 
 -- | Lookup the kind of a type variable
 lookupTyVar :: TyVar -> TC Kind
@@ -242,6 +275,24 @@ instantiate ty kont =
       instantiate (U.subst tv tu ty') kont
     _ -> kont ty
 
+-- | Given a value constructor c, return its type as a polymorphic function
+--   (that is, ∀ αs . T1(αs) → ⋯ → TN(αs) → D αs)
+mkConstructorType :: Constructor -> TC Type
+mkConstructorType constr = 
+  -- XX could do unsafeBunbind here for working under the binder.
+  U.lunbind (constr^.constructorArgs) $ \ (tvks, targs) -> do
+  let tvs = map (TV . fst) tvks
+      d = constr^.constructorDCon
+      -- data type applied to the type variables - D α1 ⋯ αK
+      dt = foldl' TApp (TC d) tvs
+      -- arg1 → (arg2 → ⋯ (argN → D αs))
+      ty = foldr functionT dt targs
+  -- ∀ αs . …
+  return $ go ty tvks
+  where
+    go t [] = t
+    go t (tvk:tvks) = go (TForall (U.bind tvk t)) tvks
+
 checkFunDecl :: Var -> Expr -> TC Decl
 checkFunDecl v e = do
   msig_ <- lookupGlobal v
@@ -278,21 +329,34 @@ unifyAnn :: Type -> Annot -> TC ()
 unifyAnn t1 (Annot (Just t2)) = t1 =?= t2
 unifyAnn _ _ = return ()
 
-functionT :: Type -> TC (Type, Type)
-functionT t = do
+unifyFunctionT :: Type -> TC (Type, Type)
+unifyFunctionT t = do
   tdom <- freshUnificationVar KType
   tcod <- freshUnificationVar KType
-  t =?= TC conArrow `TApp` tdom `TApp` tcod
+  t =?= functionT tdom tcod
   return (tdom, tcod)
+
+unifyDistT :: Type -> TC Type
+unifyDistT t = do
+  tsample <- freshUnificationVar KType
+  t =?= distT tsample
+  return tsample
+
+checkLiteral :: Literal -> Type -> TC ()
+checkLiteral (IntL {}) t = t =?= intT
+checkLiteral (DoubleL {}) t = t =?= doubleT
 
 checkExpr :: Expr -> Type -> TC Expr
 checkExpr e_ t_ = case e_ of
   Lam bnd ->
     U.lunbind bnd $ \ ((v, U.unembed -> ann), e) -> do
-      (tdom, tcod) <- functionT t_
+      (tdom, tcod) <- unifyFunctionT t_
       unifyAnn tdom ann
       e' <- extendLocalCtx v tdom $ checkExpr e tcod
       return $ Lam (U.bind (v, U.embed $ Annot $ Just tdom) e')
+  L l -> do
+    checkLiteral l t_
+    return (L l)
   V v -> do
     mt <- lookupVar v
     case mt of
@@ -300,13 +364,60 @@ checkExpr e_ t_ = case e_ of
       Just tv -> instantiate tv $ \t' -> do
         t_ =?= t'
         return $ V v
+  C c -> do
+    constr <- lookupCCon c
+    ty <- mkConstructorType constr
+    instantiate ty $ \ty' -> do
+      ty' =?= t_
+      return $ C c
   App e1_ e2_ -> do
     (t1, e1') <- inferExpr e1_
-    (tdom, tcod) <- functionT t1
+    (tdom, tcod) <- unifyFunctionT t1
     e2' <- checkExpr e2_ tdom
     tcod =?= t_
     return $ App e1' e2'
+  Let bnd ->
+    U.lunbind bnd $ \(binds, body) ->
+    checkBindings binds $ \ binds' -> do
+      body' <- checkExpr body t_
+      return $ Let $ U.bind binds' body'
   _ -> unimplemented ("checkExpr for " <> formatErr e_)
+
+-- | check a sequence of bindings and pass them to the given continuation
+-- in an environment suitably extended by the new bindings.
+checkBindings :: Bindings -> (Bindings -> TC a) -> TC a
+checkBindings NilBs kont = kont NilBs
+checkBindings (ConsBs (U.unrebind -> (bind, binds))) kont =
+  checkBinding bind $ \bind' ->
+  checkBindings binds $ \ binds' ->
+  kont (ConsBs (U.rebind bind' binds'))
+
+checkBinding :: Binding -> (Binding -> TC a) -> TC a
+checkBinding (LetB (v, U.unembed -> ann) (U.unembed -> e)) kont =
+  case ann of
+    Annot Nothing -> do
+      (t, e') <- inferExpr e
+      -- XXX : TODO generalize uvars, or else freeze 'em if we're going to
+      -- behave like recent versions of GHC
+      extendLocalCtx v t $ do
+        kont $ LetB (v, U.embed $ Annot $ Just t) (U.embed e')
+    Annot (Just t) -> do
+      void $ checkType t KType
+      e' <- checkExpr e t
+      extendLocalCtx v t $ do
+        kont $ LetB (v, U.embed $ Annot $ Just t) (U.embed e')
+checkBinding (SampleB (v, U.unembed -> ann) (U.unembed -> e)) kont =
+  case ann of
+    Annot Nothing -> do
+      (tdist, e') <- inferExpr e
+      tsample <- unifyDistT tdist
+      extendLocalCtx v tsample $ do
+        kont $ LetB (v, U.embed $ Annot $ Just tsample) (U.embed e')
+    Annot (Just tsample) -> do
+      void $ checkType tsample KType
+      e' <- checkExpr e (distT tsample)
+      extendLocalCtx v tsample $ do
+        kont $ LetB (v, U.embed $ Annot $ Just tsample) (U.embed e')
 
 inferExpr :: Expr -> TC (Type, Expr)
 inferExpr e_ = case e_ of
@@ -318,9 +429,13 @@ inferExpr e_ = case e_ of
         return (t', V v)
   App e1_ e2_ -> do
     (t1, e1') <- inferExpr e1_
-    (tdom, tcod) <- functionT t1
+    (tdom, tcod) <- unifyFunctionT t1
     e2' <- checkExpr e2_ tdom
     return (tcod, App e1' e2')
+  C c -> do
+    constr <- lookupCCon c
+    ty <- mkConstructorType constr
+    return (ty, C c)
   Ann e1_ t_ -> do
     t <- checkType t_ KType
     e1' <- checkExpr e1_ t
@@ -328,20 +443,6 @@ inferExpr e_ = case e_ of
   _ -> typeError ("cannot infer type of " <> formatErr e_
                   <> " try adding a type annotation")
 
--- | Construct a fresh unification var and apply it to fresh
--- unification vars for each of the arguments if it is of higher kind.
---   freshUnificationVar ⋆ = u
---   freshUnificationVar (k1 → ⋯ → kN → ⋆) = u·(map freshUnificationVar ks)
-freshUnificationVar :: Kind -> TC Type
-freshUnificationVar k = do
-  u <- unconstrained
-  return $ TUVar u -- XXX TODO: apply to a spine of fresh uvars.
-  where
---    go KType cont = return (cont [])
---    go (KArr k1 k2) cont = do
---      u1 <- freshUnificationVar k1
---      go k2 $ \ rest ->  cont (TUVar u1 : rest)
-      
 -- | Extend the environment by incorporating the given declaration.
 extendDCtx :: Decl -> TC a -> TC a
 extendDCtx d =

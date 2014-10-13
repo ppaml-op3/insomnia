@@ -90,7 +90,7 @@ sigDecl = mkSigDecl
 dataDecl :: Parser Decl
 dataDecl = mkDataDecl
            <$> (reserved "data" *> conId)
-           <*> some (kindedTVar)
+           <*> many (kindedTVar)
            <*> (reservedOp "="
                 *> sepBy1 constructorDef (reservedOp "|"))
   where
@@ -250,12 +250,20 @@ literal = DoubleL <$> try float
 
 letExpr :: Parser Expr
 letExpr = mkLet
-          <$> (reserved "let" *> braces (semiSep1 binding))
+          <$> (reserved "let" *> braces bindings)
           <*> (reserved "in"  *> expr)
           <?> "let expression"
   where
     mkLet bs body = Let (U.bind bs body)
 
+bindings :: Parser Bindings
+bindings =
+  mkBindings <$> semiSep binding
+  where
+    mkBindings [] = NilBs
+    mkBindings (b:bs) =
+      ConsBs $ U.rebind b (mkBindings bs)
+      
 binding :: Parser Binding
 binding = mkBinding
           <$> annVar
