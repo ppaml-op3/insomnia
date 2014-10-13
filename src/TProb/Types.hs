@@ -31,7 +31,13 @@ newtype Con = Con { unCon :: String }
 type TyVar = Name Type
 type KindedTVar = (TyVar, Kind)
 
-data Kind = KType
+type Nat = Integer
+
+data Rows = Rows -- TODO
+
+
+data Kind = KType -- ^ the kind of types
+--          | KROW -- ^ the kind ROW of rows. users can't write it directly
           | KArr !Kind !Kind
             deriving (Show, Typeable, Generic)
 infixr 6 `KArr`
@@ -84,7 +90,7 @@ instance HasUVars Type Type where
   allUVars f t =
     case t of
       TV {} -> pure t
-      TUVar uvar -> f t
+      TUVar {} -> f t
       TC {} -> pure t
       TAnn t k -> TAnn <$> allUVars f t <*> pure k
       TApp t1 t2 -> TApp <$> allUVars f t1 <*> allUVars f t2

@@ -7,7 +7,7 @@ module TProb.Typecheck where
 
 import Control.Lens
 import Control.Applicative ((<$>))
-import Control.Monad (forM, void)
+import Control.Monad (forM, unless, void)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.Trans.Reader (ReaderT (..))
@@ -33,23 +33,41 @@ newtype TCError = TCError { getTCError :: Text }
 instance Format TCError where
   format = format . getTCError
 
--- each constructor C of type D has the form:
+-- each constructor C of algebraic datatype D has the form:
 --  ∀ (α₁ ∷ K₁, … αᵢ ∷ Kᵢ) . T₁ → T₂ → ⋯ → D α₁ ⋯ αᵢ
 -- (if we add GADTs, there will also be existential β vars and
 -- equality constraints.  In any case, D will always be applied to exactly
 -- the αs and we don't bother storing the whole application.  Just the head
 -- data constructor D.)
-data Constructor =
-  Constructor {
-    _constructorArgs :: (U.Bind [KindedTVar] [Type])
-    , _constructorDCon :: Con
+data AlgConstructor =
+  AlgConstructor {
+    _algConstructorArgs :: (U.Bind [KindedTVar] [Type])
+    , _algConstructorDCon :: Con
     }
 
-$(makeLenses ''Constructor)
+data AlgType =
+  AlgType {
+    _algTypeParams :: [Kind] -- ^ the ADT is parametric, having kind κ1→⋯→κN→⋆
+    , _algTypeCons :: [Con] -- ^ the names of the constructors in this kind.
+    }
+
+-- | Types that arise as a result of checking a declaration.  Each
+-- declaration gives rise to a new type that is distinct even from
+-- other declarations that appear structurally equivalent.  (Formally
+-- these may be modeled by singleton kinds or by definitions in a
+-- typing context.)
+data GenerativeType =
+  AlgebraicType !AlgType -- ^ an (AlgebraicType κs) declares a type of kind κ1 → ⋯ → κN → ⋆
+  | EnumerationType !Nat -- ^ a finite enumeration type of N elements
+--   | RecordType Rows -- ^ a record type with the given rows
+
+
+$(makeLenses ''AlgConstructor)
+$(makeLenses ''AlgType)
   
 -- | Typechecking environment
-data Env = Env { _envDCons :: M.Map Con Kind        -- ^ data types
-               , _envCCons :: M.Map Con Constructor -- ^ value constructors
+data Env = Env { _envDCons :: M.Map Con GenerativeType -- ^ data types
+               , _envCCons :: M.Map Con AlgConstructor -- ^ value constructors
                , _envGlobals :: M.Map Var Type      -- ^ declared global vars
                , _envGlobalDefns :: M.Map Var ()    -- ^ defined global vars
                , _envTys :: M.Map TyVar Kind        -- ^ local type variables
@@ -65,10 +83,10 @@ emptyEnv = Env mempty mempty mempty mempty mempty mempty
 -- | Base environment with builtin types.
 baseEnv :: Env
 baseEnv = emptyEnv
-          & (envDCons . at conArrow) .~ Just (KType `KArr` KType `KArr` KType)
-          & (envDCons . at conDist) .~ Just (KType `KArr` KType)
-          & (envDCons . at conInt) .~ Just KType
-          & (envDCons . at conReal) .~ Just KType
+          & (envDCons . at conArrow) .~ Just (AlgebraicType algArrow)
+          & (envDCons . at conDist) .~ Just (AlgebraicType algDist)
+          & (envDCons . at conInt) .~ Just (AlgebraicType algInt)
+          & (envDCons . at conReal) .~ Just (AlgebraicType algReal)
 
 -- | Base data constructors
 conArrow :: Con
@@ -82,6 +100,18 @@ conInt = Con "Int"
 
 conReal :: Con
 conReal = Con "Real"
+
+algArrow :: AlgType
+algArrow = AlgType [KType, KType] []
+
+algDist :: AlgType
+algDist = AlgType [KType] []
+
+algInt :: AlgType
+algInt = AlgType [] []
+
+algReal :: AlgType
+algReal = AlgType [] []
 
 functionT :: Type -> Type -> Type
 functionT t1 t2 = TC conArrow `TApp` t1 `TApp` t2
@@ -120,15 +150,15 @@ checkKind _k = return ()
 isSubkind :: Kind -> Kind -> Bool
 isSubkind = U.aeq
 
--- | Look up the kind of a datatype
-lookupDCon :: Con -> TC Kind 
+-- | Look up info about a datatype
+lookupDCon :: Con -> TC GenerativeType
 lookupDCon d = do
   m <- view (envDCons . at d)
   case m of
     Just k -> return k
     Nothing -> typeError $ "no data type " <> formatErr d
 
-lookupCCon :: Con -> TC Constructor
+lookupCCon :: Con -> TC AlgConstructor
 lookupCCon c = do
   m <- view (envCCons . at c)
   case m of
@@ -180,6 +210,13 @@ ensureNoDefn v = do
     Just () -> typeError ("duplicate defintion of " <> formatErr v)
     Nothing -> return ()
 
+inferGenerativeType :: GenerativeType -> TC Kind
+inferGenerativeType (AlgebraicType algTy) =
+  let k = foldr KArr KType (algTy^.algTypeParams)
+  in return k
+inferGenerativeType (EnumerationType {}) = return KType
+  
+
 -- | Check that a type has the given kind
 checkType :: Type -> Kind -> TC Type
 checkType t k = do
@@ -192,7 +229,8 @@ inferType :: Type  -> TC (Type, Kind)
 inferType t =
   case t of
     TC dcon -> do
-      k' <- lookupDCon dcon
+      gt <- lookupDCon dcon
+      k' <- inferGenerativeType gt
       return (t,k')
     TUVar u -> typeError ("unexpected unification variable "
                           <> formatErr u)
@@ -220,6 +258,7 @@ checkDecl d =
     SigDecl v t -> checkSigDecl v t
     FunDecl v e -> checkFunDecl v e
     DataDecl dcon constrs -> checkDataDecl dcon constrs
+    EnumDecl dcon n -> checkEnumDecl dcon n
 
 guardDuplicateValueDecl :: Var -> TC ()
 guardDuplicateValueDecl v = do
@@ -277,12 +316,12 @@ instantiate ty kont =
 
 -- | Given a value constructor c, return its type as a polymorphic function
 --   (that is, ∀ αs . T1(αs) → ⋯ → TN(αs) → D αs)
-mkConstructorType :: Constructor -> TC Type
+mkConstructorType :: AlgConstructor -> TC Type
 mkConstructorType constr = 
   -- XX could do unsafeBunbind here for working under the binder.
-  U.lunbind (constr^.constructorArgs) $ \ (tvks, targs) -> do
+  U.lunbind (constr^.algConstructorArgs) $ \ (tvks, targs) -> do
   let tvs = map (TV . fst) tvks
-      d = constr^.constructorDCon
+      d = constr^.algConstructorDCon
       -- data type applied to the type variables - D α1 ⋯ αK
       dt = foldl' TApp (TC d) tvs
       -- arg1 → (arg2 → ⋯ (argN → D αs))
@@ -314,10 +353,23 @@ checkDataDecl dcon bnd = do
   guardDuplicateDConDecl dcon
   U.lunbind bnd $ \ (vks, constrs) -> do
     -- k1 -> k2 -> ... -> *
-    let kcon = foldr KArr KType (map snd vks)
-    checkKind kcon
-    constrs' <- extendDConCtx dcon kcon $ extendTyVarsCtx vks $ forM constrs checkConstructor
+    let kparams = map snd vks
+        cs = map (\(ConstructorDef c _) -> c) constrs
+        algty = AlgType kparams cs
+    mapM_ checkKind kparams
+    constrs' <- extendDConCtx dcon (AlgebraicType algty)
+                $ extendTyVarsCtx vks $ forM constrs checkConstructor
     return $ DataDecl dcon $ U.bind vks constrs'
+
+checkEnumDecl :: Con -> Nat -> TC Decl
+checkEnumDecl dcon n = do
+  guardDuplicateDConDecl dcon
+  unless (n > 0) $ do
+    typeError ("when checking declaration of enumeration type "
+               <> formatErr dcon
+               <> " the number of elements "
+               <> formatErr n <> "was negative")
+  return $ EnumDecl dcon n
 
 checkConstructor :: ConstructorDef -> TC ConstructorDef
 checkConstructor (ConstructorDef ccon args) = do
@@ -450,22 +502,30 @@ extendDCtx d =
     SigDecl v t -> extendSigDeclCtx v t
     FunDecl v _e -> extendFunDeclCtx v
     DataDecl dcon constrs -> extendDataDeclCtx dcon constrs
+    EnumDecl dcon n -> extendEnumDeclCtx dcon n
 
--- | Extend the typing context by addind the given type and value constructors
+-- | Extend the typing context by adding the given type and value constructors
 extendDataDeclCtx :: Con -> DataDecl -> TC a -> TC a
 extendDataDeclCtx dcon bnd comp = do
   U.lunbind bnd $ \ (vks, constrs) -> do
-    let kcon = foldr KArr KType (map snd vks)
-    extendDConCtx dcon kcon $ do
+    let kparams = map snd vks
+        cs = map (\(ConstructorDef c _) -> c) constrs
+        algty = AlgType kparams cs
+    extendDConCtx dcon (AlgebraicType algty) $ do
       let constructors = map (mkConstructor dcon vks) constrs
       extendConstructorsCtx constructors comp
+
+-- | Extend the typing context by adding the given enumeration type
+extendEnumDeclCtx :: Con -> Nat -> TC a -> TC a
+extendEnumDeclCtx dcon n =
+  extendDConCtx dcon (EnumerationType n)
 
 -- | @mkConstructor d vks (ConstructorDef c params)@ returns @(c,
 -- ccon)@ where @ccon@ is a 'Constructor' for the type @d@ with the
 -- given type and value parameters.
-mkConstructor :: Con -> [(TyVar, Kind)] -> ConstructorDef -> (Con, Constructor)
+mkConstructor :: Con -> [(TyVar, Kind)] -> ConstructorDef -> (Con, AlgConstructor)
 mkConstructor dcon vks (ConstructorDef ccon args) =
-  (ccon, Constructor (U.bind vks args) dcon)
+  (ccon, AlgConstructor (U.bind vks args) dcon)
 
 extendSigDeclCtx :: Var -> Type -> TC a -> TC a
 extendSigDeclCtx v t =
@@ -491,7 +551,7 @@ extendTyVarsCtx vks = local (envTys %~ M.union (M.fromList vks))
 
 -- | Extend the data type environment by adding the declaration
 -- of the given data type with the given kind
-extendDConCtx :: Con -> Kind -> TC a -> TC a
+extendDConCtx :: Con -> GenerativeType -> TC a -> TC a
 extendDConCtx dcon k = local (envDCons . at dcon ?~ k)
 
 -- | Extend the local variables environment by adding the given
@@ -500,7 +560,7 @@ extendDConCtx dcon k = local (envDCons . at dcon ?~ k)
 extendLocalCtx :: Var -> Type -> TC a -> TC a
 extendLocalCtx v t = local (envLocals . at v ?~ t)
 
-extendConstructorsCtx :: [(Con, Constructor)] -> TC a -> TC a
+extendConstructorsCtx :: [(Con, AlgConstructor)] -> TC a -> TC a
 extendConstructorsCtx cconstrs =
   local (envCCons %~ M.union (M.fromList cconstrs))
 

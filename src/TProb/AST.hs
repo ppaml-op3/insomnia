@@ -23,6 +23,7 @@ data Decl =
   | SigDecl !Var !Type   -- ^ a function signature "sig f :: A -> B"
     -- | "data T (a::K)... = C1 T11 ... T1m | C2 | C3 T31 ... T3n"
   | DataDecl !Con !DataDecl
+  | EnumDecl !Con !Nat
   deriving (Show)
 
 -- a DataDecl of kind k1 -> ... -> kN -> * with the given construtors.

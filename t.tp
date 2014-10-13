@@ -38,3 +38,15 @@ fun h i = -- bindings are of the form v or (v :: ty)
     }
   in or x y
 
+
+----- enumeration types
+enum Five 5
+
+sig eqFive :: Five -> Five -> Bool
+
+sig one :: Five
+
+sig isOne :: Five -> Bool
+fun isOne x = eqFive x one
+
+

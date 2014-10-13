@@ -39,7 +39,8 @@ tprobLang = LanguageDef {
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , reservedNames = ["forall", "∀",
                      "→", "⋆", "∷",
-                     "data","fun", "sig",
+                     "data","enum", "record",
+                     "fun", "sig",
                      "let", "in", "case", "of",
                      "λ"
                      ]
@@ -70,7 +71,8 @@ moduleExpr = Module <$> many decl
 decl :: Parser Decl
 decl = (funDecl <?> "function definition")
        <|> (sigDecl <?> "function signature")
-       <|> (dataDecl <?> "datatype definition")
+       <|> (dataDecl <?> "algebraic data type definition")
+       <|> (enumDecl <?> "enumeration declaration")
 
 funDecl :: Parser Decl
 funDecl = mkFunDecl
@@ -96,6 +98,13 @@ dataDecl = mkDataDecl
   where
     mkDataDecl nm tyvars cons =
       DataDecl nm (U.bind tyvars cons)
+
+enumDecl :: Parser Decl
+enumDecl = mkEnumDecl
+           <$> (reserved "enum" *> conId)
+           <*> natural
+  where
+    mkEnumDecl = EnumDecl
 
 kindedTVar :: Parser (TyVar, Kind)
 kindedTVar =
