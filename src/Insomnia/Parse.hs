@@ -1,5 +1,5 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings #-}
-module TProb.Parse where
+module Insomnia.Parse where
 
 import Control.Applicative
 import Control.Monad (guard)
@@ -18,8 +18,8 @@ import Text.Parsec.Prim ((<?>), try, parse, parseTest)
 import Text.Parsec.Combinator (eof, sepBy1)
 import Text.Parsec.Expr
 
-import TProb.Types
-import TProb.AST
+import Insomnia.Types
+import Insomnia.AST
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Data.Format (Format)
@@ -27,8 +27,8 @@ import Data.Format (Format)
 -- orphan
 instance Format ParseError
 
-tprobLang :: GenLanguageDef Text () Identity
-tprobLang = LanguageDef {
+insomniaLang :: GenLanguageDef Text () Identity
+insomniaLang = LanguageDef {
   commentStart = "{-"
   , commentEnd = "-}"
   , commentLine = "--"
@@ -48,7 +48,7 @@ tprobLang = LanguageDef {
   , caseSensitive = True
   }
 
-Tok.TokenParser {..} = Tok.makeTokenParser tprobLang
+Tok.TokenParser {..} = Tok.makeTokenParser insomniaLang
 
 coloncolon :: Parser ()
 coloncolon = reservedOp "::" <|> reserved "∷"

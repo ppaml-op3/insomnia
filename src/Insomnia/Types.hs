@@ -3,7 +3,7 @@
       FlexibleInstances, FlexibleContexts,
       DeriveDataTypeable, DeriveGeneric
   #-}
-module TProb.Types where
+module Insomnia.Types where
 
 import Control.Applicative
 import Control.Lens.Prism
@@ -15,7 +15,7 @@ import GHC.Generics (Generic)
 import Unbound.Generics.LocallyNameless
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
-import TProb.Unify (UVar, Unifiable(..),
+import Insomnia.Unify (UVar, Unifiable(..),
                     HasUVars(..),
                     Partial(..),
                     MonadUnify(..),

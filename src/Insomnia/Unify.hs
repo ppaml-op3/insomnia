@@ -21,7 +21,7 @@
 -- Note: We don't try to restrict the @UVar u@ values from escaping from the
 -- unification monad via Haskell's typesystem, but you will get poor results
 -- if they do so.  Caveat emptor!
-module TProb.Unify
+module Insomnia.Unify
        (
          -- * Unification variables
          UVar

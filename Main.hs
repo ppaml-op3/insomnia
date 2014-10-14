@@ -1,6 +1,6 @@
 module Main where
 
-import qualified TProb.Main as M
+import qualified Insomnia.Main as M
 
 main :: IO ()
 main = M.main

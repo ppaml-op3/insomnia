@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, OverloadedStrings, TemplateHaskell #-}
-module TProb.Pretty where
+module Insomnia.Pretty where
 
 import Control.Applicative
 import Control.Lens
@@ -15,9 +15,9 @@ import Text.PrettyPrint (Doc)
 
 import qualified Unbound.Generics.LocallyNameless as U
 
-import TProb.AST
-import TProb.Types
-import TProb.Unify
+import Insomnia.AST
+import Insomnia.Types
+import Insomnia.Unify
 
 type Precedence = Int
 

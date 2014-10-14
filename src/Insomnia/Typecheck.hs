@@ -3,7 +3,7 @@
              ViewPatterns,
              TemplateHaskell
   #-}
-module TProb.Typecheck where
+module Insomnia.Typecheck where
 
 import Control.Lens
 import Control.Applicative ((<$>))
@@ -23,10 +23,10 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 
-import TProb.Types
-import TProb.AST
-import TProb.Unify
-import TProb.Pretty
+import Insomnia.Types
+import Insomnia.AST
+import Insomnia.Unify
+import Insomnia.Pretty
 
 newtype TCError = TCError { getTCError :: F.Doc }
 

@@ -2,14 +2,14 @@
       MultiParamTypeClasses, 
       DeriveDataTypeable, DeriveGeneric
   #-}
-module TProb.AST where
+module Insomnia.AST where
 
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
 
-import TProb.Types
+import Insomnia.Types
 
 type Var = Name Expr
 

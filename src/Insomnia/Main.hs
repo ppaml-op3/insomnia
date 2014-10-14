@@ -1,4 +1,4 @@
-module TProb.Main where
+module Insomnia.Main where
 
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
@@ -6,9 +6,9 @@ import System.Exit (exitFailure)
 import Data.Format (Format)
 import qualified Data.Format as F
 
-import TProb.Parse
-import TProb.Typecheck
-import TProb.Pretty
+import Insomnia.Parse
+import Insomnia.Typecheck
+import Insomnia.Pretty
 
 
 main :: IO ()
@@ -32,7 +32,7 @@ processArguments = do
     _ -> return HelpUsage
 
 printUsage :: IO ()
-printUsage = putStrLn "Usage: tprob [FILE | --help]"
+printUsage = putStrLn "Usage: insomnia [FILE | --help]"
 
 parseAndCheck :: FilePath -> IO ()
 parseAndCheck fp = do
