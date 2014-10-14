@@ -7,6 +7,7 @@
       DeriveDataTypeable,
       DeriveGeneric,
       FunctionalDependencies,
+      OverloadedStrings,
       TemplateHaskell
   #-}
 -- needs UndecidableInstances for the mtl classes.
@@ -47,7 +48,8 @@ import Control.Monad.Trans.State.Strict (StateT)
 import qualified Control.Monad.Trans.State.Strict as St
 import qualified Data.Map as M
 import qualified Data.Text as T
-import Data.Monoid (Monoid(..))
+import Data.Format (Format(..))
+import Data.Monoid (Monoid(..), (<>))
 
 import qualified Control.Monad.Reader.Class as Reader
 import qualified Control.Monad.Error.Class as Error
@@ -61,6 +63,8 @@ import qualified Unbound.Generics.LocallyNameless as U
 newtype UVar u = UVar Int
              deriving (Eq, Ord, Typeable, Generic)
 
+instance Format (UVar u) where
+  format (UVar i) = "⁇" <> format i
 instance Show (UVar u) where
   showsPrec _ (UVar i) = showString "⁇" . shows i
   
@@ -80,14 +84,15 @@ data UnificationFailure u =
   CircularityOccurs !(UVar u) !u -- CircularityOccurs x e means x wants to unify with e which contains some subterm that is unified with x.
   | Unsimplifiable !T.Text -- Simplification of a constraint x =?= y failed, for some x and y.
 
-instance Show u => Show (UnificationFailure u) where
-  showsPrec _ (CircularityOccurs uv t) =
-    showString "occurs check failed: the variable "
-    . shows uv . showString " occurs in " . shows t
-  showsPrec _ (Unsimplifiable txt) =
-    showString "simplification failed to unify"
-    . (if T.null txt then id else showString " because "
-                                  . showString (T.unpack txt))
+instance Format u => Format (UnificationFailure u) where
+  format (CircularityOccurs uv t) =
+    "occurs check failed: the variable "
+    <> format uv <> " occurs in " <> format t
+  format (Unsimplifiable txt) =
+    "simplification failed to unify"
+    <> (if T.null txt
+        then mempty
+        else " because " <> format txt)
 
 data S u = S {
   _nextFreshId :: UVar u

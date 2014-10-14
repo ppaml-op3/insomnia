@@ -15,10 +15,9 @@ import Control.Monad.Error.Class (MonadError(..))
 import Control.Monad.Trans.Except (Except, runExcept)
 import Data.List (foldl')
 import Data.Format (Format(..))
+import qualified Data.Format as F
 import qualified Data.Map as M
 import Data.Monoid (Monoid(..), (<>), First(..))
-import Data.Text (Text)
-import qualified Data.Text as T
 
 import qualified Unbound.Generics.LocallyNameless as U
 
@@ -28,7 +27,7 @@ import TProb.Types
 import TProb.AST
 import TProb.Unify
 
-newtype TCError = TCError { getTCError :: Text }
+newtype TCError = TCError { getTCError :: F.Doc }
 
 instance Format TCError where
   format = format . getTCError
@@ -136,7 +135,7 @@ type TC = UnificationT Type TCSimple
 
 -- instance MonadUnificationExcept Type TCSimple
 instance MonadUnificationExcept Type (ReaderT Env (LFreshMT (Except TCError))) where
-  throwUnificationFailure uf = throwError (TCError $ T.pack $ show uf)
+  throwUnificationFailure = throwError . TCError . formatErr
 
 -- | Run a typechecking computation
 runTC :: TC a -> Either TCError a
@@ -637,14 +636,14 @@ checkModule =
 throwTCError :: TCError -> TC a
 throwTCError = lift . lift . throwError
 
-typeError :: Text -> TC a
+typeError :: F.Doc -> TC a
 typeError msg =
   throwTCError . TCError $ "type error: " <> msg
 
-unimplemented :: Text -> TC a
+unimplemented :: F.Doc -> TC a
 unimplemented msg =
   throwTCError . TCError $ "typecheck unimplemented: " <> msg
 
-formatErr :: (Show a) => a -> Text
-formatErr = T.pack . show
+formatErr :: (Format a) => a -> F.Doc
+formatErr = format
 

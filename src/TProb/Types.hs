@@ -9,6 +9,7 @@ import Control.Applicative
 import Control.Lens.Prism
 import Data.Typeable(Typeable)
 
+import Data.Format (Format(..))
 import qualified Data.Text as T
 import GHC.Generics (Generic)
 
@@ -51,6 +52,11 @@ data Type = TV TyVar
             deriving (Show, Typeable, Generic)
 
 infixl 6 `TApp`
+
+-- Formatted output
+instance Format Con
+instance Format Kind
+instance Format Type
 
 -- Alpha equivalence
 

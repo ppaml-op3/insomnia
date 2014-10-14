@@ -10,10 +10,12 @@ module Data.Format
 
 import Data.Monoid (Monoid(..), (<>))
 
+import Data.String (IsString(..))
 import qualified Data.Text as TStrict
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.IO as T
 import qualified Data.Text.Lazy.Builder as TB
+import qualified Unbound.Generics.LocallyNameless as U
   
 newtype Doc = Doc { unDoc :: TB.Builder }
 
@@ -21,6 +23,9 @@ instance Monoid Doc where
   mempty = Doc mempty
   mappend d1 d2 = Doc $ mappend (unDoc d1) (unDoc d2)
   mconcat ds = Doc $ mconcat (map unDoc ds)
+
+instance IsString Doc where
+  fromString = Doc . fromString
 
 class Format a where
   format :: a -> Doc
@@ -59,6 +64,11 @@ instance Format T.Text where
   format = Doc . TB.fromLazyText
 instance Format a => Format [a] where
   format = formatList
+
+instance Format Doc where
+  format = id
+
+instance Format (U.Name a)
 
 -- | convert the given 'Doc' to a 'T.Text'
 docToText :: Doc -> T.Text

@@ -49,5 +49,6 @@ parseAndCheck fp = do
 showErrorAndDie :: (Format err) => String -> err -> IO a
 showErrorAndDie phase msg = do
   putStrLn $ "Encountered error while " ++ phase
-  F.putStrDoc (F.format msg)
+  F.putStrDoc (F.format $ msg)
+  putStrLn ""
   exitFailure
