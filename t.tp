@@ -42,7 +42,8 @@ fun fmapEither f = withEither Left (compose Right f)
 sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
 fun swap x y κ = κ y x
 
-sig flip :: Real -> Dist Bool
+sig flip :: Real -> Dist Bool -- TODO effect system?
+                              -- (should flip be ℝ ↝ Dist Bool)
 
 fun h i = -- bindings are of the form v or (v :: ty)
   let
