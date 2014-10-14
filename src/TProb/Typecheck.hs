@@ -7,7 +7,7 @@ module TProb.Typecheck where
 
 import Control.Lens
 import Control.Applicative ((<$>))
-import Control.Monad (forM, unless, void)
+import Control.Monad (forM, unless, void, zipWithM)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.Trans.Reader (ReaderT (..))
@@ -33,6 +33,8 @@ newtype TCError = TCError { getTCError :: Text }
 instance Format TCError where
   format = format . getTCError
 
+type ConstructorArgs = (U.Bind [KindedTVar] [Type])
+
 -- each constructor C of algebraic datatype D has the form:
 --  ∀ (α₁ ∷ K₁, … αᵢ ∷ Kᵢ) . T₁ → T₂ → ⋯ → D α₁ ⋯ αᵢ
 -- (if we add GADTs, there will also be existential β vars and
@@ -41,7 +43,7 @@ instance Format TCError where
 -- data constructor D.)
 data AlgConstructor =
   AlgConstructor {
-    _algConstructorArgs :: (U.Bind [KindedTVar] [Type])
+    _algConstructorArgs :: ConstructorArgs
     , _algConstructorDCon :: Con
     }
 
@@ -197,10 +199,11 @@ ensureSubkind (tblame, ksub) ksup =
                   <> formatErr ksup)
 
 -- | Ensure that the given kind is of the form (k1 → k2).
-ensureKArr :: Kind -> TC (Kind, Kind)
-ensureKArr k =
+ensureKArr :: Kind -> Type -> TC (Kind, Kind)
+ensureKArr k t =
   case k of
-    KType -> typeError "expected an arrow kind, got ⋆"
+    KType -> typeError ("expected an arrow kind, got ⋆ when checking"
+                        <> formatErr t)
     KArr k1 k2 -> return (k1, k2)
 
 ensureNoDefn :: Var -> TC ()
@@ -243,7 +246,7 @@ inferType t =
       return (TAnn t1' k1, k1)
     TApp t1 t2 -> do
       (t1', k1) <- inferType t1
-      (k1dom, k1cod) <- ensureKArr k1
+      (k1dom, k1cod) <- ensureKArr k1 t
       t2' <- checkType t2 k1dom
       return (TApp t1' t2', k1cod)
     TForall bnd -> do
@@ -313,6 +316,18 @@ instantiate ty kont =
       tu <- freshUnificationVar k
       instantiate (U.subst tv tu ty') kont
     _ -> kont ty
+
+-- | Given α1∷ ⋯ αN.KN . 〈τ1, …, τM〉, pick fresh unification vars u1,…,uN
+-- and pass 〈u1,…,uN〉 and 〈τ1[u/α], …, τM[u/α]〉 to the continuation
+instantiateConstructorArgs :: ConstructorArgs -> ([Type] -> [Type] -> TC a) -> TC a
+instantiateConstructorArgs bnd kont =
+  U.lunbind bnd $ \ (tvks, targs) -> do
+    -- list of fresh unification variables
+    tus <- mapM (freshUnificationVar . snd) tvks
+    -- the substitution taking each variable to the fresh unification var
+    let s = zip (map fst tvks) tus
+        targs' = U.substs s targs
+    kont tus targs'
 
 -- | Given a value constructor c, return its type as a polymorphic function
 --   (that is, ∀ αs . T1(αs) → ⋯ → TN(αs) → D αs)
@@ -433,7 +448,47 @@ checkExpr e_ t_ = case e_ of
     checkBindings binds $ \ binds' -> do
       body' <- checkExpr body t_
       return $ Let $ U.bind binds' body'
+  Case scrut clauses -> do
+    (tscrut, scrut') <- inferExpr scrut
+    clauses' <- forM clauses (checkClause tscrut t_)
+    return $ Case scrut' clauses'
   _ -> unimplemented ("checkExpr for " <> formatErr e_)
+
+-- | check that the give clause scrutenized the given type and returns
+-- a result of the expected result type.
+checkClause :: Type -> Type -> Clause -> TC Clause
+checkClause tscrut texp (Clause bnd) =
+  U.lunbind bnd $ \ (pat, expr) -> do
+    (pat', match) <- checkPattern tscrut pat
+    expr' <- extendMatchCtx match $ checkExpr expr texp
+    return $ Clause $ U.bind pat' expr'
+
+type PatternMatch = [(Var, Type)]
+
+checkPattern :: Type -> Pattern -> TC (Pattern, PatternMatch)
+checkPattern tscrut p =
+  case p of
+    WildcardP -> return (p, [])
+    VarP v -> return (p, [(v, tscrut)])
+    ConP c ps -> do
+      alg <- lookupCCon c
+      instantiateConstructorArgs (alg^.algConstructorArgs) $ \ tparams targs -> do
+        unless (length ps == length targs) $
+          typeError ("constructor " <> formatErr c
+                     <> " should take " <> formatErr (length targs)
+                     <> " arguments, but pattern matches "
+                     <> formatErr (length ps)
+                     <> " arguments")
+        let d = alg^.algConstructorDCon
+            -- data type of the constructor applied to the
+            -- fresh unification vars
+            dty = foldl' TApp (TC d) tparams
+        tscrut =?= dty
+        (ps', ms) <- unzip <$> zipWithM checkPattern targs ps
+        return (ConP c ps', mconcat ms)
+
+extendMatchCtx :: PatternMatch -> TC a -> TC a
+extendMatchCtx ms = local (envLocals %~ M.union (M.fromList ms))
 
 -- | check a sequence of bindings and pass them to the given continuation
 -- in an environment suitably extended by the new bindings.
@@ -492,6 +547,10 @@ inferExpr e_ = case e_ of
     t <- checkType t_ KType
     e1' <- checkExpr e1_ t
     return (t, Ann e1' t)
+  Case {} -> typeError ("cannot infer the type of a case expression "
+                        <> formatErr e_
+                        <> " try adding a type annotation"
+                        <> " or a function signature declaration")
   _ -> typeError ("cannot infer type of " <> formatErr e_
                   <> " try adding a type annotation")
 

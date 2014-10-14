@@ -42,7 +42,7 @@ tprobLang = LanguageDef {
                      "data","enum", "record",
                      "fun", "sig",
                      "let", "in", "case", "of",
-                     "λ"
+                     "λ", "_"
                      ]
   , reservedOpNames = ["\\", "::", ".", "~", "=", "->", "*", "|"]
   , caseSensitive = True
@@ -203,6 +203,7 @@ factor = (lam <?> "lambda expression")
          <|> (lit <?> "literal")
          <|> (parens expr <?> "parenthesized expression")
          <|> (letExpr <?> "let expression")
+         <|> (caseExpr <?> "case expression")
 
 lam :: Parser Expr
 lam = mkLams <$> (lambdaKW *> some annVar)
@@ -265,6 +266,46 @@ letExpr = mkLet
   where
     mkLet bs body = Let (U.bind bs body)
 
+caseExpr :: Parser Expr
+caseExpr = mkCase
+           <$> (reserved "case" *> expr)
+           <*> (reserved "of" *> braces (semiSep clause))
+  where
+    mkCase = Case
+
+clause :: Parser Clause
+clause = (mkClause
+          <$> pattern
+          <*> (reservedOp "->" *> expr))
+         <?> "case expression clause"
+  where
+    mkClause p e = Clause (U.bind p e)
+
+pattern :: Parser Pattern
+pattern =
+  atomicPattern
+  <|> (valueConstructorPattern <?> "constructor pattern")
+
+atomicPattern :: Parser Pattern
+atomicPattern =
+  (wildcardPattern <?> "wildcard pattern")
+  <|> (variablePattern <?> "variable pattern")
+  <|> parens pattern
+
+wildcardPattern :: Parser Pattern
+wildcardPattern = reserved "_" *> pure WildcardP
+
+variablePattern :: Parser Pattern
+variablePattern = VarP <$> varId
+
+valueConstructorPattern :: Parser Pattern
+valueConstructorPattern =
+  ConP
+  <$> conId
+  <*> many atomicPattern
+
+
+  
 bindings :: Parser Bindings
 bindings =
   mkBindings <$> semiSep binding

@@ -41,6 +41,7 @@ data Expr = V Var
           | L !Literal
           | Lam (Bind AnnVar Expr)
           | App Expr Expr
+          | Case Expr [Clause]
           | Let (Bind Bindings Expr)
           | Sample (Bind (Var, Embed Expr) Expr)
           | Ann Expr Type
@@ -62,10 +63,21 @@ data Binding = LetB AnnVar (Embed Expr)
              | SampleB AnnVar (Embed Expr)
              deriving (Show, Typeable, Generic)
 
+-- | A clause in a case expression
+newtype Clause = Clause (Bind Pattern Expr)
+                 deriving (Show, Typeable, Generic)
+
+-- | A pattern in a case expression
+data Pattern = WildcardP
+             | VarP Var
+             | ConP !Con [Pattern]
+               deriving (Show, Typeable, Generic)
 
 -- All these types have notions of alpha equivalence upto bound
 -- term and type variables.
 instance Alpha Expr
+instance Alpha Pattern
+instance Alpha Clause
 instance Alpha Literal
 instance Alpha Bindings
 instance Alpha Binding
@@ -76,10 +88,14 @@ instance Alpha ConstructorDef
 instance Subst Expr Expr where
   isvar (V v) = Just (SubstName v)
   isvar _ = Nothing
+instance Subst Expr Clause
+instance Subst Expr Pattern
 
 instance Subst Expr Bindings
 instance Subst Expr Binding
 
+instance Subst Type Clause
+instance Subst Type Pattern
 instance Subst Type Expr
 instance Subst Type Annot
 instance Subst Type Bindings

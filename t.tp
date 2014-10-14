@@ -10,12 +10,11 @@ sig or :: Bool -> Bool -> Bool
 sig eqInt :: Int -> Int -> Bool
 sig boolToInt :: Bool -> Int
 
-data T (a :: ⋆) = L a | R a
-
-data Mu (c :: ⋆ → ⋆) = Mu (c (Mu c))
-
--- sig declarations declare the type of an identifier.
-sig tToM :: forall (a ∷ ⋆) (m ∷ ⋆ → ⋆) . T a → m a
+fun or b1 b2 =
+  case b1 of
+  { False -> b2
+  ; _ -> True
+  }
 
 -- There's also an ASCII syntax
 sig id :: forall (a :: *) . a -> a
@@ -23,8 +22,24 @@ sig id :: forall (a :: *) . a -> a
 -- fun declarations provide a definition.
 fun id x = id x
 
-sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
+data Either (a :: ⋆) (b :: ⋆) = Left a | Right b
 
+sig withEither :: forall (a :: ⋆) (b :: ⋆) (c ∷ ⋆)
+                 . (a -> c) -> (b -> c) -> Either a b -> c
+fun withEither l r t = case t of
+  { Left x -> l x
+  ; Right y -> r y
+  }
+
+sig compose :: forall (a ∷ ⋆) (b ∷ ⋆) (c ∷ ⋆)
+               . (b -> c) → (a → b) → a → c
+fun compose g f x = g (f x)
+
+sig fmapEither :: forall (a ∷ ⋆) (b ∷ ⋆) (c :: ⋆).
+                  (b → c) → Either a b → Either a c
+fun fmapEither f = withEither Left (compose Right f)
+
+sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
 fun swap x y κ = κ y x
 
 sig flip :: Real -> Dist Bool
@@ -37,7 +52,6 @@ fun h i = -- bindings are of the form v or (v :: ty)
     ; y ~ flip biased
     }
   in or x y
-
 
 ----- enumeration types
 enum Five 5
