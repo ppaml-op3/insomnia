@@ -10,7 +10,6 @@ import Control.Lens.Prism
 import Data.Typeable(Typeable)
 
 import Data.Format (Format(..))
-import qualified Data.Text as T
 import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
@@ -110,7 +109,7 @@ instance HasUVars Type Type where
 --   freshUnificationVar (k1 → ⋯ → kN → ⋆) = u·(map freshUnificationVar ks)
 --
 --  for example: ⌞a -> (b -> ⋆)⌟ = (u·⌞a⌟)·⌞b⌟
-freshUnificationVar :: MonadUnify Type m => Kind -> m Type
+freshUnificationVar :: MonadUnify TypeUnificationError Type m => Kind -> m Type
 freshUnificationVar = \ k -> do
   u <- unconstrained
   go k (TUVar u)
@@ -120,10 +119,13 @@ freshUnificationVar = \ k -> do
       targ <- freshUnificationVar kdom
       go kcod (thead `TApp` targ)
 
-instance (MonadUnify Type m,
-          MonadUnificationExcept Type m,
+data TypeUnificationError =
+  SimplificationFail !Type !Type -- the two given types could not be simplified
+
+instance (MonadUnify TypeUnificationError Type m,
+          MonadUnificationExcept TypeUnificationError Type m,
           LFresh m)
-         => Unifiable Type m Type where
+         => Unifiable Type TypeUnificationError m Type where
   t1 =?= t2 =
     case (t1, t2) of
       (TUVar u1, TUVar u2) | u1 == u2 -> return ()
@@ -143,10 +145,7 @@ instance (MonadUnify Type m,
           Just ((_, _), t1', (_, _), t2') ->
             t1' =?= t2'
           Nothing -> throwUnificationFailure
-                     $ Unsimplifiable (T.pack ("cannot unify"
-                                               ++ show t1
-                                               ++ " ≟ "
-                                               ++ show t2))
+                     $ Unsimplifiable (SimplificationFail t1 t2)
       (TForall bnd1, _) ->
         lunbind bnd1 $ \ ((v1, k1), t1_) -> do
           tu1 <- freshUnificationVar k1
@@ -154,5 +153,4 @@ instance (MonadUnify Type m,
           t1' =?= t2
       (ty1, TForall {}) -> t2 =?= t1
       _ -> throwUnificationFailure
-           $ Unsimplifiable (T.pack ("cannot unify "
-                                     ++ show t1 ++ " ≟ " ++ show t2))
+           $ Unsimplifiable (SimplificationFail t1 t2)

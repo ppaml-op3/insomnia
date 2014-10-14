@@ -47,7 +47,6 @@ import Control.Monad.Trans.Class
 import Control.Monad.Trans.State.Strict (StateT)
 import qualified Control.Monad.Trans.State.Strict as St
 import qualified Data.Map as M
-import qualified Data.Text as T
 import Data.Format (Format(..))
 import Data.Monoid (Monoid(..), (<>))
 
@@ -76,23 +75,13 @@ instance U.Alpha (UVar u)
 
 newtype UnificationT u m b = UnificationT { ificationT :: StateT (S u) m b }
 
-data UnificationResult u b =
+data UnificationResult e u b =
   UOkay b
-  | UFail (UnificationFailure u)
+  | UFail (UnificationFailure e u)
 
-data UnificationFailure u =
+data UnificationFailure e u =
   CircularityOccurs !(UVar u) !u -- CircularityOccurs x e means x wants to unify with e which contains some subterm that is unified with x.
-  | Unsimplifiable !T.Text -- Simplification of a constraint x =?= y failed, for some x and y.
-
-instance Format u => Format (UnificationFailure u) where
-  format (CircularityOccurs uv t) =
-    "occurs check failed: the variable "
-    <> format uv <> " occurs in " <> format t
-  format (Unsimplifiable txt) =
-    "simplification failed to unify"
-    <> (if T.null txt
-        then mempty
-        else " because " <> format txt)
+  | Unsimplifiable !e -- Simplification of a constraint x =?= y failed, for some x and y.
 
 data S u = S {
   _nextFreshId :: UVar u
@@ -101,10 +90,10 @@ data S u = S {
 
 $(makeLenses ''S)
 
-class (Functor m, Monad m) => MonadUnify u m | m -> u where
+class (Functor m, Monad m) => MonadUnify e u m | m -> u e where
   unconstrained :: m (UVar u)
-  solveUnification :: m b -> m (UnificationResult u b)
-  (-?=) :: (Partial u, Unifiable u m u) => (UVar u) -> u -> m ()
+  solveUnification :: m b -> m (UnificationResult e u b)
+  (-?=) :: (Partial u, Unifiable u e m u) => (UVar u) -> u -> m ()
 
 infix 4 =?=
 
@@ -124,24 +113,17 @@ class HasUVars u b where
 
 -- | Types @b@ that are unifiable with by solving for UVars that stand for
 -- their @u@ subterms
-class (MonadUnificationExcept u m, HasUVars u b)
-      => Unifiable u m b | m -> u where
+class (MonadUnificationExcept e u m, HasUVars u b)
+      => Unifiable u e m b | m -> u e where
   -- | traverse every unification variable in b.
   (=?=) :: b -> b -> m ()
 
 instance HasUVars u b => HasUVars u [b] where
-  allUVars f [] = pure []
+  allUVars _f [] = pure []
   allUVars f (b:bs) = (:) <$> allUVars f b <*> allUVars f bs
 
-instance Unifiable u m b => Unifiable u m [b] where
-  [] =?= [] = return ()
-  (b1:bs1) =?= (b2:bs2) = do
-    b1 =?= b2
-    bs1 =?= bs2
-  bs1 =?= bs2 = throwUnificationFailure (Unsimplifiable (T.pack "could not unifiy lists of different length"))
-
-class Monad m => MonadUnificationExcept u m | m -> u where
-  throwUnificationFailure :: UnificationFailure u -> m a
+class Monad m => MonadUnificationExcept e u m | m -> u e where
+  throwUnificationFailure :: UnificationFailure e u -> m a
 
 instance Functor m => Functor (UnificationT a m) where
   fmap f = UnificationT . fmap f . ificationT
@@ -174,27 +156,27 @@ instance Error.MonadError e m => Error.MonadError e (UnificationT u m) where
                                          `Error.catchError`
                                          (ificationT . handler))
 
-instance (MonadUnificationExcept u m)
-         => MonadUnificationExcept u (UnificationT u m) where
+instance (MonadUnificationExcept e u m)
+         => MonadUnificationExcept e u (UnificationT u m) where
   throwUnificationFailure = UnificationT . lift . throwUnificationFailure
 
-instance (Functor m, MonadUnificationExcept u m)
-         => MonadUnify u (UnificationT u m) where
+instance (Functor m, MonadUnificationExcept e u m)
+         => MonadUnify e u (UnificationT u m) where
   unconstrained = instUnconstrained
   solveUnification = instSolveUnification
   (-?=) = addConstraintUVar
 
 -- if we ever need to delay solving some constraints, this would be
 -- the place to force them.
-instSolveUnification :: Monad m => UnificationT u m b -> UnificationT u m (UnificationResult u b)
+instSolveUnification :: Monad m => UnificationT u m b -> UnificationT u m (UnificationResult e u b)
 instSolveUnification comp = liftM UOkay comp
 
                             
 instUnconstrained :: Monad m => UnificationT u m (UVar u)
 instUnconstrained = UnificationT $ nextFreshId <<%= succUVar
 
-addConstraintUVar :: (Partial u, Unifiable u (UnificationT u m) u, Functor m,
-                      MonadUnificationExcept u m)
+addConstraintUVar :: (Partial u, Unifiable u e (UnificationT u m) u, Functor m,
+                      MonadUnificationExcept e u m)
                      => UVar u -> u -> UnificationT u m ()
 addConstraintUVar v t_ = do
   t <- applyCurrentSubstitution t_
@@ -205,11 +187,11 @@ addConstraintUVar v t_ = do
     _ -> t =?= t2
   UnificationT $ collectedConstraints . at v ?= t
 
-applyCurrentSubstitution :: (Partial u, Unifiable u (UnificationT u m) u, Functor m, Monad m)
+applyCurrentSubstitution :: (Partial u, Unifiable u e (UnificationT u m) u, Functor m, Monad m)
                             => u -> UnificationT u m u
 applyCurrentSubstitution = traverseOf allUVars replace
   where
-    replace :: (Partial u, Unifiable u (UnificationT u m) u, Functor m, Monad m)
+    replace :: (Partial u, Unifiable u e (UnificationT u m) u, Functor m, Monad m)
                => u -> UnificationT u m u
     replace t0 =
       case t0^?_UVar of
@@ -220,7 +202,7 @@ applyCurrentSubstitution = traverseOf allUVars replace
             Nothing -> return t0
             Just t -> applyCurrentSubstitution t
       
-occursCheck :: (Partial u, Unifiable u (UnificationT u m) u, MonadUnificationExcept u m)
+occursCheck :: (Partial u, Unifiable u e (UnificationT u m) u, MonadUnificationExcept e u m)
                => UVar u -> u -> UnificationT u m ()
 occursCheck v t =
   let isV t2 = (t2^?_UVar) == Just v

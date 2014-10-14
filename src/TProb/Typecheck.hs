@@ -26,6 +26,7 @@ import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 import TProb.Types
 import TProb.AST
 import TProb.Unify
+import TProb.Pretty
 
 newtype TCError = TCError { getTCError :: F.Doc }
 
@@ -134,7 +135,7 @@ type TCSimple = ReaderT Env (LFreshMT (Except TCError))
 type TC = UnificationT Type TCSimple
 
 -- instance MonadUnificationExcept Type TCSimple
-instance MonadUnificationExcept Type (ReaderT Env (LFreshMT (Except TCError))) where
+instance MonadUnificationExcept TypeUnificationError Type (ReaderT Env (LFreshMT (Except TCError))) where
   throwUnificationFailure = throwError . TCError . formatErr
 
 -- | Run a typechecking computation
@@ -644,6 +645,6 @@ unimplemented :: F.Doc -> TC a
 unimplemented msg =
   throwTCError . TCError $ "typecheck unimplemented: " <> msg
 
-formatErr :: (Format a) => a -> F.Doc
-formatErr = format
+formatErr :: (Pretty a) => a -> F.Doc
+formatErr = format . ppDefault
 

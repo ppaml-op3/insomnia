@@ -8,6 +8,7 @@ import qualified Data.Format as F
 
 import TProb.Parse
 import TProb.Typecheck
+import TProb.Pretty
 
 
 main :: IO ()
@@ -41,10 +42,14 @@ parseAndCheck fp = do
     Right ast -> return ast
   let
     tc = runTC $ checkModule ast
-  _elab <- case tc of
+  elab <- case tc of
     Left err -> showErrorAndDie "typechecking" err
     Right elab -> return elab
   putStrLn "Typechecked OK."
+  putStrLn "--------------------✂✄--------------------"
+  F.putStrDoc (F.format $ ppDefault elab)
+  putStrLn ""
+  putStrLn "--------------------✂✄--------------------"
 
 showErrorAndDie :: (Format err) => String -> err -> IO a
 showErrorAndDie phase msg = do

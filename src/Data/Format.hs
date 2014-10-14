@@ -15,6 +15,8 @@ import qualified Data.Text as TStrict
 import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.IO as T
 import qualified Data.Text.Lazy.Builder as TB
+import qualified Text.PrettyPrint as PP
+
 import qualified Unbound.Generics.LocallyNameless as U
   
 newtype Doc = Doc { unDoc :: TB.Builder }
@@ -68,6 +70,13 @@ instance Format a => Format [a] where
 instance Format Doc where
   format = id
 
+instance Format PP.Doc where
+  format = renderDoc
+  formatList = renderDoc
+               . PP.brackets
+               . PP.fsep
+               . PP.punctuate PP.comma
+
 instance Format (U.Name a)
 
 -- | convert the given 'Doc' to a 'T.Text'
@@ -77,3 +86,22 @@ docToText = TB.toLazyText . unDoc
 -- | display the given Doc on stdOut
 putStrDoc :: Doc -> IO ()
 putStrDoc = T.putStr . docToText
+
+renderDoc :: PP.Doc -> Doc
+renderDoc = renderDoc' PP.style
+
+renderDoc' :: PP.Style -> PP.Doc -> Doc
+renderDoc' style =
+  PP.fullRender
+  (PP.mode style)
+  (PP.lineLength style)
+  (PP.ribbonsPerLine style)
+  txt
+  end
+  where
+    end = mempty
+    txt details (Doc rest) =
+      case details of
+        PP.Chr c -> Doc (TB.singleton c <> rest)
+        PP.Str s -> Doc (TB.fromString s <> rest)
+        PP.PStr s -> Doc (TB.fromString s <> rest)

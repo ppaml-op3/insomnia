@@ -9,8 +9,6 @@ import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
 
-import Data.Format (Format(..))
-
 import TProb.Types
 
 type Var = Name Expr
@@ -74,16 +72,6 @@ data Pattern = WildcardP
              | VarP Var
              | ConP !Con [Pattern]
                deriving (Show, Typeable, Generic)
-
--- Formatted output
-instance Format Expr
-instance Format Pattern
-instance Format Clause
-instance Format Literal
-instance Format Bindings
-instance Format Binding
-instance Format Annot
-instance Format ConstructorDef
 
 -- All these types have notions of alpha equivalence upto bound
 -- term and type variables.

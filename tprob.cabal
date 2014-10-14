@@ -24,6 +24,7 @@ library
                        TProb.Parse
                        TProb.Unify
                        TProb.Typecheck
+                       TProb.Pretty
                        Data.Format
   -- other-modules:       
   -- other-extensions:    
@@ -34,6 +35,7 @@ library
                        mtl,
                        lens,
                        unbound-generics >= 0.0.1,
+                       pretty >= 1.1 && < 2,
                        parsec
 
   hs-source-dirs:      src      
