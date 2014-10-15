@@ -139,9 +139,9 @@ instance MonadUnificationExcept TypeUnificationError Type (ReaderT Env (LFreshMT
   throwUnificationFailure = throwError . TCError . formatErr
 
 -- | Run a typechecking computation
-runTC :: TC a -> Either TCError a
+runTC :: TC a -> Either TCError (a, M.Map (UVar Type) Type)
 runTC comp =
-  runExcept $ runLFreshMT $ runReaderT (evalUnificationT comp) baseEnv
+  runExcept $ runLFreshMT $ runReaderT (runUnificationT comp) baseEnv
 
 -- | Check that a kind is well-formed.  Note that for now, all kinds
 -- are well-formed.

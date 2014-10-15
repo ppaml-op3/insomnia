@@ -5,6 +5,7 @@ import Control.Applicative
 import Control.Lens
 import Control.Monad.Reader.Class
 
+import qualified Data.Map as M
 import Data.Monoid (Monoid(..), (<>), Endo(..))
 import Data.String (IsString(..))
 import Data.Traversable
@@ -43,6 +44,13 @@ ppDefault x = pp x (PrettyCtx True 0)
 
 coloncolon :: PM Doc
 coloncolon = onUnicode "∷" "::"
+
+instance (Pretty k, Pretty v) => Pretty (M.Map k v) where
+  pp m = fsep ["Map", braces $ cat (map (nesting . ppKVPair) $ M.toList m)]
+    where
+      ppKVPair (k, v) = pp k <+> indent (onUnicode "↦" "|->") (pp v)
+
+                  
 
 instance Pretty Int where
   pp = int

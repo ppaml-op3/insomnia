@@ -38,6 +38,7 @@ module Insomnia.Unify
          -- * Unification monad transformer
        , UnificationT
        , evalUnificationT
+       , runUnificationT
        ) where
 
 import Control.Applicative (Applicative(..), (<$>))
@@ -211,9 +212,21 @@ occursCheck v t =
      throwUnificationFailure (CircularityOccurs v t)
   
 
+-- | Run the unification monad transformer and return the computation
+-- result, discarding the final unification state.
 evalUnificationT :: Monad m => UnificationT u m a -> m a
 evalUnificationT comp =
   St.evalStateT (ificationT comp) initialS
+
+-- | Run the unification monad transformer and return the computation result
+-- and the final map of constraints.
+runUnificationT :: Monad m => UnificationT u m a -> m (a, M.Map (UVar u) u)
+runUnificationT comp =
+  let stcomp = do
+        a <- ificationT comp
+        m <- use collectedConstraints
+        return (a, m)
+  in St.evalStateT stcomp initialS
 
 initialS :: S u
 initialS =

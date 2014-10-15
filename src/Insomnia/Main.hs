@@ -42,12 +42,15 @@ parseAndCheck fp = do
     Right ast -> return ast
   let
     tc = runTC $ checkModule ast
-  elab <- case tc of
+  (elab, m) <- case tc of
     Left err -> showErrorAndDie "typechecking" err
-    Right elab -> return elab
+    Right ans -> return ans
   putStrLn "Typechecked OK."
   putStrLn "--------------------✂✄--------------------"
   F.putStrDoc (F.format $ ppDefault elab)
+  putStrLn ""
+  putStrLn "--------------------✂✄--------------------"
+  F.putStrDoc (F.format $ ppDefault m)
   putStrLn ""
   putStrLn "--------------------✂✄--------------------"
 
