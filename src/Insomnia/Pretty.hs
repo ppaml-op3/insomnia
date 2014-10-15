@@ -9,11 +9,11 @@ import Data.Monoid (Monoid(..))
 import Data.String (IsString(..))
 import Data.Traversable
 
-import qualified Data.Text.Lazy as T
 import qualified Text.PrettyPrint as PP
 import Text.PrettyPrint (Doc)
 
 import qualified Unbound.Generics.LocallyNameless as U
+import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.AST
 import Insomnia.Types
@@ -54,7 +54,7 @@ instance Pretty Pattern where
   pp = text . show  
 
 instance Pretty Con where
-  pp = text . show
+  pp = text . unCon
 
 instance Pretty (U.Name a) where
   pp = text . show
@@ -72,11 +72,32 @@ instance Pretty Type where
        t1)
       t2) =
     -- hack
-    infixOp 0 "→" "->" AssocRight (pp t1) (pp t2)
-  pp t = text (show t)
+    infixOp 1 "→" "->" AssocRight (pp t1) (pp t2)
+  pp (TApp t1 t2) = infixOp 2 mempty mempty AssocLeft (pp t1) (pp t2)
+  pp (TC c) = pp c
+  pp (TAnn t k) = parens $ fsep [pp t, nesting $ onUnicode "∷" "::" <+> pp k]
+  pp (TForall bnd) =
+    -- todo: do this safely; collapse consecutive foralls
+    let ((v,k), t) = UU.unsafeUnbind bnd
+    in fsep [onUnicode "∀" "forall"
+            , parens $ withPrec 2 AssocNone (Left $ fsep [pp v
+                                                         , onUnicode "∷" "::"
+                                                         , pp k])
+            , nesting ("." <+> withPrec 0 AssocNone (Left $ pp t))
+            ]
+
+instance Pretty DataDecl where
+  pp = text . show
+
+instance Pretty Decl where
+  pp (SigDecl v t) = "sig" <+> pp v <+> nesting ((onUnicode "∷" "::") <+> pp t)
+  pp (FunDecl v e) = "fun" <+> pp v <+> nesting ("=" <+> pp e)
+  pp (DataDecl c d) = "data" <+> pp c <+> pp d
+  pp (EnumDecl c n) = "enum" <+> pp c <+> pp n
 
 instance Pretty Module where
-  pp = text . show
+  pp (Module decls) =
+    cat $ map pp decls
 
 instance Pretty (UVar a) where
   pp = text . show
@@ -127,8 +148,8 @@ withPrec prec assoc lOrR =
 
     (penalty, doc) =
       case (assoc, lOrR) of
-        (AssocLeft, Left l) -> (1, l)
-        (AssocRight, Right l) -> (1, l)
+        (AssocLeft, Left l) -> (-1, l)
+        (AssocRight, Right l) -> (-1, l)
         (_, _) -> (0, fromEither lOrR)
   in local (pcPrec .~ (prec + penalty)) $ doc
 
@@ -149,6 +170,9 @@ integer = pure . PP.integer
 
 fsep :: [PM Doc] -> PM Doc
 fsep ds = PP.fsep <$> sequenceA ds
+
+cat :: [PM Doc] -> PM Doc
+cat ds = PP.cat <$> sequenceA ds
 
 nesting :: PM Doc -> PM Doc
 nesting = fmap (PP.nest nestingLevel)

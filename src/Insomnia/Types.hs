@@ -6,7 +6,7 @@
 module Insomnia.Types where
 
 import Control.Applicative
-import Control.Lens.Prism
+import Control.Lens
 import Data.Typeable(Typeable)
 
 import Data.Format (Format(..))
@@ -154,3 +154,4 @@ instance (MonadUnify TypeUnificationError Type m,
       (ty1, TForall {}) -> t2 =?= t1
       _ -> throwUnificationFailure
            $ Unsimplifiable (SimplificationFail t1 t2)
+
