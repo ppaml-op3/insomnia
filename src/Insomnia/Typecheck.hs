@@ -562,9 +562,9 @@ inferExpr e_ = case e_ of
       unifyAnn tdom ann
       e1 <- extendLocalCtx v tdom $ checkExpr e1_ tcod
       let
-        e = Lam $ U.bind (v, U.embed $ Annot $ Just tdom) e1
+        e = Lam $ U.bind (v, U.embed $ Annot $ Just tdom) (Ann e1 tcod)
         t = functionT tdom tcod
-      return (t, Ann e t)
+      return (t, e)
   _ -> typeError ("cannot infer type of " <> formatErr e_
                   <> " try adding a type annotation")
 
