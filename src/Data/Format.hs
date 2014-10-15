@@ -88,7 +88,7 @@ putStrDoc :: Doc -> IO ()
 putStrDoc = T.putStr . docToText
 
 renderDoc :: PP.Doc -> Doc
-renderDoc = renderDoc' PP.style
+renderDoc = renderDoc' PP.style { PP.lineLength = 78 }
 
 renderDoc' :: PP.Style -> PP.Doc -> Doc
 renderDoc' style =

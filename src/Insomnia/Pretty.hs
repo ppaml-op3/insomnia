@@ -1,11 +1,11 @@
-{-# LANGUAGE FlexibleInstances, OverloadedStrings, TemplateHaskell #-}
+{-# LANGUAGE FlexibleInstances, OverloadedStrings, ViewPatterns, TemplateHaskell #-}
 module Insomnia.Pretty where
 
 import Control.Applicative
 import Control.Lens
 import Control.Monad.Reader.Class
 
-import Data.Monoid (Monoid(..), (<>))
+import Data.Monoid (Monoid(..), (<>), Endo(..))
 import Data.String (IsString(..))
 import Data.Traversable
 
@@ -50,11 +50,75 @@ instance Pretty Int where
 instance Pretty Integer where
   pp = integer
 
-instance Pretty Expr where
-  pp = text . show
+instance Pretty Double where
+  pp = double
+
+instance Pretty Literal where
+  pp (IntL i) = pp i
+  pp (RealL d) = pp d
 
 instance Pretty Pattern where
-  pp = text . show  
+  pp WildcardP = "_"
+  pp (VarP v) = pp v
+  pp (ConP c []) = pp c
+  pp (ConP c ps) = parens $ pp c <+> (nesting $ fsep $ map pp ps)
+
+instance Pretty Clause where
+  pp (Clause bnd) =
+    let (pat, e) = UU.unsafeUnbind bnd
+    in withPrec 0 AssocNone
+       $ Left $ pp pat <+> indent "->" (pp e)
+
+instance Pretty Binding where
+  pp (LetB av (U.unembed -> e)) =
+    ppAnnVar av <+> indent "=" (pp e)
+  pp (SampleB av (U.unembed -> e)) =
+    ppAnnVar av <+> indent "~" (pp e)
+
+bindingsToList :: Bindings -> [Binding]
+bindingsToList NilBs = []
+bindingsToList (ConsBs (U.unrebind -> (b1, bs))) =
+  b1 : bindingsToList bs
+
+
+instance Pretty Expr where
+  pp (V v) = pp v
+  pp (C c) = pp c
+  pp (L l) = pp l
+  pp (App e1 e2) = infixOp 10 mempty mempty AssocLeft (pp e1) (pp e2)
+  pp (Lam bnd) =
+    let (av, e) = UU.unsafeUnbind bnd
+    in precParens 1
+       $ withPrec 0 AssocNone
+       $ Left $ ppCollapseLam (onUnicode "λ" "\\") (Endo (av:)) "." e
+  pp (Ann e t) = parens $ withPrec 1 AssocNone (Left $ pp e <+> indent coloncolon (pp t))
+  pp (Case e clauses) =
+    precParens 1
+    $ withPrec 0 AssocNone
+    $ Left
+    $ sep
+    [
+      fsep ["case", pp e, "of"]
+    , braces $ sep $ prePunctuate ";" $ map pp clauses
+    ]
+  pp (Let bnd) =
+    let (bindings, e) = UU.unsafeUnbind bnd
+    in precParens 1
+       $ withPrec 0 AssocNone
+       $ Left
+       $ sep
+       [
+         "let"
+       , braces $ sep $ prePunctuate ";" $ map pp $ bindingsToList bindings
+       , "in"
+       , nesting (pp e)
+       ]
+
+ppAnnVar :: AnnVar -> PM Doc
+ppAnnVar (v, U.unembed -> (Annot mt)) =
+  case mt of
+    Nothing -> pp v
+    Just t -> parens (pp v <+> indent coloncolon (pp t))
 
 instance Pretty Con where
   pp = text . unCon
@@ -81,13 +145,34 @@ instance Pretty Type where
   pp (TAnn t k) = parens $ fsep [pp t, nesting $ coloncolon <+> pp k]
   pp (TForall bnd) =
     -- todo: do this safely; collapse consecutive foralls
-    let ((v,k), t) = UU.unsafeUnbind bnd
-    in fsep [onUnicode "∀" "forall"
-            , parens $ withPrec 2 AssocNone (Left $ fsep [pp v
-                                                         , coloncolon
-                                                         , pp k])
-            , nesting ("." <+> withPrec 0 AssocNone (Left $ pp t))
-            ]
+    let (vk, t) = UU.unsafeUnbind bnd
+    in ppCollapseForalls (Endo (vk :)) t
+
+ppCollapseForalls :: Endo [(TyVar, Kind)] -> Type -> PM Doc
+ppCollapseForalls front t =
+  case t of
+    TForall bnd ->
+      let (vk, t') = UU.unsafeUnbind bnd
+      in ppCollapseForalls (front <> Endo (vk :)) t'
+    _ -> do
+      let tvks = appEndo front []
+      fsep ([onUnicode "∀" "forall"]
+            ++ map ppVarBind tvks
+            ++ [nesting ("." <+> withPrec 0 AssocNone (Left $ pp t))])
+  where
+    ppVarBind (v,k) =
+      parens $ withPrec 2 AssocNone (Left $ fsep [pp v, coloncolon, pp k])
+
+ppCollapseLam :: PM Doc -> Endo [AnnVar] -> PM Doc -> Expr -> PM Doc
+ppCollapseLam lam mavs dot e_ =
+  case e_ of
+    Lam bnd ->
+      let (av, e1) = UU.unsafeUnbind bnd
+      in ppCollapseLam lam (mavs <> Endo (av :)) dot e1
+    _ -> do
+      let
+        avs = appEndo mavs []
+      lam <+> fsep (map ppAnnVar avs) <+> indent dot (pp e_)
 
 ppDataDecl :: Con -> DataDecl -> PM Doc
 ppDataDecl d bnd =
@@ -107,9 +192,17 @@ ppDataDecl d bnd =
 
 instance Pretty Decl where
   pp (SigDecl v t) = "sig" <+> pp v <+> indent coloncolon (pp t)
-  pp (FunDecl v e) = "fun" <+> pp v <+> indent "=" (pp e)
+  pp (FunDecl v e) = ppFunDecl v e 
   pp (DataDecl c d) = ppDataDecl c d
   pp (EnumDecl c n) = "enum" <+> pp c <+> pp n
+
+ppFunDecl :: Var -> Expr -> PM Doc
+ppFunDecl v e =
+  case e of
+    Lam bnd ->
+      let (av, e1) = UU.unsafeUnbind bnd
+      in ppCollapseLam ("fun" <+> pp v) (Endo (av :)) "=" e1
+    _ -> "fun" <+> pp v <+> indent "=" (pp e)
 
 instance Pretty Module where
   pp (Module decls) =
@@ -185,6 +278,9 @@ space = pure PP.space
 
 parens :: PM Doc -> PM Doc
 parens = fmap PP.parens
+
+braces :: PM Doc -> PM Doc
+braces = fmap PP.braces
   
 text :: String -> PM Doc
 text = pure . PP.text
@@ -194,6 +290,9 @@ int = pure . PP.int
 
 integer :: Integer -> PM Doc
 integer = pure . PP.integer
+
+double :: Double -> PM Doc
+double = pure . PP.double
 
 fsep :: [PM Doc] -> PM Doc
 fsep ds = PP.fsep <$> sequenceA ds
