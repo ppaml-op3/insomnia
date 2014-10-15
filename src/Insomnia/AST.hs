@@ -43,7 +43,6 @@ data Expr = V Var
           | App Expr Expr
           | Case Expr [Clause]
           | Let (Bind Bindings Expr)
-          | Sample (Bind (Var, Embed Expr) Expr)
           | Ann Expr Type
             deriving (Show, Typeable, Generic)
 
