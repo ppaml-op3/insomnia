@@ -452,7 +452,11 @@ checkExpr e_ t_ = case e_ of
     (tscrut, scrut') <- inferExpr scrut
     clauses' <- forM clauses (checkClause tscrut t_)
     return $ Case scrut' clauses'
-  _ -> unimplemented ("checkExpr for " <> formatErr e_)
+  Ann e1_ t1_ -> do
+    t1 <- checkType t1_ KType
+    e1 <- checkExpr e1_ t1
+    t1 =?= t_
+    return (Ann e1 t1)
 
 -- | check that the give clause scrutenized the given type and returns
 -- a result of the expected result type.
@@ -519,12 +523,12 @@ checkBinding (SampleB (v, U.unembed -> ann) (U.unembed -> e)) kont =
       (tdist, e') <- inferExpr e
       tsample <- unifyDistT tdist
       extendLocalCtx v tsample $ do
-        kont $ LetB (v, U.embed $ Annot $ Just tsample) (U.embed e')
+        kont $ SampleB (v, U.embed $ Annot $ Just tsample) (U.embed e')
     Annot (Just tsample) -> do
       void $ checkType tsample KType
       e' <- checkExpr e (distT tsample)
       extendLocalCtx v tsample $ do
-        kont $ LetB (v, U.embed $ Annot $ Just tsample) (U.embed e')
+        kont $ SampleB (v, U.embed $ Annot $ Just tsample) (U.embed e')
 
 inferExpr :: Expr -> TC (Type, Expr)
 inferExpr e_ = case e_ of
@@ -551,6 +555,16 @@ inferExpr e_ = case e_ of
                         <> formatErr e_
                         <> " try adding a type annotation"
                         <> " or a function signature declaration")
+  Lam bnd ->
+    U.lunbind bnd $ \((v, U.unembed -> ann), e1_) -> do
+      tdom <- freshUnificationVar KType
+      tcod <- freshUnificationVar KType
+      unifyAnn tdom ann
+      e1 <- extendLocalCtx v tdom $ checkExpr e1_ tcod
+      let
+        e = Lam $ U.bind (v, U.embed $ Annot $ Just tdom) e1
+        t = functionT tdom tcod
+      return (t, Ann e t)
   _ -> typeError ("cannot infer type of " <> formatErr e_
                   <> " try adding a type annotation")
 
