@@ -5,7 +5,7 @@ import Control.Applicative
 import Control.Lens
 import Control.Monad.Reader.Class
 
-import Data.Monoid (Monoid(..))
+import Data.Monoid (Monoid(..), (<>))
 import Data.String (IsString(..))
 import Data.Traversable
 
@@ -41,6 +41,9 @@ class Pretty a where
 ppDefault :: Pretty a => a -> Doc
 ppDefault x = pp x (PrettyCtx True 0)
 
+coloncolon :: PM Doc
+coloncolon = onUnicode "∷" "::"
+
 instance Pretty Int where
   pp = int
 
@@ -75,24 +78,37 @@ instance Pretty Type where
     infixOp 1 "→" "->" AssocRight (pp t1) (pp t2)
   pp (TApp t1 t2) = infixOp 2 mempty mempty AssocLeft (pp t1) (pp t2)
   pp (TC c) = pp c
-  pp (TAnn t k) = parens $ fsep [pp t, nesting $ onUnicode "∷" "::" <+> pp k]
+  pp (TAnn t k) = parens $ fsep [pp t, nesting $ coloncolon <+> pp k]
   pp (TForall bnd) =
     -- todo: do this safely; collapse consecutive foralls
     let ((v,k), t) = UU.unsafeUnbind bnd
     in fsep [onUnicode "∀" "forall"
             , parens $ withPrec 2 AssocNone (Left $ fsep [pp v
-                                                         , onUnicode "∷" "::"
+                                                         , coloncolon
                                                          , pp k])
             , nesting ("." <+> withPrec 0 AssocNone (Left $ pp t))
             ]
 
-instance Pretty DataDecl where
-  pp = text . show
+ppDataDecl :: Con -> DataDecl -> PM Doc
+ppDataDecl d bnd =
+  let (vks, constrDefs) = UU.unsafeUnbind bnd
+  in "data" <+> (nesting $ fsep
+                 [
+                   pp d
+                 , ppTyVarBindings vks
+                 , indent "=" (ppConstrDefs constrDefs)
+                 ])
+  where
+    ppTyVarBindings = fsep . map ppTyVarBinding
+    ppTyVarBinding (v,k) = parens (pp v <+> indent coloncolon (pp k))
+    ppConstrDefs = sep . prePunctuate "|" . map ppConstructorDef
+    ppConstructorDef (ConstructorDef c ts) =
+      pp c <+> nesting (fsep $ map pp ts)
 
 instance Pretty Decl where
-  pp (SigDecl v t) = "sig" <+> pp v <+> nesting ((onUnicode "∷" "::") <+> pp t)
-  pp (FunDecl v e) = "fun" <+> pp v <+> nesting ("=" <+> pp e)
-  pp (DataDecl c d) = "data" <+> pp c <+> pp d
+  pp (SigDecl v t) = "sig" <+> pp v <+> indent coloncolon (pp t)
+  pp (FunDecl v e) = "fun" <+> pp v <+> indent "=" (pp e)
+  pp (DataDecl c d) = ppDataDecl c d
   pp (EnumDecl c n) = "enum" <+> pp c <+> pp n
 
 instance Pretty Module where
@@ -108,15 +124,20 @@ instance Pretty a => Pretty (UnificationFailure TypeUnificationError a) where
     <+> pp uv <+> "occurs in" <+> pp t
   pp (Unsimplifiable (SimplificationFail t1 t2)) =
     "failed to simplify unification problem "
-    <+> pp t1 <+> nesting ("≟" <+> pp t2)
+    <+> pp t1 <+> indent "≟" (pp t2)
 
 -- onUnicode' :: String -> String -> PM Doc
 -- onUnicode' yes no = onUnicode (text yes) (text no)
 
+-- | @onUnicode yes no@ runs @yes@ if Unicode output is desirable,
+-- otherwise runs @no@.
 onUnicode :: PM a -> PM a -> PM a
 onUnicode yes no = do
   inUnicode <- view pcUnicode
   if inUnicode then yes else no
+
+-- ============================================================
+-- Precedence
 
 infixOp :: Precedence -- ^ precedence of the operator
            -> PM Doc -- ^ operator as unicode
@@ -153,8 +174,14 @@ withPrec prec assoc lOrR =
         (_, _) -> (0, fromEither lOrR)
   in local (pcPrec .~ (prec + penalty)) $ doc
 
+-- ============================================================
+-- Lifted versions of the PrettyPrint combinators
+
 (<+>) :: PM Doc -> PM Doc -> PM Doc
 d1 <+> d2 = (PP.<+>) <$> d1 <*> d2
+
+space :: PM Doc
+space = pure PP.space
 
 parens :: PM Doc -> PM Doc
 parens = fmap PP.parens
@@ -171,10 +198,39 @@ integer = pure . PP.integer
 fsep :: [PM Doc] -> PM Doc
 fsep ds = PP.fsep <$> sequenceA ds
 
+sep :: [PM Doc] -> PM Doc
+sep ds = PP.sep <$> sequenceA ds
+
 cat :: [PM Doc] -> PM Doc
 cat ds = PP.cat <$> sequenceA ds
+
+fcat :: [PM Doc] -> PM Doc
+fcat ds = PP.fcat <$> sequenceA ds
+
+punctuate :: PM Doc -> [PM Doc] -> [PM Doc]
+punctuate _s [] = []
+punctuate s (x:xs) = go x xs
+  where go y [] = [y]
+        go y (z:zs) = (y <> s) : go z zs
+
+-- like 'punctuate' but attaches the separator to preceed items instead of after.
+-- Also uses '(<+>)' 
+prePunctuate :: PM Doc -> [PM Doc] -> [PM Doc]
+prePunctuate _s [] = []
+prePunctuate s (x:xs) = go x xs
+  where go y [] = [y]
+        go y (z:zs) = y : go (s <+> z) zs
+
 
 nesting :: PM Doc -> PM Doc
 nesting = fmap (PP.nest nestingLevel)
   where
     nestingLevel = 2
+
+-- | Writes:
+-- @
+--   foo
+--     <delim> <bar>
+-- @
+indent :: PM Doc -> PM Doc -> PM Doc
+indent delim d = nesting (delim <+> d)
