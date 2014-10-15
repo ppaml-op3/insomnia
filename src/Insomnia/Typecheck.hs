@@ -12,7 +12,6 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Control.Monad.Error.Class (MonadError(..))
-import Control.Monad.Trans.Except (Except, runExcept)
 import Data.List (foldl')
 import Data.Format (Format(..))
 import qualified Data.Format as F
@@ -27,6 +26,7 @@ import Insomnia.Types
 import Insomnia.AST
 import Insomnia.Unify
 import Insomnia.Pretty
+import Insomnia.Except (Except, runExcept)
 
 newtype TCError = TCError { getTCError :: F.Doc }
 

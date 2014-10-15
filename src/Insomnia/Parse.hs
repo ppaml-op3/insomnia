@@ -6,7 +6,6 @@ import Control.Monad (guard)
 import Data.Functor.Identity
 import Data.Char (isUpper, isLower)
 import Data.Text (Text)
-import Data.String (IsString(..))
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Text.Parsec.Text

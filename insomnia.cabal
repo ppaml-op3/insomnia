@@ -25,13 +25,14 @@ library
                        Insomnia.Unify
                        Insomnia.Typecheck
                        Insomnia.Pretty
+                       Insomnia.Except
                        Data.Format
   -- other-modules:       
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.8,
                        text < 1.2,
                        containers  >= 0.4,
-                       transformers >= 0.4,
+                       transformers >= 0.3,
                        mtl,
                        lens,
                        unbound-generics >= 0.0.1,
