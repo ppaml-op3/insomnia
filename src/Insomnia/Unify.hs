@@ -29,6 +29,7 @@ module Insomnia.Unify
        , HasUVars(..)
          -- * Terms subject to unification
        , Unifiable(..)
+       , applyCurrentSubstitution
          -- * Unification monad class
        , MonadUnify(..)
        , MonadUnificationExcept(..)

@@ -420,7 +420,8 @@ checkExpr e_ t_ = case e_ of
       (tdom, tcod) <- unifyFunctionT t_
       unifyAnn tdom ann
       e' <- extendLocalCtx v tdom $ checkExpr e tcod
-      return $ Lam (U.bind (v, U.embed $ Annot $ Just tdom) e')
+      tannot <- applyCurrentSubstitution tdom
+      return $ Lam (U.bind (v, U.embed $ Annot $ Just tannot) e')
   L l -> do
     checkLiteral l t_
     return (L l)
@@ -511,24 +512,28 @@ checkBinding (LetB (v, U.unembed -> ann) (U.unembed -> e)) kont =
       -- XXX : TODO generalize uvars, or else freeze 'em if we're going to
       -- behave like recent versions of GHC
       extendLocalCtx v t $ do
-        kont $ LetB (v, U.embed $ Annot $ Just t) (U.embed e')
+        tannot <- applyCurrentSubstitution t
+        kont $ LetB (v, U.embed $ Annot $ Just tannot) (U.embed e')
     Annot (Just t) -> do
       void $ checkType t KType
       e' <- checkExpr e t
       extendLocalCtx v t $ do
-        kont $ LetB (v, U.embed $ Annot $ Just t) (U.embed e')
+        tannot <- applyCurrentSubstitution t
+        kont $ LetB (v, U.embed $ Annot $ Just tannot) (U.embed e')
 checkBinding (SampleB (v, U.unembed -> ann) (U.unembed -> e)) kont =
   case ann of
     Annot Nothing -> do
       (tdist, e') <- inferExpr e
       tsample <- unifyDistT tdist
       extendLocalCtx v tsample $ do
-        kont $ SampleB (v, U.embed $ Annot $ Just tsample) (U.embed e')
+        tannot <- applyCurrentSubstitution tsample
+        kont $ SampleB (v, U.embed $ Annot $ Just tannot) (U.embed e')
     Annot (Just tsample) -> do
       void $ checkType tsample KType
       e' <- checkExpr e (distT tsample)
       extendLocalCtx v tsample $ do
-        kont $ SampleB (v, U.embed $ Annot $ Just tsample) (U.embed e')
+        tannot <- applyCurrentSubstitution tsample
+        kont $ SampleB (v, U.embed $ Annot $ Just tannot) (U.embed e')
 
 inferExpr :: Expr -> TC (Type, Expr)
 inferExpr e_ = case e_ of
@@ -550,7 +555,8 @@ inferExpr e_ = case e_ of
   Ann e1_ t_ -> do
     t <- checkType t_ KType
     e1' <- checkExpr e1_ t
-    return (t, Ann e1' t)
+    tannot <- applyCurrentSubstitution t
+    return (t, Ann e1' tannot)
   Case {} -> typeError ("cannot infer the type of a case expression "
                         <> formatErr e_
                         <> " try adding a type annotation"
@@ -561,8 +567,10 @@ inferExpr e_ = case e_ of
       tcod <- freshUnificationVar KType
       unifyAnn tdom ann
       e1 <- extendLocalCtx v tdom $ checkExpr e1_ tcod
+      tanndom <- applyCurrentSubstitution tdom
+      tanncod <- applyCurrentSubstitution tcod
       let
-        e = Lam $ U.bind (v, U.embed $ Annot $ Just tdom) (Ann e1 tcod)
+        e = Lam $ U.bind (v, U.embed $ Annot $ Just tanndom) (Ann e1 tanncod)
         t = functionT tdom tcod
       return (t, e)
   _ -> typeError ("cannot infer type of " <> formatErr e_
