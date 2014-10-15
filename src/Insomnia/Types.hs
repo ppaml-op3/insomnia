@@ -155,3 +155,24 @@ instance (MonadUnify TypeUnificationError Type m,
       _ -> throwUnificationFailure
            $ Unsimplifiable (SimplificationFail t1 t2)
 
+-- | note that this 'Traversal'' does NOT guarantee freshness of
+-- names. The passed in applicative functor should ensure freshness.
+instance Plated Type where
+  plate _ (t@TUVar {}) = pure t
+  plate _ (t@TV {}) = pure t
+  plate _ (t@TC {}) = pure t
+  plate f (TAnn t k) = TAnn <$> f t <*> pure k
+  plate f (TApp t1 t2) = TApp <$> f t1 <*> f t2
+  plate f (TForall bnd) =
+    let (vk, t) = UU.unsafeUnbind bnd
+    in (TForall . bind vk) <$> f t
+
+-- | Traverse the types in the given container
+class TraverseTypes s t where
+  traverseTypes :: Traversal s t Type Type
+
+instance TraverseTypes Type Type where
+  traverseTypes = plate
+
+transformEveryTypeM :: (TraverseTypes a a, Plated a, Monad m) => (Type -> m Type) -> a -> m a
+transformEveryTypeM f = transformM (transformMOn traverseTypes f)
