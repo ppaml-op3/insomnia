@@ -97,11 +97,11 @@ instance HasUVars Type Type where
       TV {} -> pure t
       TUVar {} -> f t
       TC {} -> pure t
-      TAnn t k -> TAnn <$> allUVars f t <*> pure k
+      TAnn t1 k -> TAnn <$> allUVars f t1 <*> pure k
       TApp t1 t2 -> TApp <$> allUVars f t1 <*> allUVars f t2
       TForall bnd -> let
-        (vk, t) = UU.unsafeUnbind bnd
-        in (TForall . bind vk) <$> allUVars f t
+        (vk, t1) = UU.unsafeUnbind bnd
+        in (TForall . bind vk) <$> allUVars f t1
 
 -- | Construct a fresh unification var and apply it to fresh
 -- unification vars for each of the arguments if it is of higher kind.
@@ -151,7 +151,7 @@ instance (MonadUnify TypeUnificationError Type m,
           tu1 <- freshUnificationVar k1
           let t1' = subst v1 tu1 t1_
           t1' =?= t2
-      (ty1, TForall {}) -> t2 =?= t1
+      (_, TForall {}) -> t2 =?= t1
       _ -> throwUnificationFailure
            $ Unsimplifiable (SimplificationFail t1 t2)
 

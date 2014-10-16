@@ -183,11 +183,11 @@ instance TraverseTypes Expr Expr where
     Ann e <$> f t
 
 instance TraverseTypes Annot Annot where
-  traverseTypes f (Annot Nothing) = pure (Annot Nothing)
+  traverseTypes _ (Annot Nothing) = pure (Annot Nothing)
   traverseTypes f (Annot (Just t)) = (Annot . Just) <$> f t
 
 instance TraverseTypes Bindings Bindings where
-  traverseTypes f NilBs = pure NilBs
+  traverseTypes _ NilBs = pure NilBs
   traverseTypes f (ConsBs (unrebind -> (b, bs))) =
     ConsBs <$> (rebind <$> traverseTypes f b <*> traverseTypes f bs)
 
