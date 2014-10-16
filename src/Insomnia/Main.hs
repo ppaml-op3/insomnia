@@ -41,7 +41,7 @@ parseAndCheck fp = do
     Left err -> showErrorAndDie "parsing" err
     Right ast -> return ast
   let
-    tc = runTC $ checkModule ast
+    tc = runTC $ checkModel ast
   (elab, m) <- case tc of
     Left err -> showErrorAndDie "typechecking" err
     Right ans -> return ans

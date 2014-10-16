@@ -1,13 +1,13 @@
-{-# LANGUAGE
-      MultiParamTypeClasses, 
-      ViewPatterns,
-      DeriveDataTypeable, DeriveGeneric
+-- | Core Insomnia expression language.
+{-# LANGUAGE DeriveDataTypeable, DeriveGeneric,
+      MultiParamTypeClasses, ViewPatterns
   #-}
-module Insomnia.AST where
+module Insomnia.Expr where
 
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Lens.Traversal
 import Control.Lens.Plated
+
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
@@ -17,36 +17,6 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 import Insomnia.Types
 
 type Var = Name Expr
-
--- A single module.
-data Module = Module { moduleDecls :: [Decl] }
-              deriving (Show)
-
--- | A declaration
-data Decl =
-  ValueDecl !ValueDecl -- ^ declaration of a value
-  | TypeDecl !TypeDecl   -- ^ generative construction of new types
-  deriving (Show)
-
--- | A declaration of a type
-data TypeDecl =
-    -- | "data T (a::K)... = C1 T11 ... T1m | C2 | C3 T31 ... T3n"
-  DataDecl !Con !DataDecl
-  | EnumDecl !Con !Nat
-  deriving (Show)
-
-data ValueDecl =
-  FunDecl !Var !Expr     -- ^ function definition "fun f x = ..."
-  | ValDecl !Var !Expr   -- ^ a value definition "val x = ..."
-  | SampleDecl !Var !Expr -- ^ a sampled value definition "val x ~ ..."
-  | SigDecl !Var !Type   -- ^ a function signature "sig f :: A -> B"
-  deriving (Show)
-
--- a DataDecl of kind k1 -> ... -> kN -> * with the given construtors.
-type DataDecl = Bind [KindedTVar] [ConstructorDef]
-
-data ConstructorDef = ConstructorDef !Con [Type]
-                    deriving (Show, Typeable, Generic)
 
 data Literal = IntL Integer
              | RealL Double
@@ -100,7 +70,6 @@ instance Alpha Literal
 instance Alpha Bindings
 instance Alpha Binding
 instance Alpha Annot
-instance Alpha ConstructorDef
 
 -- Capture-avoiding substitution of term variables in terms
 instance Subst Expr Expr where
@@ -112,13 +81,13 @@ instance Subst Expr Pattern
 instance Subst Expr Bindings
 instance Subst Expr Binding
 
+-- Capture avoid substitution of types for type variables in the following.
 instance Subst Type Clause
 instance Subst Type Pattern
 instance Subst Type Expr
 instance Subst Type Annot
 instance Subst Type Bindings
 instance Subst Type Binding
-instance Subst Type ConstructorDef
 
 -- leaf instances
 instance Subst Expr Con where

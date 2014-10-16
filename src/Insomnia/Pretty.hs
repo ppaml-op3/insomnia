@@ -16,8 +16,9 @@ import Text.PrettyPrint (Doc)
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
-import Insomnia.AST
 import Insomnia.Types
+import Insomnia.Expr
+import Insomnia.Model
 import Insomnia.Unify
 
 type Precedence = Int
@@ -25,8 +26,8 @@ type Precedence = Int
 data Associativity = AssocLeft | AssocRight | AssocNone
 
 data PrettyCtx = PrettyCtx {
-  _pcUnicode :: Bool
-  , _pcPrec :: Precedence
+  _pcUnicode :: !Bool
+  , _pcPrec :: !Precedence
   }
 
 $(makeLenses ''PrettyCtx)
@@ -224,9 +225,15 @@ ppValSampleDecl :: PM Doc -> Var -> Expr -> PM Doc
 ppValSampleDecl sym v e =
   "val" <+> pp v <+> indent sym (pp e)
 
-instance Pretty Module where
-  pp (Module decls) =
-    cat $ map pp decls
+instance Pretty Model where
+  pp (Model decls) =
+    fsep ["model"
+          , "[name]"
+          , indent coloncolon ("sig")
+          , "{"
+          , vcat $ map (nesting . pp) decls
+          , "}"
+          ]
 
 instance Pretty (UVar a) where
   pp = text . show
@@ -296,6 +303,9 @@ withPrec prec assoc lOrR =
 (<+>) :: PM Doc -> PM Doc -> PM Doc
 d1 <+> d2 = (PP.<+>) <$> d1 <*> d2
 
+($$) :: PM Doc -> PM Doc -> PM Doc
+da $$ db = (PP.$$) <$> da <*> db
+
 space :: PM Doc
 space = pure PP.space
 
@@ -325,6 +335,9 @@ sep ds = PP.sep <$> sequenceA ds
 
 cat :: [PM Doc] -> PM Doc
 cat ds = PP.cat <$> sequenceA ds
+
+vcat :: [PM Doc] -> PM Doc
+vcat ds = PP.vcat <$> sequenceA ds
 
 fcat :: [PM Doc] -> PM Doc
 fcat ds = PP.fcat <$> sequenceA ds

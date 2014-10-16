@@ -23,7 +23,8 @@ import qualified Unbound.Generics.LocallyNameless as U
 import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 
 import Insomnia.Types
-import Insomnia.AST
+import Insomnia.Expr
+import Insomnia.Model
 import Insomnia.Unify
 import Insomnia.Pretty
 import Insomnia.Except (Except, runExcept)
@@ -701,10 +702,10 @@ extendConstructorsCtx :: [(Con, AlgConstructor)] -> TC a -> TC a
 extendConstructorsCtx cconstrs =
   local (envCCons %~ M.union (M.fromList cconstrs))
 
--- | Typecheck an entire module.
-checkModule :: Module -> TC Module
-checkModule =
-  fmap Module . foldr tcE (return []) . moduleDecls
+-- | Typecheck the contents of a model.
+checkModel :: Model -> TC Model
+checkModel =
+  fmap Model . foldr tcE (return []) . modelDecls
   where
     tcE :: Decl -> TC [Decl] -> TC [Decl]
     d `tcE` checkRest = do

@@ -19,12 +19,18 @@ cabal-version:       >=1.10
 library
   exposed-modules:
                        Insomnia.Main
+                       --
                        Insomnia.Types
-                       Insomnia.AST
+                       Insomnia.Expr
+                       Insomnia.Model
+                       --
                        Insomnia.Parse
+                       --
                        Insomnia.Unify
                        Insomnia.Typecheck
+                       --
                        Insomnia.Pretty
+                       -- utils
                        Insomnia.Except
                        Data.Format
   -- other-modules:       

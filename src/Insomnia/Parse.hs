@@ -18,7 +18,8 @@ import Text.Parsec.Combinator (eof, sepBy1)
 import Text.Parsec.Expr
 
 import Insomnia.Types
-import Insomnia.AST
+import Insomnia.Expr
+import Insomnia.Model
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Data.Format (Format)
@@ -62,16 +63,16 @@ conId = Con <$> tyconIdentifier
 tvarId :: Parser TyVar
 tvarId = U.s2n <$> variableIdentifier
 
-toplevel :: Parser Module
-toplevel = whiteSpace *> moduleExpr <* eof
+toplevel :: Parser Model
+toplevel = whiteSpace *> modelExpr <* eof
 
-moduleExpr :: Parser Module
-moduleExpr = mkModel
+modelExpr :: Parser Model
+modelExpr = mkModel
              <$> (reserved "model" *> identifier)
              <*> optional (coloncolon *> identifier)
              <*> braces (many decl)
   where
-    mkModel _modelName _modelSigName decls = Module decls
+    mkModel _modelName _modelSigName decls = Model decls
     
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
@@ -357,7 +358,7 @@ test = parseTest expr . T.pack
 testType :: String -> IO ()
 testType = parseTest typeExpr . T.pack
 
-parseFile :: FilePath -> IO (Either ParseError Module)
+parseFile :: FilePath -> IO (Either ParseError Model)
 parseFile fp = do
   txt <- T.readFile fp
   return (parse toplevel fp txt)
