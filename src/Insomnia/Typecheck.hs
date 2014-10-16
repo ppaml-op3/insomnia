@@ -258,10 +258,23 @@ inferType t =
 checkDecl :: Decl -> TC Decl
 checkDecl d =
   case d of
-    SigDecl v t -> checkSigDecl v t
-    FunDecl v e -> checkFunDecl v e
+    TypeDecl td -> TypeDecl <$> checkTypeDecl td
+    ValueDecl vd -> ValueDecl <$> checkValueDecl vd
+
+checkTypeDecl :: TypeDecl -> TC TypeDecl
+checkTypeDecl td =
+  case td of
     DataDecl dcon constrs -> checkDataDecl dcon constrs
     EnumDecl dcon n -> checkEnumDecl dcon n
+
+
+checkValueDecl :: ValueDecl -> TC ValueDecl
+checkValueDecl vd =
+  case vd of
+    SigDecl v t -> checkSigDecl v t
+    FunDecl v e -> checkFunDecl v e
+    ValDecl v e -> checkValDecl v e
+    SampleDecl v e -> checkSampleDecl v e
 
 guardDuplicateValueDecl :: Var -> TC ()
 guardDuplicateValueDecl v = do
@@ -290,7 +303,7 @@ guardDuplicateCConDecl ccon = do
                          <> formatErr ccon
                          <> " is already defined")
 
-checkSigDecl :: Var -> Type -> TC Decl
+checkSigDecl :: Var -> Type -> TC ValueDecl
 checkSigDecl v t = do
   guardDuplicateValueDecl v
   t' <- checkType t KType
@@ -312,8 +325,8 @@ openAbstract (Just ty) kont =
 instantiate :: Type -> (Type -> TC a) -> TC a
 instantiate ty kont =
   case ty of
-    TForall bnd -> U.lunbind bnd $ \ ((tv, k), ty') -> do
-      tu <- freshUnificationVar k
+    TForall bnd -> U.lunbind bnd $ \ ((tv, _), ty') -> do
+      tu <- TUVar<$> unconstrained
       instantiate (U.subst tv tu ty') kont
     _ -> kont ty
 
@@ -322,11 +335,11 @@ instantiate ty kont =
 instantiateConstructorArgs :: ConstructorArgs -> ([Type] -> [Type] -> TC a) -> TC a
 instantiateConstructorArgs bnd kont =
   U.lunbind bnd $ \ (tvks, targs) -> do
-    -- list of fresh unification variables
-    tus <- mapM (freshUnificationVar . snd) tvks
-    -- the substitution taking each variable to the fresh unification var
-    let s = zip (map fst tvks) tus
-        targs' = U.substs s targs
+    tus <- mapM (\_-> freshUVarT) tvks
+    -- the substitution taking each variable to a fresh unification var
+    let
+      s = zip (map fst tvks) tus
+      targs' = U.substs s targs
     kont tus targs'
 
 -- | Given a value constructor c, return its type as a polymorphic function
@@ -347,12 +360,12 @@ mkConstructorType constr =
     go t [] = t
     go t (tvk:tvks) = go (TForall (U.bind tvk t)) tvks
 
-checkFunDecl :: Var -> Expr -> TC Decl
+checkFunDecl :: Var -> Expr -> TC ValueDecl
 checkFunDecl v e = do
   msig_ <- lookupGlobal v
   ensureNoDefn v
   res <- solveUnification $ do
-    tu <- freshUnificationVar KType
+    tu <- freshUVarT
     openAbstract msig_ $ \msig -> do
       case msig of
         Just ty -> tu =?= ty
@@ -363,7 +376,38 @@ checkFunDecl v e = do
     UFail err -> typeError ("when checking " <> formatErr v
                             <> formatErr err)
 
-checkDataDecl :: Con -> DataDecl -> TC Decl
+-- Note that for values, unlike functions we don't generalize
+checkValDecl :: Var -> Expr -> TC ValueDecl
+checkValDecl v e = do
+  msig <- lookupGlobal v
+  ensureNoDefn v
+  res <- solveUnification $ do
+    tu <- freshUVarT
+    case msig of
+      Just ty -> tu =?= ty
+      Nothing -> return ()
+    U.avoid [U.AnyName v] $ checkExpr e tu
+  case res of
+    UOkay e' -> return $ ValDecl v e'
+    UFail err -> typeError ("when checking "<> formatErr v
+                            <> formatErr err)
+
+checkSampleDecl :: Var -> Expr -> TC ValueDecl
+checkSampleDecl v e = do
+  msig <- lookupGlobal v
+  ensureNoDefn v
+  res <- solveUnification $ do
+    tu <- freshUVarT
+    case msig of
+      Just ty -> tu =?= ty
+      Nothing -> return ()
+    U.avoid [U.AnyName v] $ checkExpr e (distT tu)
+  case res of
+    UOkay e' -> return $ SampleDecl v e'
+    UFail err -> typeError ("when checking " <> formatErr v
+                            <> formatErr err)
+
+checkDataDecl :: Con -> DataDecl -> TC TypeDecl
 checkDataDecl dcon bnd = do
   guardDuplicateDConDecl dcon
   U.lunbind bnd $ \ (vks, constrs) -> do
@@ -376,7 +420,7 @@ checkDataDecl dcon bnd = do
                 $ extendTyVarsCtx vks $ forM constrs checkConstructor
     return $ DataDecl dcon $ U.bind vks constrs'
 
-checkEnumDecl :: Con -> Nat -> TC Decl
+checkEnumDecl :: Con -> Nat -> TC TypeDecl
 checkEnumDecl dcon n = do
   guardDuplicateDConDecl dcon
   unless (n > 0) $ do
@@ -398,14 +442,14 @@ unifyAnn _ _ = return ()
 
 unifyFunctionT :: Type -> TC (Type, Type)
 unifyFunctionT t = do
-  tdom <- freshUnificationVar KType
-  tcod <- freshUnificationVar KType
+  tdom <- freshUVarT
+  tcod <- freshUVarT
   t =?= functionT tdom tcod
   return (tdom, tcod)
 
 unifyDistT :: Type -> TC Type
 unifyDistT t = do
-  tsample <- freshUnificationVar KType
+  tsample <- freshUVarT
   t =?= distT tsample
   return tsample
 
@@ -505,7 +549,7 @@ checkBindings (ConsBs (U.unrebind -> (bind, binds))) kont =
   kont (ConsBs (U.rebind bind' binds'))
 
 checkBinding :: Binding -> (Binding -> TC a) -> TC a
-checkBinding (LetB (v, U.unembed -> ann) (U.unembed -> e)) kont =
+checkBinding (ValB (v, U.unembed -> ann) (U.unembed -> e)) kont =
   case ann of
     Annot Nothing -> do
       (t, e') <- inferExpr e
@@ -513,13 +557,13 @@ checkBinding (LetB (v, U.unembed -> ann) (U.unembed -> e)) kont =
       -- behave like recent versions of GHC
       extendLocalCtx v t $ do
         tannot <- applyCurrentSubstitution t
-        kont $ LetB (v, U.embed $ Annot $ Just tannot) (U.embed e')
+        kont $ ValB (v, U.embed $ Annot $ Just tannot) (U.embed e')
     Annot (Just t) -> do
       void $ checkType t KType
       e' <- checkExpr e t
       extendLocalCtx v t $ do
         tannot <- applyCurrentSubstitution t
-        kont $ LetB (v, U.embed $ Annot $ Just tannot) (U.embed e')
+        kont $ ValB (v, U.embed $ Annot $ Just tannot) (U.embed e')
 checkBinding (SampleB (v, U.unembed -> ann) (U.unembed -> e)) kont =
   case ann of
     Annot Nothing -> do
@@ -563,8 +607,8 @@ inferExpr e_ = case e_ of
                         <> " or a function signature declaration")
   Lam bnd ->
     U.lunbind bnd $ \((v, U.unembed -> ann), e1_) -> do
-      tdom <- freshUnificationVar KType
-      tcod <- freshUnificationVar KType
+      tdom <- freshUVarT
+      tcod <- freshUVarT
       unifyAnn tdom ann
       e1 <- extendLocalCtx v tdom $ checkExpr e1_ tcod
       tanndom <- applyCurrentSubstitution tdom
@@ -580,8 +624,20 @@ inferExpr e_ = case e_ of
 extendDCtx :: Decl -> TC a -> TC a
 extendDCtx d =
   case d of
+    ValueDecl vd -> extendValueDeclCtx vd
+    TypeDecl td -> extendTypeDeclCtx td
+
+extendValueDeclCtx :: ValueDecl -> TC a -> TC a
+extendValueDeclCtx vd =
+  case vd of
     SigDecl v t -> extendSigDeclCtx v t
-    FunDecl v _e -> extendFunDeclCtx v
+    FunDecl v _e -> extendValueDefinitionCtx v
+    ValDecl v _e -> extendValueDefinitionCtx v
+    SampleDecl v _e -> extendValueDefinitionCtx v
+
+extendTypeDeclCtx :: TypeDecl -> TC a -> TC a
+extendTypeDeclCtx td =
+  case td of
     DataDecl dcon constrs -> extendDataDeclCtx dcon constrs
     EnumDecl dcon n -> extendEnumDeclCtx dcon n
 
@@ -612,8 +668,8 @@ extendSigDeclCtx :: Var -> Type -> TC a -> TC a
 extendSigDeclCtx v t =
   local (envGlobals . at v ?~ t) . U.avoid [U.AnyName v]
 
-extendFunDeclCtx :: Var -> TC a -> TC a
-extendFunDeclCtx v =
+extendValueDefinitionCtx :: Var -> TC a -> TC a
+extendValueDefinitionCtx v =
   local (envGlobalDefns %~ M.insert v ())
 
 -- | @extendTyVarCtx a k comp@ Extend the type environment of @comp@

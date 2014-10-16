@@ -7,6 +7,8 @@ module Insomnia.Types where
 
 import Control.Applicative
 import Control.Lens
+
+import qualified Data.Map as M
 import Data.Typeable(Typeable)
 
 import Data.Format (Format(..))
@@ -103,24 +105,31 @@ instance HasUVars Type Type where
         (vk, t1) = UU.unsafeUnbind bnd
         in (TForall . bind vk) <$> allUVars f t1
 
--- | Construct a fresh unification var and apply it to fresh
--- unification vars for each of the arguments if it is of higher kind.
---   freshUnificationVar ⋆ = u
---   freshUnificationVar (k1 → ⋯ → kN → ⋆) = u·(map freshUnificationVar ks)
+-- | Make a fresh unification variable
+freshUVarT :: MonadUnify e Type m => m Type
+freshUVarT = TUVar <$> unconstrained
+
+-- | Construct a fresh type expression composed of a unification var
+-- of the given kind applied to sufficiently many ground arguments
+-- such that the whole type expression has of kind ⋆.
 --
---  for example: ⌞a -> (b -> ⋆)⌟ = (u·⌞a⌟)·⌞b⌟
-freshUnificationVar :: MonadUnify TypeUnificationError Type m => Kind -> m Type
-freshUnificationVar = \ k -> do
-  u <- unconstrained
-  go k (TUVar u)
+-- @      
+--   ⌞⋆⌟ = u   - u fresh
+--   ⌞k1 → ⋯ → kN → ⋆⌟ = apply u (map ⌞·⌟ ks)  - u fresh
+-- @
+--  for example: @⌞a -> (b -> ⋆)⌟ = (u·⌞a⌟)·⌞b⌟@
+groundUnificationVar :: MonadUnify TypeUnificationError Type m => Kind -> m Type
+groundUnificationVar = \ k -> do
+  tu <- freshUVarT
+  go k tu
   where
     go KType thead = return thead
     go (KArr kdom kcod) thead = do
-      targ <- freshUnificationVar kdom
+      targ <- groundUnificationVar kdom
       go kcod (thead `TApp` targ)
 
 data TypeUnificationError =
-  SimplificationFail !Type !Type -- the two given types could not be simplified
+  SimplificationFail (M.Map (UVar Type) Type) !Type !Type -- the two given types could not be simplified under the given constraints
 
 instance (MonadUnify TypeUnificationError Type m,
           MonadUnificationExcept TypeUnificationError Type m,
@@ -128,6 +137,21 @@ instance (MonadUnify TypeUnificationError Type m,
          => Unifiable Type TypeUnificationError m Type where
   t1 =?= t2 =
     case (t1, t2) of
+      (TForall bnd1, TForall bnd2) ->
+        lunbind2 bnd1 bnd2 $ \opn -> 
+        case opn of
+          Just ((_, _), t1', (_, _), t2') ->
+            t1' =?= t2'
+          Nothing -> do
+            constraintMap <- reflectCollectedConstraints
+            throwUnificationFailure
+              $ Unsimplifiable (SimplificationFail constraintMap t1 t2)
+      (TForall bnd1, _) ->
+        lunbind bnd1 $ \ ((v1, _), t1_) -> do
+          tu1 <- freshUVarT
+          let t1' = subst v1 tu1 t1_
+          t1' =?= t2
+      (_, TForall {}) -> t2 =?= t1
       (TUVar u1, TUVar u2) | u1 == u2 -> return ()
       (TUVar u1, _)                   -> u1 -?= t2
       (_, TUVar u2)                   -> u2 -?= t1
@@ -139,21 +163,10 @@ instance (MonadUnify TypeUnificationError Type m,
       (TApp t11 t12, TApp t21 t22) -> do
         t11 =?= t21
         t12 =?= t22
-      (TForall bnd1, TForall bnd2) ->
-        lunbind2 bnd1 bnd2 $ \opn -> 
-        case opn of
-          Just ((_, _), t1', (_, _), t2') ->
-            t1' =?= t2'
-          Nothing -> throwUnificationFailure
-                     $ Unsimplifiable (SimplificationFail t1 t2)
-      (TForall bnd1, _) ->
-        lunbind bnd1 $ \ ((v1, k1), t1_) -> do
-          tu1 <- freshUnificationVar k1
-          let t1' = subst v1 tu1 t1_
-          t1' =?= t2
-      (_, TForall {}) -> t2 =?= t1
-      _ -> throwUnificationFailure
-           $ Unsimplifiable (SimplificationFail t1 t2)
+      _ -> do
+        constraintMap <- reflectCollectedConstraints
+        throwUnificationFailure
+           $ Unsimplifiable (SimplificationFail constraintMap t1 t2)
 
 -- | note that this 'Traversal'' does NOT guarantee freshness of
 -- names. The passed in applicative functor should ensure freshness.

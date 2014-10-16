@@ -46,7 +46,7 @@ coloncolon :: PM Doc
 coloncolon = onUnicode "∷" "::"
 
 instance (Pretty k, Pretty v) => Pretty (M.Map k v) where
-  pp m = fsep ["Map", braces $ cat (map (nesting . ppKVPair) $ M.toList m)]
+  pp m = fsep ["Map", braces $ sep (map (nesting . ppKVPair) $ M.toList m)]
     where
       ppKVPair (k, v) = pp k <+> indent (onUnicode "↦" "|->") (pp v)
 
@@ -78,7 +78,7 @@ instance Pretty Clause where
        $ Left $ pp pat <+> indent "->" (pp e)
 
 instance Pretty Binding where
-  pp (LetB av (U.unembed -> e)) =
+  pp (ValB av (U.unembed -> e)) =
     ppAnnVar av <+> indent "=" (pp e)
   pp (SampleB av (U.unembed -> e)) =
     ppAnnVar av <+> indent "~" (pp e)
@@ -136,7 +136,7 @@ instance Pretty (U.Name a) where
 
 instance Pretty Kind where
   pp KType = onUnicode "⋆" "*"
-  pp (KArr k1 k2) = infixOp 0 "→" "->" AssocRight (pp k1) (pp k2)
+  pp (KArr k1 k2) = infixOp 1 "→" "->" AssocRight (pp k1) (pp k2)
 
 instance Pretty Type where
   pp (TV v) = pp v
@@ -199,10 +199,18 @@ ppDataDecl d bnd =
       pp c <+> nesting (fsep $ map pp ts)
 
 instance Pretty Decl where
-  pp (SigDecl v t) = "sig" <+> pp v <+> indent coloncolon (pp t)
-  pp (FunDecl v e) = ppFunDecl v e 
+  pp (TypeDecl td) = pp td
+  pp (ValueDecl vd) = pp vd
+
+instance Pretty TypeDecl where
   pp (DataDecl c d) = ppDataDecl c d
   pp (EnumDecl c n) = "enum" <+> pp c <+> pp n
+
+instance Pretty ValueDecl where
+  pp (SigDecl v t) = "sig" <+> pp v <+> indent coloncolon (pp t)
+  pp (FunDecl v e) = ppFunDecl v e 
+  pp (ValDecl v e) = ppValSampleDecl "=" v e
+  pp (SampleDecl v e) = ppValSampleDecl "~" v e
 
 ppFunDecl :: Var -> Expr -> PM Doc
 ppFunDecl v e =
@@ -211,6 +219,10 @@ ppFunDecl v e =
       let (av, e1) = UU.unsafeUnbind bnd
       in ppCollapseLam ("fun" <+> pp v) (Endo (av :)) "=" e1
     _ -> "fun" <+> pp v <+> indent "=" (pp e)
+
+ppValSampleDecl :: PM Doc -> Var -> Expr -> PM Doc
+ppValSampleDecl sym v e =
+  "val" <+> pp v <+> indent sym (pp e)
 
 instance Pretty Module where
   pp (Module decls) =
@@ -223,9 +235,12 @@ instance Pretty a => Pretty (UnificationFailure TypeUnificationError a) where
   pp (CircularityOccurs uv t) =
     text "occurs check failed: the variable"
     <+> pp uv <+> "occurs in" <+> pp t
-  pp (Unsimplifiable (SimplificationFail t1 t2)) =
-    "failed to simplify unification problem "
-    <+> pp t1 <+> indent "≟" (pp t2)
+  pp (Unsimplifiable (SimplificationFail constraintMap t1 t2)) =
+    cat ["failed to simplify unification problem "
+         <+> pp t1 <+> indent "≟" (pp t2)
+        , "under constraints"
+        , pp constraintMap]
+    
 
 -- onUnicode' :: String -> String -> PM Doc
 -- onUnicode' yes no = onUnicode (text yes) (text no)

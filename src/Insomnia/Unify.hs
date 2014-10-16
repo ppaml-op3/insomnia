@@ -95,6 +95,8 @@ $(makeLenses ''S)
 class (Functor m, Monad m) => MonadUnify e u m | m -> u e where
   unconstrained :: m (UVar u)
   solveUnification :: m b -> m (UnificationResult e u b)
+  reflectCollectedConstraints :: m (M.Map (UVar u) u)
+
   (-?=) :: (Partial u, Unifiable u e m u) => (UVar u) -> u -> m ()
 
 infix 4 =?=
@@ -165,6 +167,7 @@ instance (MonadUnificationExcept e u m)
 instance (Functor m, MonadUnificationExcept e u m)
          => MonadUnify e u (UnificationT u m) where
   unconstrained = instUnconstrained
+  reflectCollectedConstraints = UnificationT $ use collectedConstraints
   solveUnification = instSolveUnification
   (-?=) = addConstraintUVar
 
@@ -212,7 +215,6 @@ occursCheck v t =
    when (anyOf allUVars isV t) $ do
      throwUnificationFailure (CircularityOccurs v t)
   
-
 -- | Run the unification monad transformer and return the computation
 -- result, discarding the final unification state.
 evalUnificationT :: Monad m => UnificationT u m a -> m a

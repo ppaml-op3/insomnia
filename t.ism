@@ -64,4 +64,9 @@ sig one :: Five
 sig isOne :: Five -> Bool
 fun isOne x = eqFive x one
 
+data Proxy (a :: *) = Proxy
 
+sig categorical :: forall (p :: * -> *) (a :: *). p a -> Dist a
+
+sig individual :: Five
+val individual ~ categorical Proxy

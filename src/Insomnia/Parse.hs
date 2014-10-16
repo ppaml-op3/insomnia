@@ -39,7 +39,7 @@ insomniaLang = LanguageDef {
   , reservedNames = ["forall", "∀",
                      "→", "⋆", "∷",
                      "data","enum", "record",
-                     "fun", "sig",
+                     "val", "fun", "sig",
                      "let", "in", "case", "of",
                      "λ", "_"
                      ]
@@ -68,12 +68,31 @@ moduleExpr :: Parser Module
 moduleExpr = Module <$> many decl
 
 decl :: Parser Decl
-decl = (funDecl <?> "function definition")
-       <|> (sigDecl <?> "function signature")
-       <|> (dataDecl <?> "algebraic data type definition")
-       <|> (enumDecl <?> "enumeration declaration")
+decl = (valueDecl <?> "value declaration")
+       <|> (typeDecl <?> "type declaration")
 
-funDecl :: Parser Decl
+valueDecl :: Parser Decl
+valueDecl =
+  ValueDecl <$> ((funDecl <?> "function definition")
+                 <|> (sigDecl <?> "function signature")
+                 <|> (valOrSampleDecl <?> "defined or sampled value"))
+
+typeDecl :: Parser Decl
+typeDecl =
+  TypeDecl <$> ((dataDecl <?> "algebraic data type definition")
+                <|> (enumDecl <?> "enumeration declaration"))
+
+valOrSampleDecl :: Parser ValueDecl
+valOrSampleDecl =
+  mkValOrSampleDecl
+  <$> (reserved "val" *> varId)
+  <*> ((pure ValDecl <* reservedOp "=")
+       <|> (pure SampleDecl <* reservedOp "~"))
+  <*> expr
+  where
+    mkValOrSampleDecl v maker e = maker v e
+
+funDecl :: Parser ValueDecl
 funDecl = mkFunDecl
           <$> (reserved "fun" *> varId)
           <*> (some annVar)
@@ -81,14 +100,14 @@ funDecl = mkFunDecl
   where
     mkFunDecl f xs e = FunDecl f (mkLams xs e)
 
-sigDecl :: Parser Decl
+sigDecl :: Parser ValueDecl
 sigDecl = mkSigDecl
           <$> (reserved "sig" *> varId <* coloncolon)
           <*> typeExpr
   where
     mkSigDecl f ty = SigDecl f ty
 
-dataDecl :: Parser Decl
+dataDecl :: Parser TypeDecl
 dataDecl = mkDataDecl
            <$> (reserved "data" *> conId)
            <*> many (kindedTVar)
@@ -98,7 +117,7 @@ dataDecl = mkDataDecl
     mkDataDecl nm tyvars cons =
       DataDecl nm (U.bind tyvars cons)
 
-enumDecl :: Parser Decl
+enumDecl :: Parser TypeDecl
 enumDecl = mkEnumDecl
            <$> (reserved "enum" *> conId)
            <*> natural
@@ -320,7 +339,7 @@ binding = mkBinding
           <*> expr
   where
     bindingOperator = (pure SampleB <* reservedOp "~")
-                      <|> (pure LetB <* reservedOp "=")
+                      <|> (pure ValB <* reservedOp "=")
     mkBinding v op e = op v (U.embed e)
 
 unimplemented :: String -> Parser a

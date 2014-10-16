@@ -24,11 +24,22 @@ data Module = Module { moduleDecls :: [Decl] }
 
 -- | A declaration
 data Decl =
-  FunDecl !Var !Expr     -- ^ function definition "fun f x = ..."
-  | SigDecl !Var !Type   -- ^ a function signature "sig f :: A -> B"
+  ValueDecl !ValueDecl -- ^ declaration of a value
+  | TypeDecl !TypeDecl   -- ^ generative construction of new types
+  deriving (Show)
+
+-- | A declaration of a type
+data TypeDecl =
     -- | "data T (a::K)... = C1 T11 ... T1m | C2 | C3 T31 ... T3n"
-  | DataDecl !Con !DataDecl
+  DataDecl !Con !DataDecl
   | EnumDecl !Con !Nat
+  deriving (Show)
+
+data ValueDecl =
+  FunDecl !Var !Expr     -- ^ function definition "fun f x = ..."
+  | ValDecl !Var !Expr   -- ^ a value definition "val x = ..."
+  | SampleDecl !Var !Expr -- ^ a sampled value definition "val x ~ ..."
+  | SigDecl !Var !Type   -- ^ a function signature "sig f :: A -> B"
   deriving (Show)
 
 -- a DataDecl of kind k1 -> ... -> kN -> * with the given construtors.
@@ -66,7 +77,7 @@ data Bindings = NilBs
                 deriving (Show, Typeable, Generic)
 
 -- | A single binding that binds the result of some kind of RHS to a variable.
-data Binding = LetB AnnVar (Embed Expr)
+data Binding = ValB AnnVar (Embed Expr)
              | SampleB AnnVar (Embed Expr)
              deriving (Show, Typeable, Generic)
 
@@ -162,8 +173,8 @@ instance TraverseExprs Bindings Bindings where
     ConsBs <$> (rebind <$> traverseExprs f b1 <*> traverseExprs f bs)
 
 instance TraverseExprs Binding Binding where
-  traverseExprs f (LetB av (unembed -> e)) =
-    (LetB av . embed) <$> f e
+  traverseExprs f (ValB av (unembed -> e)) =
+    (ValB av . embed) <$> f e
   traverseExprs f (SampleB av (unembed -> e)) =
     (SampleB av . embed) <$> f e
 
@@ -192,8 +203,8 @@ instance TraverseTypes Bindings Bindings where
     ConsBs <$> (rebind <$> traverseTypes f b <*> traverseTypes f bs)
 
 instance TraverseTypes Binding Binding where
-  traverseTypes f (LetB (v, unembed -> ann) e) =
-    LetB <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e
+  traverseTypes f (ValB (v, unembed -> ann) e) =
+    ValB <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e
   traverseTypes f (SampleB (v, unembed -> ann) e) =
     SampleB <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e
     
