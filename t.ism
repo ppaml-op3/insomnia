@@ -1,3 +1,4 @@
+model Example {
 -- Example tprob file.
 
 data Bool = True | False
@@ -70,3 +71,5 @@ sig categorical :: forall (p :: * -> *) (a :: *). p a -> Dist a
 
 sig individual :: Five
 val individual ~ categorical Proxy
+
+}

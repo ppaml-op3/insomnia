@@ -1,3 +1,4 @@
+model Raining {
 data Bool = True | False
 
 data Proxy (a :: *) = Proxy
@@ -6,3 +7,4 @@ sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
 
 sig raining :: Bool
 val raining ~ uniform Proxy
+}

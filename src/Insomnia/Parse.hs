@@ -36,7 +36,8 @@ insomniaLang = LanguageDef {
   , identLetter = alphaNum <|> char '_'
   , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
-  , reservedNames = ["forall", "∀",
+  , reservedNames = ["model",
+                     "forall", "∀",
                      "→", "⋆", "∷",
                      "data","enum", "record",
                      "val", "fun", "sig",
@@ -65,8 +66,13 @@ toplevel :: Parser Module
 toplevel = whiteSpace *> moduleExpr <* eof
 
 moduleExpr :: Parser Module
-moduleExpr = Module <$> many decl
-
+moduleExpr = mkModel
+             <$> (reserved "model" *> identifier)
+             <*> optional (coloncolon *> identifier)
+             <*> braces (many decl)
+  where
+    mkModel _modelName _modelSigName decls = Module decls
+    
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
        <|> (typeDecl <?> "type declaration")
