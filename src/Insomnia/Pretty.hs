@@ -18,7 +18,10 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Types
 import Insomnia.Expr
+import Insomnia.TypeDefn
 import Insomnia.Model
+import Insomnia.ModelType
+import Insomnia.Toplevel
 import Insomnia.Unify
 
 type Precedence = Int
@@ -197,8 +200,8 @@ ppCollapseLam lam mavs dot e_ =
         avs = appEndo mavs []
       lam <+> fsep (map ppAnnVar avs) <+> indent dot (pp e_)
 
-ppDataDecl :: Con -> DataDecl -> PM Doc
-ppDataDecl d bnd =
+ppDataDefn :: Con -> DataDefn -> PM Doc
+ppDataDefn d bnd =
   let (vks, constrDefs) = UU.unsafeUnbind bnd
   in "data" <+> (nesting $ fsep
                  [
@@ -214,12 +217,12 @@ ppDataDecl d bnd =
       pp c <+> nesting (fsep $ map pp ts)
 
 instance Pretty Decl where
-  pp (TypeDecl td) = pp td
+  pp (TypeDefn td) = pp td
   pp (ValueDecl vd) = pp vd
 
-instance Pretty TypeDecl where
-  pp (DataDecl c d) = ppDataDecl c d
-  pp (EnumDecl c n) = "enum" <+> pp c <+> pp n
+instance Pretty TypeDefn where
+  pp (DataDefn c d) = ppDataDefn c d
+  pp (EnumDefn c n) = "enum" <+> pp c <+> pp n
 
 instance Pretty ValueDecl where
   pp (SigDecl v t) = "sig" <+> pp v <+> indent coloncolon (pp t)
@@ -241,13 +244,28 @@ ppValSampleDecl sym v e =
 
 instance Pretty Model where
   pp (Model decls) =
-    fsep ["model"
-          , "[name]"
-          , indent coloncolon ("sig")
-          , "{"
-          , vcat $ map (nesting . pp) decls
-          , "}"
-          ]
+    fsep ["{"
+         , vcat $ map (nesting . pp) decls
+         , "}"]
+
+instance Pretty Toplevel where
+  pp (Toplevel items) =
+    vcat $ punctuate "\n" $ map pp items
+
+instance Pretty ToplevelItem where
+  pp (ToplevelModel identifier modelExpr) =
+    fsep ["model", pp identifier, nesting (pp modelExpr)]
+  pp (ToplevelModelType identifier modelType) =
+    fsep ["model", "type", pp identifier, pp modelType]
+
+instance Pretty ModelExpr where
+  pp (ModelStruct model) = pp model
+
+instance Pretty ModelType where
+  pp (SigMT sig) = fsep ["{", nesting (pp sig), "}"]
+
+instance Pretty Signature where
+  pp = text . show
 
 instance Pretty (UVar a) where
   pp = text . show

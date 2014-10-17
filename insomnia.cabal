@@ -20,9 +20,17 @@ library
   exposed-modules:
                        Insomnia.Main
                        --
+                       Insomnia.Identifier
+                       --
                        Insomnia.Types
                        Insomnia.Expr
+                       Insomnia.TypeDefn
+                       --
+                       Insomnia.ModelType
+                       --
                        Insomnia.Model
+                       --
+                       Insomnia.Toplevel
                        --
                        Insomnia.Parse
                        --

@@ -5,6 +5,7 @@ import Control.Applicative
 import Control.Monad (guard)
 import Data.Functor.Identity
 import Data.Char (isUpper, isLower)
+import Data.Monoid (Monoid(..), (<>), Endo(..))
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -17,15 +18,21 @@ import Text.Parsec.Prim ((<?>), try, parse, parseTest)
 import Text.Parsec.Combinator (eof, sepBy1)
 import Text.Parsec.Expr
 
+import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr
+import Insomnia.TypeDefn
+import Insomnia.ModelType
 import Insomnia.Model
+import Insomnia.Toplevel
 import qualified Unbound.Generics.LocallyNameless as U
 
-import Data.Format (Format)
+import Data.Format (Format(..), WrapShow(..))
 
--- orphan
-instance Format ParseError
+newtype FormatParseError = FormatParseError ParseError
+
+instance Format FormatParseError where
+  format (FormatParseError pe) = format (WrapShow pe)
 
 insomniaLang :: GenLanguageDef Text () Identity
 insomniaLang = LanguageDef {
@@ -40,7 +47,7 @@ insomniaLang = LanguageDef {
   , reservedNames = ["model",
                      "forall", "∀",
                      "→", "⋆", "∷",
-                     "data","enum", "record",
+                     "data","type", "enum", "record",
                      "val", "fun", "sig",
                      "let", "in", "case", "of",
                      "λ", "_"
@@ -63,17 +70,60 @@ conId = Con <$> tyconIdentifier
 tvarId :: Parser TyVar
 tvarId = U.s2n <$> variableIdentifier
 
-toplevel :: Parser Model
-toplevel = whiteSpace *> modelExpr <* eof
+toplevel :: Parser Toplevel
+toplevel = Toplevel <$> (whiteSpace *> many toplevelItem <* eof)
 
-modelExpr :: Parser Model
+toplevelItem :: Parser ToplevelItem
+toplevelItem = 
+  (modelTypeExpr <?> "model type definition")
+  <|> (modelExpr <?> "model definition")
+
+modelExpr :: Parser ToplevelItem
 modelExpr = mkModel
-             <$> (reserved "model" *> identifier)
+             <$> (try (reserved "model" *> modelId))
              <*> optional (coloncolon *> identifier)
              <*> braces (many decl)
   where
-    mkModel _modelName _modelSigName decls = Model decls
-    
+    mkModel modelName _modelSigName decls =
+      ToplevelModel modelName (ModelStruct $ Model decls)
+
+modelTypeExpr :: Parser ToplevelItem
+modelTypeExpr = mkModelType
+                <$> (try (reserved "model" *> reserved "type" *> modelSigId))
+                <*> braces signature
+  where
+    mkModelType modelSigName sig =
+      ToplevelModelType modelSigName (SigMT sig)
+
+modelIdentifier :: Parser String
+modelIdentifier = try $ do
+  i <- identifier
+  let c = head i
+  guard (isUpper c)
+  return i
+
+modelId :: Parser Identifier
+modelId = U.s2n <$> modelIdentifier
+
+modelSigId :: Parser Identifier
+modelSigId = U.s2n <$> modelIdentifier
+
+signature :: Parser Signature
+signature =
+  makeSignature <$> (many specification)
+  where
+    makeSignature :: [Endo Signature] -> Signature
+    makeSignature specs = appEndo (mconcat specs) UnitSig
+
+    specification :: Parser (Endo Signature)
+    specification =
+      (valueSig <$> (reserved "sig" *> varId <* coloncolon)
+       <*> typeExpr)
+
+    valueSig :: Var -> Type -> Endo Signature
+    valueSig v t = Endo $ \rest ->
+      ValueSig (U.name2String v) (U.bind (v, U.embed t) rest)
+
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
        <|> (typeDecl <?> "type declaration")
@@ -86,7 +136,7 @@ valueDecl =
 
 typeDecl :: Parser Decl
 typeDecl =
-  TypeDecl <$> ((dataDecl <?> "algebraic data type definition")
+  TypeDefn <$> ((dataDefn <?> "algebraic data type definition")
                 <|> (enumDecl <?> "enumeration declaration"))
 
 valOrSampleDecl :: Parser ValueDecl
@@ -114,22 +164,22 @@ sigDecl = mkSigDecl
   where
     mkSigDecl f ty = SigDecl f ty
 
-dataDecl :: Parser TypeDecl
-dataDecl = mkDataDecl
+dataDefn :: Parser TypeDefn
+dataDefn = mkDataDefn
            <$> (reserved "data" *> conId)
            <*> many (kindedTVar)
            <*> (reservedOp "="
                 *> sepBy1 constructorDef (reservedOp "|"))
   where
-    mkDataDecl nm tyvars cons =
-      DataDecl nm (U.bind tyvars cons)
+    mkDataDefn nm tyvars cons =
+      DataDefn nm (U.bind tyvars cons)
 
-enumDecl :: Parser TypeDecl
-enumDecl = mkEnumDecl
+enumDecl :: Parser TypeDefn
+enumDecl = mkEnumDefn
            <$> (reserved "enum" *> conId)
            <*> natural
   where
-    mkEnumDecl = EnumDecl
+    mkEnumDefn = EnumDefn
 
 kindedTVar :: Parser (TyVar, Kind)
 kindedTVar =
@@ -382,7 +432,7 @@ test = parseTest expr . T.pack
 testType :: String -> IO ()
 testType = parseTest typeExpr . T.pack
 
-parseFile :: FilePath -> IO (Either ParseError Model)
+parseFile :: FilePath -> IO (Either FormatParseError Toplevel)
 parseFile fp = do
   txt <- T.readFile fp
-  return (parse toplevel fp txt)
+  return (either (Left . FormatParseError) Right $ parse toplevel fp txt)

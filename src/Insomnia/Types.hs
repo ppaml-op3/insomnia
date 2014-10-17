@@ -17,6 +17,8 @@ import GHC.Generics (Generic)
 import Unbound.Generics.LocallyNameless
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
+import Insomnia.Identifier
+
 import Insomnia.Unify (UVar, Unifiable(..),
                     HasUVars(..),
                     Partial(..),
@@ -45,6 +47,7 @@ data Kind = KType -- ^ the kind of types
 infixr 6 `KArr`
 
 data Type = TV TyVar
+          | TP Path
           | TUVar (UVar Type) -- invariant: unification variables should be fully applied
           | TC !Con
           | TAnn Type !Kind
@@ -72,6 +75,9 @@ instance Subst Type Type where
   isvar (TV v) = Just (SubstName v)
   isvar _ = Nothing
 
+instance Subst Type Path where
+  subst _ _ = id
+  substs _ = id
 instance Subst Type Kind where
   subst _ _ = id
   substs _ = id

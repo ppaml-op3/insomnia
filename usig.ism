@@ -1,0 +1,4 @@
+
+model type Raining {
+  sig isRaining :: Bool
+}

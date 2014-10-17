@@ -22,11 +22,16 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 
+import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr
+import Insomnia.TypeDefn
 import Insomnia.Model
+import Insomnia.Toplevel
+
 import Insomnia.Unify
 import Insomnia.Pretty
+
 import Insomnia.Except (Except, runExcept)
 
 newtype TCError = TCError { getTCError :: F.Doc }
@@ -274,14 +279,14 @@ inferType t =
 checkDecl :: Decl -> TC Decl
 checkDecl d =
   case d of
-    TypeDecl td -> TypeDecl <$> checkTypeDecl td
+    TypeDefn td -> TypeDefn <$> checkTypeDefn td
     ValueDecl vd -> ValueDecl <$> checkValueDecl vd
 
-checkTypeDecl :: TypeDecl -> TC TypeDecl
-checkTypeDecl td =
+checkTypeDefn :: TypeDefn -> TC TypeDefn
+checkTypeDefn td =
   case td of
-    DataDecl dcon constrs -> checkDataDecl dcon constrs
-    EnumDecl dcon n -> checkEnumDecl dcon n
+    DataDefn dcon constrs -> checkDataDefn dcon constrs
+    EnumDefn dcon n -> checkEnumDefn dcon n
 
 
 checkValueDecl :: ValueDecl -> TC ValueDecl
@@ -423,8 +428,8 @@ checkSampleDecl v e = do
     UFail err -> typeError ("when checking " <> formatErr v
                             <> formatErr err)
 
-checkDataDecl :: Con -> DataDecl -> TC TypeDecl
-checkDataDecl dcon bnd = do
+checkDataDefn :: Con -> DataDefn -> TC TypeDefn
+checkDataDefn dcon bnd = do
   guardDuplicateDConDecl dcon
   U.lunbind bnd $ \ (vks, constrs) -> do
     -- k1 -> k2 -> ... -> *
@@ -434,17 +439,17 @@ checkDataDecl dcon bnd = do
     mapM_ checkKind kparams
     constrs' <- extendDConCtx dcon (AlgebraicType algty)
                 $ extendTyVarsCtx vks $ forM constrs checkConstructor
-    return $ DataDecl dcon $ U.bind vks constrs'
+    return $ DataDefn dcon $ U.bind vks constrs'
 
-checkEnumDecl :: Con -> Nat -> TC TypeDecl
-checkEnumDecl dcon n = do
+checkEnumDefn :: Con -> Nat -> TC TypeDefn
+checkEnumDefn dcon n = do
   guardDuplicateDConDecl dcon
   unless (n > 0) $ do
     typeError ("when checking declaration of enumeration type "
                <> formatErr dcon
                <> " the number of elements "
                <> formatErr n <> "was negative")
-  return $ EnumDecl dcon n
+  return $ EnumDefn dcon n
 
 checkConstructor :: ConstructorDef -> TC ConstructorDef
 checkConstructor (ConstructorDef ccon args) = do
@@ -672,7 +677,7 @@ extendDCtx :: Decl -> TC a -> TC a
 extendDCtx d =
   case d of
     ValueDecl vd -> extendValueDeclCtx vd
-    TypeDecl td -> extendTypeDeclCtx td
+    TypeDefn td -> extendTypeDefnCtx td
 
 extendValueDeclCtx :: ValueDecl -> TC a -> TC a
 extendValueDeclCtx vd =
@@ -682,15 +687,15 @@ extendValueDeclCtx vd =
     ValDecl v _e -> extendValueDefinitionCtx v
     SampleDecl v _e -> extendValueDefinitionCtx v
 
-extendTypeDeclCtx :: TypeDecl -> TC a -> TC a
-extendTypeDeclCtx td =
+extendTypeDefnCtx :: TypeDefn -> TC a -> TC a
+extendTypeDefnCtx td =
   case td of
-    DataDecl dcon constrs -> extendDataDeclCtx dcon constrs
-    EnumDecl dcon n -> extendEnumDeclCtx dcon n
+    DataDefn dcon constrs -> extendDataDefnCtx dcon constrs
+    EnumDefn dcon n -> extendEnumDefnCtx dcon n
 
 -- | Extend the typing context by adding the given type and value constructors
-extendDataDeclCtx :: Con -> DataDecl -> TC a -> TC a
-extendDataDeclCtx dcon bnd comp = do
+extendDataDefnCtx :: Con -> DataDefn -> TC a -> TC a
+extendDataDefnCtx dcon bnd comp = do
   U.lunbind bnd $ \ (vks, constrs) -> do
     let kparams = map snd vks
         cs = map (\(ConstructorDef c _) -> c) constrs
@@ -700,8 +705,8 @@ extendDataDeclCtx dcon bnd comp = do
       extendConstructorsCtx constructors comp
 
 -- | Extend the typing context by adding the given enumeration type
-extendEnumDeclCtx :: Con -> Nat -> TC a -> TC a
-extendEnumDeclCtx dcon n =
+extendEnumDefnCtx :: Con -> Nat -> TC a -> TC a
+extendEnumDefnCtx dcon n =
   extendDConCtx dcon (EnumerationType n)
 
 -- | @mkConstructor d vks (ConstructorDef c params)@ returns @(c,
@@ -769,6 +774,36 @@ checkModel =
       d' <- checkDecl d
       ms' <- extendDCtx d' $ checkRest
       return (d' : ms')
+
+checkToplevel :: Toplevel -> TC Toplevel
+checkToplevel (Toplevel items) =
+  -- TODO: this isn't right ... need to bring each model into scope
+  -- before checking the rest of them.
+  Toplevel <$> mapM (flip checkToplevelItem return) items
+
+checkToplevelItem :: ToplevelItem -> (ToplevelItem -> TC a) -> TC a
+checkToplevelItem item kont =
+  case item of
+    ToplevelModel modelIdent me ->
+      checkModelExpr me $ \me' ->
+      selfifyModelExpr modelIdent me' (kont $ ToplevelModel modelIdent me')
+    ToplevelModelType modelTypeIdent msig ->
+      -- TODO: implement signature checking
+      kont $ ToplevelModelType modelTypeIdent msig
+
+checkModelExpr :: ModelExpr -> (ModelExpr -> TC a) -> TC a
+checkModelExpr (ModelStruct model) kont = do
+  model' <- checkModel model
+  kont $ ModelStruct model'
+
+-- | "Selfification" (c.f. TILT) is the process of adding to the current scope
+-- a type variable of singleton kind (ie, a module variable standing
+-- for a module expression) such that the module variable is given its principal
+-- kind (exposes maximal sharing).
+--
+-- TODO: implement selfification.
+selfifyModelExpr :: Identifier -> ModelExpr -> TC a -> TC a
+selfifyModelExpr _modelIdent _modelExpr kont = kont
   
 throwTCError :: TCError -> TC a
 throwTCError = lift . lift . throwError
