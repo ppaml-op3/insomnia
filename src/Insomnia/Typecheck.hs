@@ -75,13 +75,14 @@ data Env = Env { _envDCons :: M.Map Con GenerativeType -- ^ data types
                , _envGlobalDefns :: M.Map Var ()    -- ^ defined global vars
                , _envTys :: M.Map TyVar Kind        -- ^ local type variables
                , _envLocals :: M.Map Var Type       -- ^ local value variables
+               , _envVisibleSelector :: M.Map Var () -- ^ local vars that may be used as indices of tabulated functions.  (Come into scope in "forall" expressions)
                }
 
 $(makeLenses ''Env)
 
 -- | The empty typechecking environment
 emptyEnv :: Env
-emptyEnv = Env mempty mempty mempty mempty mempty mempty
+emptyEnv = Env mempty mempty mempty mempty mempty mempty mempty
 
 -- | Base environment with builtin types.
 baseEnv :: Env
@@ -118,6 +119,11 @@ algReal = AlgType [] []
 
 functionT :: Type -> Type -> Type
 functionT t1 t2 = TC conArrow `TApp` t1 `TApp` t2
+
+functionT' :: [Type] -> Type -> Type
+functionT' [] _tcod = error "expected at least one domain type"
+functionT' [tdom] tcod = functionT tdom tcod
+functionT' (tdom:tdoms) tcod = functionT tdom (functionT' tdoms tcod)
 
 distT :: Type -> Type
 distT tsample = TC conDist `TApp` tsample
@@ -213,6 +219,15 @@ ensureNoDefn v = do
   case m of
     Just () -> typeError ("duplicate defintion of " <> formatErr v)
     Nothing -> return ()
+
+ensureVisibleSelector :: Var -> TC ()
+ensureVisibleSelector v = do
+  m <- view (envVisibleSelector . at v)
+  case m of
+    Just () -> return ()
+    Nothing -> typeError (formatErr v
+                          <> " is not a selector from "
+                          <> "the immediately enclosing 'forall'")
 
 inferGenerativeType :: GenerativeType -> TC Kind
 inferGenerativeType (AlgebraicType algTy) =
@@ -438,7 +453,9 @@ checkConstructor (ConstructorDef ccon args) = do
   return (ConstructorDef ccon args')
 
 unifyAnn :: Type -> Annot -> TC ()
-unifyAnn t1 (Annot (Just t2)) = t1 =?= t2
+unifyAnn t1 (Annot (Just t2)) = do
+  t2' <- checkType t2 KType
+  t1 =?= t2'
 unifyAnn _ _ = return ()
 
 unifyFunctionT :: Type -> TC (Type, Type)
@@ -579,6 +596,35 @@ checkBinding (SampleB (v, U.unembed -> ann) (U.unembed -> e)) kont =
       extendLocalCtx v tsample $ do
         tannot <- applyCurrentSubstitution tsample
         kont $ SampleB (v, U.embed $ Annot $ Just tannot) (U.embed e')
+checkBinding (TabB y (U.unembed -> tf)) kont =
+  checkTabulatedFunction y tf kont
+
+checkTabulatedFunction :: Var -> TabulatedFun -> (Binding -> TC a) -> TC a
+checkTabulatedFunction y (TabulatedFun bnd) kont =
+  U.lunbind bnd $ \(avs, TabSample sels e) -> do
+    -- map each var to a uvar unified with the var's typing annotation
+    vts <- forM avs $ \(v, U.unembed -> a) -> do
+      tu <- freshUVarT
+      unifyAnn tu a
+      return (v, tu)
+    (sels', selTys, e', tdist) <-
+      extendLocalsCtx vts $ settingVisibleSelectors (map fst vts) $ do
+        (sels', selTys) <- unzip <$> mapM inferTabSelector sels
+        (tdist, e') <- inferExpr e
+        return (sels', selTys, e', tdist)
+    tsample <- unifyDistT tdist
+    let tfun = functionT' selTys tsample
+    extendLocalCtx y tfun
+      $ kont $ TabB y (U.embed $ TabulatedFun $ U.bind avs $ TabSample sels' e')
+
+inferTabSelector :: TabSelector -> TC (TabSelector, Type)
+inferTabSelector (TabIndex v) = do
+  ensureVisibleSelector v
+  mty <- lookupLocal v
+  ty <- case mty of
+    Nothing -> typeError ("selector " <> formatErr v <> " is not in scope??")
+    Just ty -> return ty
+  return (TabIndex v, ty)
 
 inferExpr :: Expr -> TC (Type, Expr)
 inferExpr e_ = case e_ of
@@ -697,6 +743,17 @@ extendDConCtx dcon k = local (envDCons . at dcon ?~ k)
 -- a UVar)
 extendLocalCtx :: Var -> Type -> TC a -> TC a
 extendLocalCtx v t = local (envLocals . at v ?~ t)
+
+extendLocalsCtx :: [(Var, Type)] -> TC a -> TC a
+extendLocalsCtx vts = local (envLocals %~ M.union (M.fromList vts))
+
+-- | Make the given vars be the only legal selectors when runnning
+-- the given computation
+settingVisibleSelectors :: [Var] -> TC a -> TC a
+settingVisibleSelectors vs =
+  local (envVisibleSelector .~ vsMap)
+  where
+    vsMap = M.fromList (map (\k -> (k, ())) vs)
 
 extendConstructorsCtx :: [(Con, AlgConstructor)] -> TC a -> TC a
 extendConstructorsCtx cconstrs =

@@ -1,10 +1,24 @@
 model Raining {
 data Bool = True | False
 
+sig cond :: forall (c :: *) . Bool -> c -> c -> c
+
 data Proxy (a :: *) = Proxy
 
 sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
 
 sig raining :: Bool
 val raining ~ uniform Proxy
+
+sig flip :: Real -> Dist Bool
+
+enum T 10
+
+sig thinksRain :: T -> Bool
+
+fun thinksRain t = let {
+  forall (x :: T) in
+    g x ~ cond raining (flip 0.9) (flip 0.1)
+  } in g t
+
 }

@@ -340,7 +340,11 @@ bindings =
       ConsBs $ U.rebind b (mkBindings bs)
       
 binding :: Parser Binding
-binding = mkBinding
+binding = (tabulatedFunB <?> "tabulated function definition")
+          <|> (simpleBinding <?> "var = expr or var ~ expr")
+
+simpleBinding :: Parser Binding
+simpleBinding = mkBinding
           <$> annVar
           <*> bindingOperator
           <*> expr
@@ -348,6 +352,26 @@ binding = mkBinding
     bindingOperator = (pure SampleB <* reservedOp "~")
                       <|> (pure ValB <* reservedOp "=")
     mkBinding v op e = op v (U.embed e)
+
+tabulatedFunB :: Parser Binding
+tabulatedFunB =
+  reserved "forall"
+  *> (mkTabB
+      <$> some annVar
+      <* reserved "in"
+      <*> varId
+      <*> some tabSelector
+      <* reservedOp "~"
+      <*> expr)
+  where
+    mkTabB avs y sels e =
+      TabB y (U.Embed
+              $ TabulatedFun
+              $ U.bind avs
+              $ TabSample sels e)
+
+tabSelector :: Parser TabSelector
+tabSelector = (TabIndex <$> varId)
 
 unimplemented :: String -> Parser a
 unimplemented str = fail str

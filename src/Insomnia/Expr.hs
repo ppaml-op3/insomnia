@@ -7,6 +7,8 @@ module Insomnia.Expr where
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Lens.Traversal
 import Control.Lens.Plated
+import Control.Lens.Tuple (_2)
+import Control.Lens.Iso (iso)
 
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
@@ -49,11 +51,31 @@ data Bindings = NilBs
 -- | A single binding that binds the result of some kind of RHS to a variable.
 data Binding = ValB AnnVar (Embed Expr)
              | SampleB AnnVar (Embed Expr)
+             | TabB Var (Embed TabulatedFun)
              deriving (Show, Typeable, Generic)
 
 -- | A clause in a case expression
 newtype Clause = Clause (Bind Pattern Expr)
                  deriving (Show, Typeable, Generic)
+
+-- | A "forall (x :: T1) (x2 :: T2) in y <selectors> ~ <expr>" style binder
+-- that defines a function by tabulation.
+--
+-- The scoping here is:
+--   1. y is in scope for the remainder of the enclosing let expression.
+--   2. the xs are in scope in <selectors> and <expr>.
+data TabulatedFun = TabulatedFun (Bind [AnnVar] TabSample)
+               deriving (Show, Typeable, Generic)
+
+-- | the "... x1 x2 ~ e" part of a TabulatedFun
+data TabSample = TabSample ![TabSelector] !Expr
+                 deriving (Show, Typeable, Generic)
+
+-- | The selectors that may appear in the "argument position" of
+-- the ForBind form.  Right now, just variables.
+data TabSelector =
+  TabIndex Var -- select table entry by a variable
+  deriving (Show, Typeable, Generic)
 
 -- | A pattern in a case expression
 data Pattern = WildcardP
@@ -70,6 +92,9 @@ instance Alpha Literal
 instance Alpha Bindings
 instance Alpha Binding
 instance Alpha Annot
+instance Alpha TabulatedFun
+instance Alpha TabSample
+instance Alpha TabSelector
 
 -- Capture-avoiding substitution of term variables in terms
 instance Subst Expr Expr where
@@ -81,6 +106,9 @@ instance Subst Expr Pattern
 instance Subst Expr Bindings
 instance Subst Expr Binding
 
+instance Subst Expr TabulatedFun
+instance Subst Expr TabSample
+
 -- Capture avoid substitution of types for type variables in the following.
 instance Subst Type Clause
 instance Subst Type Pattern
@@ -88,6 +116,8 @@ instance Subst Type Expr
 instance Subst Type Annot
 instance Subst Type Bindings
 instance Subst Type Binding
+instance Subst Type TabulatedFun
+instance Subst Type TabSample
 
 -- leaf instances
 instance Subst Expr Con where
@@ -99,11 +129,17 @@ instance Subst Expr Literal where
 instance Subst Expr Annot where
   subst _ _ = id
   substs _ = id
+instance Subst Expr TabSelector where
+  subst _ _ = id
+  substs _ = id
 instance Subst Expr Type where
   subst _ _ = id
   substs _ = id
 
 instance Subst Type Literal where
+  subst _ _ = id
+  substs _ = id
+instance Subst Type TabSelector where
   subst _ _ = id
   substs _ = id
 
@@ -146,6 +182,17 @@ instance TraverseExprs Binding Binding where
     (ValB av . embed) <$> f e
   traverseExprs f (SampleB av (unembed -> e)) =
     (SampleB av . embed) <$> f e
+  traverseExprs f (TabB v (unembed -> tf)) =
+    (TabB v . embed) <$> traverseExprs f tf
+
+instance TraverseExprs TabulatedFun TabulatedFun where
+  traverseExprs f (TabulatedFun bnd) =
+    let (avs, ts) = UU.unsafeUnbind bnd
+    in (TabulatedFun . bind avs) <$> traverseExprs f ts
+
+instance TraverseExprs TabSample TabSample where
+  traverseExprs f (TabSample sels e) =
+    TabSample sels <$> f e
 
 instance TraverseTypes Expr Expr where
   traverseTypes _ (e@V {}) = pure e
@@ -176,4 +223,14 @@ instance TraverseTypes Binding Binding where
     ValB <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e
   traverseTypes f (SampleB (v, unembed -> ann) e) =
     SampleB <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e
-    
+  traverseTypes f (TabB v (unembed -> tf)) =
+    (TabB v . embed) <$> traverseTypes f tf
+
+instance TraverseTypes TabulatedFun TabulatedFun where
+  traverseTypes f (TabulatedFun bnd) =
+    let (avs, ts) = UU.unsafeUnbind bnd
+    in TabulatedFun <$> (bind <$> traverseOf (traverse
+                                              ._2
+                                              .iso unembed Embed
+                                              . traverseTypes) f avs
+                         <*> pure ts)

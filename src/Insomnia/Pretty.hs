@@ -83,6 +83,20 @@ instance Pretty Binding where
     ppAnnVar av <+> indent "=" (pp e)
   pp (SampleB av (U.unembed -> e)) =
     ppAnnVar av <+> indent "~" (pp e)
+  pp (TabB y (U.unembed -> tf)) =
+    ppTabFun y tf
+
+ppTabFun :: Var -> TabulatedFun -> PM Doc
+ppTabFun y (TabulatedFun bnd) =
+  let (avs, TabSample sels e) = UU.unsafeUnbind bnd
+  in
+   fsep ["forall" <+> (nesting $ fsep $ map ppAnnVar avs)
+        , "in"
+        , (fsep (pp y : map pp sels)) <+> indent "~" (pp e)
+        ]
+
+instance Pretty TabSelector where
+  pp (TabIndex v) = pp v
 
 bindingsToList :: Bindings -> [Binding]
 bindingsToList NilBs = []
