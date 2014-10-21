@@ -1,20 +1,28 @@
-model Raining {
-data Bool = True | False
+model type PRELUDE {
+  data Bool = True | False
 
-sig cond :: forall (c :: *) . Bool -> c -> c -> c
+  sig cond :: forall (c :: *) . Bool -> c -> c -> c
+}
+
+model Prelude :: PRELUDE assume
+
+model Raining {
+
+sig cond :: forall (c :: *) . Prelude.Bool -> c -> c -> c
+
 
 data Proxy (a :: *) = Proxy
 
 sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
 
-sig raining :: Bool
+sig raining :: Prelude.Bool
 val raining ~ uniform Proxy
 
-sig flip :: Real -> Dist Bool
+sig flip :: Real -> Dist Prelude.Bool
 
 enum T 10
 
-sig thinksRain :: T -> Bool
+sig thinksRain :: T -> Prelude.Bool
 
 fun thinksRain t = let {
   forall (x :: T) in

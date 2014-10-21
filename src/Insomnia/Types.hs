@@ -26,9 +26,14 @@ import Insomnia.Unify (UVar, Unifiable(..),
                     MonadUnificationExcept(..),
                     UnificationFailure(..))
 
+-- | A short type constructor name.
+newtype ShortCon = ShortCon { unShortCon :: String }
+                   deriving (Show, Eq, Ord, Typeable, Generic)
+
+-- | A qualified name.
 -- At the term level, value constructor names.
 -- At the type level, type constructor names.
-newtype Con = Con { unCon :: String }
+newtype Con = Con { unCon :: Path }
               deriving (Show, Eq, Ord, Typeable, Generic)
                        
 
@@ -47,7 +52,6 @@ data Kind = KType -- ^ the kind of types
 infixr 6 `KArr`
 
 data Type = TV TyVar
-          | TP Path
           | TUVar (UVar Type) -- invariant: unification variables should be fully applied
           | TC !Con
           | TAnn Type !Kind
@@ -88,8 +92,12 @@ instance Subst Type Con where
 instance Subst Type (UVar a) where
   subst _ _ = id
   substs _ = id
+instance Subst Path Kind where
+  subst _ _ = id
+  substs _ = id
 
-
+instance Subst Path Con
+instance Subst Path Type
 
 -- Unification
 

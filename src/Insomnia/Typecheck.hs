@@ -27,6 +27,7 @@ import Insomnia.Types
 import Insomnia.Expr
 import Insomnia.TypeDefn
 import Insomnia.Model
+import Insomnia.ModelType
 import Insomnia.Toplevel
 
 import Insomnia.Unify
@@ -97,18 +98,21 @@ baseEnv = emptyEnv
           & (envDCons . at conInt) .~ Just (AlgebraicType algInt)
           & (envDCons . at conReal) .~ Just (AlgebraicType algReal)
 
+builtinCon :: String -> Con
+builtinCon = Con . IdP . U.s2n
+
 -- | Base data constructors
 conArrow :: Con
-conArrow = Con "->"
+conArrow = builtinCon "->"
 
 conDist :: Con
-conDist = Con "Dist"
+conDist = builtinCon "Dist"
 
 conInt :: Con
-conInt = Con "Int"
+conInt = builtinCon "Int"
 
 conReal :: Con
-conReal = Con "Real"
+conReal = builtinCon "Real"
 
 algArrow :: AlgType
 algArrow = AlgType [KType, KType] []
@@ -199,6 +203,49 @@ lookupVar v = do
   tg <- First <$> lookupGlobal v
   return $ getFirst (tl <> tg)
 
+-- | Find a model type component with the given name in the context,
+-- return its kind.
+lookupPathType :: Path -> TC Kind
+lookupPathType (IdP identifier) =
+  typeError ("found module name "
+             <> formatErr identifier
+             <> ", but expected a type")
+lookupPathType path_@(ProjP path field) = do
+  s <- lookupModel path
+  tdecl <- projectModelTypeTypeDecl s field
+  k <- case tdecl ^. typeSigDeclKind of
+    Nothing -> typeError ("internal error, path " <> formatErr path_
+                          <> " has no kind associated in model type "
+                          <> formatErr s)
+    Just k -> return k
+  return $ k
+
+-- | Find a model with the given name in the context, return its
+-- type.
+lookupModel :: Path -> TC ModelType
+lookupModel (IdP identifier) =
+  unimplemented $ "lookupModel with identifier " <> formatErr identifier
+lookupModel (ProjP model field) = do
+  s <- lookupModel model
+  projectModelTypeModel s field
+
+-- | TODO: Checks tht the given identifier is bound in the context to
+-- a signature.
+ensureModelTypeExists :: Identifier -> TC ()
+ensureModelTypeExists _ident =
+  return ()
+
+projectModelTypeTypeDecl :: ModelType -> Field -> TC TypeSigDecl
+projectModelTypeTypeDecl modelType field =
+  unimplemented ("projectModelTypeTypeDecl " <> formatErr modelType
+                 <> " field " <> formatErr field)
+
+projectModelTypeModel :: ModelType -> Field -> TC ModelType
+projectModelTypeModel modelType field =
+  unimplemented ("projectModelTypeModel" <> formatErr modelType
+                 <> " model " <> formatErr field)
+  
+
 -- | ensure that the first kind is a subtype of the second.
 ensureSubkind :: (Type, Kind) -> Kind -> TC ()
 ensureSubkind (tblame, ksub) ksup =
@@ -279,14 +326,16 @@ inferType t =
 checkDecl :: Decl -> TC Decl
 checkDecl d =
   case d of
-    TypeDefn td -> TypeDefn <$> checkTypeDefn td
+    TypeDefn dcon td -> do
+      guardDuplicateDConDecl dcon
+      TypeDefn dcon <$> checkTypeDefn dcon td
     ValueDecl vd -> ValueDecl <$> checkValueDecl vd
 
-checkTypeDefn :: TypeDefn -> TC TypeDefn
-checkTypeDefn td =
+checkTypeDefn :: Con -> TypeDefn -> TC TypeDefn
+checkTypeDefn dcon td =
   case td of
-    DataDefn dcon constrs -> checkDataDefn dcon constrs
-    EnumDefn dcon n -> checkEnumDefn dcon n
+    DataDefn constrs -> checkDataDefn dcon constrs
+    EnumDefn n -> checkEnumDefn dcon n
 
 
 checkValueDecl :: ValueDecl -> TC ValueDecl
@@ -430,7 +479,6 @@ checkSampleDecl v e = do
 
 checkDataDefn :: Con -> DataDefn -> TC TypeDefn
 checkDataDefn dcon bnd = do
-  guardDuplicateDConDecl dcon
   U.lunbind bnd $ \ (vks, constrs) -> do
     -- k1 -> k2 -> ... -> *
     let kparams = map snd vks
@@ -439,17 +487,16 @@ checkDataDefn dcon bnd = do
     mapM_ checkKind kparams
     constrs' <- extendDConCtx dcon (AlgebraicType algty)
                 $ extendTyVarsCtx vks $ forM constrs checkConstructor
-    return $ DataDefn dcon $ U.bind vks constrs'
+    return $ DataDefn $ U.bind vks constrs'
 
 checkEnumDefn :: Con -> Nat -> TC TypeDefn
 checkEnumDefn dcon n = do
-  guardDuplicateDConDecl dcon
   unless (n > 0) $ do
     typeError ("when checking declaration of enumeration type "
                <> formatErr dcon
                <> " the number of elements "
                <> formatErr n <> "was negative")
-  return $ EnumDefn dcon n
+  return $ EnumDefn n
 
 checkConstructor :: ConstructorDef -> TC ConstructorDef
 checkConstructor (ConstructorDef ccon args) = do
@@ -677,7 +724,7 @@ extendDCtx :: Decl -> TC a -> TC a
 extendDCtx d =
   case d of
     ValueDecl vd -> extendValueDeclCtx vd
-    TypeDefn td -> extendTypeDefnCtx td
+    TypeDefn dcon td -> extendTypeDefnCtx dcon td
 
 extendValueDeclCtx :: ValueDecl -> TC a -> TC a
 extendValueDeclCtx vd =
@@ -687,11 +734,11 @@ extendValueDeclCtx vd =
     ValDecl v _e -> extendValueDefinitionCtx v
     SampleDecl v _e -> extendValueDefinitionCtx v
 
-extendTypeDefnCtx :: TypeDefn -> TC a -> TC a
-extendTypeDefnCtx td =
+extendTypeDefnCtx :: Con -> TypeDefn -> TC a -> TC a
+extendTypeDefnCtx dcon td =
   case td of
-    DataDefn dcon constrs -> extendDataDefnCtx dcon constrs
-    EnumDefn dcon n -> extendEnumDefnCtx dcon n
+    DataDefn constrs -> extendDataDefnCtx dcon constrs
+    EnumDefn n -> extendEnumDefnCtx dcon n
 
 -- | Extend the typing context by adding the given type and value constructors
 extendDataDefnCtx :: Con -> DataDefn -> TC a -> TC a
@@ -776,10 +823,14 @@ checkModel =
       return (d' : ms')
 
 checkToplevel :: Toplevel -> TC Toplevel
-checkToplevel (Toplevel items) =
-  -- TODO: this isn't right ... need to bring each model into scope
-  -- before checking the rest of them.
-  Toplevel <$> mapM (flip checkToplevelItem return) items
+checkToplevel (Toplevel items_) =
+  Toplevel <$> go items_ return
+  where
+    go [] kont = kont []
+    go (item:items) kont =
+      checkToplevelItem item $ \item' ->
+      go items $ \items' ->
+      kont (item':items')
 
 checkToplevelItem :: ToplevelItem -> (ToplevelItem -> TC a) -> TC a
 checkToplevelItem item kont =
@@ -787,14 +838,34 @@ checkToplevelItem item kont =
     ToplevelModel modelIdent me ->
       checkModelExpr me $ \me' ->
       selfifyModelExpr modelIdent me' (kont $ ToplevelModel modelIdent me')
-    ToplevelModelType modelTypeIdent msig ->
-      -- TODO: implement signature checking
-      kont $ ToplevelModelType modelTypeIdent msig
+    ToplevelModelType modelTypeIdent modType -> do
+      modType' <- checkModelType modType
+      -- TODO: extend context with new signature.
+      kont $ ToplevelModelType modelTypeIdent modType'
 
 checkModelExpr :: ModelExpr -> (ModelExpr -> TC a) -> TC a
 checkModelExpr (ModelStruct model) kont = do
   model' <- checkModel model
   kont $ ModelStruct model'
+checkModelExpr (ModelAscribe model msig) kont = do
+  checkModelExpr model $ \model' -> do
+    msig' <- checkModelType msig
+    model'' <- modelAscribe model' msig'
+    kont model''
+checkModelExpr ModelAssume kont = kont ModelAssume
+
+checkModelType :: ModelType -> TC ModelType
+checkModelType (SigMT msig) = SigMT <$> checkSignature msig
+checkModelType (IdentMT ident) = do
+  ensureModelTypeExists ident
+  return $ IdentMT ident
+
+checkSignature :: Signature -> TC Signature
+checkSignature sig = return sig
+
+-- | TODO: checks that the given model conforms to the proscribed signature
+modelAscribe :: ModelExpr -> ModelType -> TC ModelExpr
+modelAscribe model msig = return $ ModelAscribe model msig
 
 -- | "Selfification" (c.f. TILT) is the process of adding to the current scope
 -- a type variable of singleton kind (ie, a module variable standing

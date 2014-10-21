@@ -10,11 +10,13 @@ import Unbound.Generics.LocallyNameless
 
 import Insomnia.Types
 
--- | A declaration of a type
+-- | A declaration of a type.  Note that we omit providing the name
+-- of the type here. It will be provided by the model that the definition
+-- is a part of.
 data TypeDefn =
     -- | "data T (a::K)... = C1 T11 ... T1m | C2 | C3 T31 ... T3n"
-  DataDefn !Con !DataDefn
-  | EnumDefn !Con !Nat
+  DataDefn !DataDefn
+  | EnumDefn !Nat
   deriving (Show, Typeable, Generic)
 
 -- a DataDefn of kind k1 -> ... -> kN -> * with the given construtors.
@@ -30,4 +32,3 @@ instance Alpha TypeDefn
 
 -- Capture avoid substitution of types for type variables in the following.
 instance Subst Type ConstructorDef
-

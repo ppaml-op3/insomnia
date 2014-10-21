@@ -16,6 +16,7 @@ import Text.PrettyPrint (Doc)
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
+import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr
 import Insomnia.TypeDefn
@@ -146,11 +147,19 @@ ppAnnVar (v, U.unembed -> (Annot mt)) =
     Nothing -> pp v
     Just t -> parens (pp v <+> indent coloncolon (pp t))
 
+instance Pretty String where
+  pp = text
+
 instance Pretty Con where
-  pp = text . unCon
+  pp = pp . unCon
 
 instance Pretty (U.Name a) where
   pp = text . show
+
+instance Pretty Path where
+  pp (IdP identifier) = pp identifier
+  pp (ProjP path field) =
+    pp path <> "." <> pp field
 
 instance Pretty Kind where
   pp KType = onUnicode "⋆" "*"
@@ -161,7 +170,7 @@ instance Pretty Type where
   pp (TUVar u) = pp u
   pp (TApp
       (TApp
-       (TC (Con "->"))
+       (TC (Con (IdP (U.name2String -> "->"))))
        t1)
       t2) =
     -- hack
@@ -217,12 +226,12 @@ ppDataDefn d bnd =
       pp c <+> nesting (fsep $ map pp ts)
 
 instance Pretty Decl where
-  pp (TypeDefn td) = pp td
+  pp (TypeDefn c td) = ppTypeDefn c td
   pp (ValueDecl vd) = pp vd
 
-instance Pretty TypeDefn where
-  pp (DataDefn c d) = ppDataDefn c d
-  pp (EnumDefn c n) = "enum" <+> pp c <+> pp n
+ppTypeDefn :: Con -> TypeDefn -> PM Doc
+ppTypeDefn c (DataDefn d) = ppDataDefn c d
+ppTypeDefn c (EnumDefn n) = "enum" <+> pp c <+> pp n
 
 instance Pretty ValueDecl where
   pp (SigDecl v t) = "sig" <+> pp v <+> indent coloncolon (pp t)
@@ -253,6 +262,11 @@ instance Pretty Toplevel where
     vcat $ punctuate "\n" $ map pp items
 
 instance Pretty ToplevelItem where
+  pp (ToplevelModel identifier (ModelAscribe modelExpr modelSig)) =
+    fsep ["model", pp identifier
+         , indent coloncolon (pp modelSig)
+         , nesting (pp modelExpr)
+         ]
   pp (ToplevelModel identifier modelExpr) =
     fsep ["model", pp identifier, nesting (pp modelExpr)]
   pp (ToplevelModelType identifier modelType) =
@@ -260,12 +274,30 @@ instance Pretty ToplevelItem where
 
 instance Pretty ModelExpr where
   pp (ModelStruct model) = pp model
+  pp (ModelAscribe model modelSig) =
+    fsep [pp model, indent coloncolon (pp modelSig)]
+  pp ModelAssume = "assume"
 
 instance Pretty ModelType where
   pp (SigMT sig) = fsep ["{", nesting (pp sig), "}"]
+  pp (IdentMT ident) = pp ident
 
 instance Pretty Signature where
-  pp = text . show
+  pp UnitSig = mempty
+  pp (ValueSig _fld bnd) =
+    let ((v, U.unembed -> ty), sig) = UU.unsafeUnbind bnd
+    in fsep ["val", pp v, indent coloncolon (pp ty)]
+       $$ pp sig
+  pp (TypeSig fld bnd) =
+    let ((tv, U.unembed -> tsd), sig) = UU.unsafeUnbind bnd
+    in case tsd of
+      TypeSigDecl _ (Just defn) -> ppTypeDefn (Con $ IdP $ U.s2n fld) defn $$ pp sig
+      TypeSigDecl (Just k) Nothing ->
+        fsep ["type", pp tv, indent coloncolon (pp k)]
+        $$ pp sig
+      TypeSigDecl Nothing Nothing ->
+        ("<<internal error - TypeSigDecl Nothing Nothing for field" <+> pp tv)
+        $$ pp sig
 
 instance Pretty (UVar a) where
   pp = text . show

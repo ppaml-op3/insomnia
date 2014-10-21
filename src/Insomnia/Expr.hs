@@ -16,6 +16,7 @@ import GHC.Generics (Generic)
 import Unbound.Generics.LocallyNameless
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
+import Insomnia.Identifier
 import Insomnia.Types
 
 type Var = Name Expr
@@ -119,6 +120,15 @@ instance Subst Type Binding
 instance Subst Type TabulatedFun
 instance Subst Type TabSample
 
+instance Subst Path Expr
+instance Subst Path Annot
+instance Subst Path Bindings
+instance Subst Path Binding
+instance Subst Path Clause
+instance Subst Path Pattern
+instance Subst Path TabulatedFun
+instance Subst Path TabSample
+
 -- leaf instances
 instance Subst Expr Con where
   subst _ _ = id
@@ -142,6 +152,14 @@ instance Subst Type Literal where
 instance Subst Type TabSelector where
   subst _ _ = id
   substs _ = id
+
+instance Subst Path Literal where
+  subst _ _ = id
+  substs _ = id
+instance Subst Path TabSelector where
+  subst _ _ = id
+  substs _ = id
+
 
 -- ========================================
 -- Traversals

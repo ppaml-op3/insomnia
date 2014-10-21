@@ -10,13 +10,19 @@
 module Insomnia.Identifier (
   Identifier,
   Field,
-  Path(..)
+  Path(..),
+  pathHeadSkelForm,
+  headSkelFormToPath
   ) where
 
+import Data.Function (on)
+import Data.Monoid ((<>), Endo(..))
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
+
+import Insomnia.Unify (UVar)
 
 -- | Identifiers are have a global identity in a freshness monad.
 type Identifier = Name Path
@@ -31,6 +37,40 @@ data Path =
 
 instance Alpha Path
 
+instance Eq Path where
+  (==) = aeq
+
+instance Ord Path where
+  -- if same head and identical skeleton prefixes, then
+  -- shorter name preceeds the longer one.
+  -- so A.B.C is GT than A.B is GT than A
+  compare = compare `on` pathHeadSkelForm
+
+type HeadSkelForm = (Identifier, [Field])
+
+-- | A path in head and skeleton form.
+-- hs (ident) = (ident, [])
+-- hs (p.f) = (ident, skel ++ [f]) where hs(p) = (ident,skel)
+pathHeadSkelForm :: Path -> HeadSkelForm
+pathHeadSkelForm = \p -> let
+  (ident, endo) = go p
+  in (ident, appEndo endo [])
+  where
+    go (IdP ident) = (ident, Endo id)
+    go (ProjP p f) = let
+      (ident, endo) = go p
+      in (ident, endo <> Endo (f:))
+
+headSkelFormToPath :: HeadSkelForm -> Path
+headSkelFormToPath = \(h, fs) -> go fs (IdP h)
+  where
+    go [] p = p
+    go (f:fs) p = go fs $! ProjP p f
+
 instance Subst Path Path where
   isvar (IdP i) = Just (SubstName i)
   isvar _ = Nothing
+
+instance Subst Path (UVar a) where
+  subst _ _ = id
+  substs _ = id

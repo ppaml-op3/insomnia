@@ -47,7 +47,8 @@ insomniaLang = LanguageDef {
   , reservedNames = ["model",
                      "forall", "∀",
                      "→", "⋆", "∷",
-                     "data","type", "enum", "record",
+                     "assume",
+                     "data", "type", "enum", "record",
                      "val", "fun", "sig",
                      "let", "in", "case", "of",
                      "λ", "_"
@@ -64,8 +65,36 @@ coloncolon = reservedOp "::" <|> reserved "∷"
 varId :: Parser Var
 varId = U.s2n <$> variableIdentifier
 
+-- | @qualifiedName p@ is a parser that parses
+-- a sequence of Initial-uppercase identifiers separated by "." with no
+-- intervening whitespace followed by @p@.  For example "X.Y.Z.<p>"
+qualifiedName :: Parser a -> Parser ([String], a)
+qualifiedName p =
+  let components = do
+        c <- (Left <$> try (component <* char '.'))
+             <|> (Right <$> p)
+        case c of
+          Left s -> do 
+            (ss, x) <- components
+            return (s:ss, x)
+          Right x -> return ([], x)
+      component = do
+        c <- identStart insomniaLang
+        guard (isUpper c)
+        cs <- many (identLetter insomniaLang)
+        return (c:cs)
+  in lexeme $ components
+
+-- | X.Y.Z -- all components uppercase
 conId :: Parser Con
-conId = Con <$> tyconIdentifier
+conId = (Con . mkPath) <$> qualifiedName tyconIdentifier
+  where
+    mkPath ([], s) = headSkelFormToPath (U.s2n s, [])
+    mkPath (s:fs, f) = headSkelFormToPath (U.s2n s, fs ++ [f])
+
+-- | X a single upppercase component
+shortConId :: Parser ShortCon
+shortConId = ShortCon <$> tyconIdentifier
 
 tvarId :: Parser TyVar
 tvarId = U.s2n <$> variableIdentifier
@@ -75,22 +104,32 @@ toplevel = Toplevel <$> (whiteSpace *> many toplevelItem <* eof)
 
 toplevelItem :: Parser ToplevelItem
 toplevelItem = 
-  (modelTypeExpr <?> "model type definition")
+  (modelTypeExprToplevel <?> "model type definition")
   <|> (modelExpr <?> "model definition")
 
 modelExpr :: Parser ToplevelItem
 modelExpr = mkModel
              <$> (try (reserved "model" *> modelId))
-             <*> optional (coloncolon *> identifier)
-             <*> braces (many decl)
+             <*> optional (coloncolon *> modelSigId)
+             <*> modelContent
   where
-    mkModel modelName _modelSigName decls =
-      ToplevelModel modelName (ModelStruct $ Model decls)
+    mkModel modelName maybeSigId content =
+      let
+        modelExpr = case maybeSigId of
+          Nothing -> content
+          Just msigId -> ModelAscribe content (IdentMT msigId)
+      in ToplevelModel modelName modelExpr
 
-modelTypeExpr :: Parser ToplevelItem
-modelTypeExpr = mkModelType
-                <$> (try (reserved "model" *> reserved "type" *> modelSigId))
-                <*> braces signature
+modelContent :: Parser ModelExpr
+modelContent =
+  ((ModelStruct . Model) <$> braces (many decl))
+  <|> (reserved "assume" *> pure ModelAssume)
+
+modelTypeExprToplevel :: Parser ToplevelItem
+modelTypeExprToplevel =
+  mkModelType
+  <$> (try (reserved "model" *> reserved "type" *> modelSigId))
+  <*> braces signature
   where
     mkModelType modelSigName sig =
       ToplevelModelType modelSigName (SigMT sig)
@@ -119,14 +158,33 @@ signature =
     specification =
       (valueSig <$> (reserved "sig" *> varId <* coloncolon)
        <*> typeExpr)
-
+      <|> (manifestTypeDefnSig <$> (dataDefn <|> enumDefn))
+      <|> (abstractTypeSig <$> (reserved "type" *> shortConId)
+           <*> (coloncolon *> kindExpr))
+                                
     valueSig :: Var -> Type -> Endo Signature
     valueSig v t = Endo $ \rest ->
       ValueSig (U.name2String v) (U.bind (v, U.embed t) rest)
 
+    manifestTypeDefnSig :: (ShortCon, TypeDefn) -> Endo Signature
+    manifestTypeDefnSig (s, td) =
+      let fieldName = unShortCon s
+          tv = U.s2n fieldName
+          tsd = TypeSigDecl Nothing (Just td)
+      in Endo $ \rest ->
+      TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
+
+    abstractTypeSig :: ShortCon -> Kind -> Endo Signature
+    abstractTypeSig c k =
+      let fieldName = unShortCon c
+          tv = U.s2n fieldName
+          tsd = TypeSigDecl (Just k) Nothing
+      in Endo $ \rest ->
+      TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
+
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
-       <|> (typeDecl <?> "type declaration")
+       <|> (typeDefn <?> "type definition")
 
 valueDecl :: Parser Decl
 valueDecl =
@@ -134,10 +192,15 @@ valueDecl =
                  <|> (sigDecl <?> "function signature")
                  <|> (valOrSampleDecl <?> "defined or sampled value"))
 
-typeDecl :: Parser Decl
-typeDecl =
-  TypeDefn <$> ((dataDefn <?> "algebraic data type definition")
-                <|> (enumDecl <?> "enumeration declaration"))
+typeDefn :: Parser Decl
+typeDefn =
+  mkTypeDefn <$> ((dataDefn <?> "algebraic data type definition")
+                  <|> (enumDefn <?> "enumeration declaration"))
+  where
+    mkTypeDefn (s, d) =
+      let nm = unShortCon s
+          c = Con $ IdP $ U.s2n nm
+      in TypeDefn c d
 
 valOrSampleDecl :: Parser ValueDecl
 valOrSampleDecl =
@@ -164,22 +227,22 @@ sigDecl = mkSigDecl
   where
     mkSigDecl f ty = SigDecl f ty
 
-dataDefn :: Parser TypeDefn
+dataDefn :: Parser (ShortCon, TypeDefn)
 dataDefn = mkDataDefn
-           <$> (reserved "data" *> conId)
+           <$> (reserved "data" *> shortConId)
            <*> many (kindedTVar)
            <*> (reservedOp "="
                 *> sepBy1 constructorDef (reservedOp "|"))
   where
     mkDataDefn nm tyvars cons =
-      DataDefn nm (U.bind tyvars cons)
+      (nm, DataDefn (U.bind tyvars cons))
 
-enumDecl :: Parser TypeDefn
-enumDecl = mkEnumDefn
-           <$> (reserved "enum" *> conId)
+enumDefn :: Parser (ShortCon, TypeDefn)
+enumDefn = mkEnumDefn
+           <$> (reserved "enum" *> shortConId)
            <*> natural
   where
-    mkEnumDefn = EnumDefn
+    mkEnumDefn nm card = (nm, EnumDefn card)
 
 kindedTVar :: Parser (TyVar, Kind)
 kindedTVar =
@@ -204,7 +267,7 @@ typeExpr =
     mkArr [ty] = ty
     mkArr (ty1:tys) = TApp (TApp tarrow ty1) (mkArr tys)
 
-    tarrow = TC (Con "->")
+    tarrow = TC (Con $ IdP $ U.s2n "->")
 
 juxtaposeTy :: Parser Type
 juxtaposeTy = mkApp <$> some atomicTy

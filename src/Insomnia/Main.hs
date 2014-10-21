@@ -40,6 +40,10 @@ parseAndCheck fp = do
   ast <- case result of
     Left err -> showErrorAndDie "parsing" err
     Right ast -> return ast
+  putStrLn "--------------------✂✄--------------------"
+  F.putStrDoc (F.format $ ppDefault ast)
+  putStrLn ""
+  putStrLn "--------------------✂✄--------------------"
   let
     tc = runTC $ checkToplevel ast
   (elab, m) <- case tc of

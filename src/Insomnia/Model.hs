@@ -12,11 +12,14 @@ import Unbound.Generics.LocallyNameless
 
 import Insomnia.Types
 import Insomnia.TypeDefn
+import Insomnia.ModelType
 
 import Insomnia.Expr (Var, Expr)
 
 data ModelExpr =
-  ModelStruct Model
+  ModelStruct !Model -- model specified here
+  | ModelAscribe !ModelExpr !ModelType -- transluscent ascription
+  | ModelAssume     -- model assumed to exist.
   deriving (Show)
 
 -- A single model.
@@ -26,7 +29,7 @@ data Model = Model { modelDecls :: [Decl] }
 -- | A declaration
 data Decl =
   ValueDecl !ValueDecl -- ^ declaration of a value
-  | TypeDefn !TypeDefn   -- ^ generative construction of new types
+  | TypeDefn !Con !TypeDefn   -- ^ generative construction of new types
   deriving (Show)
 
 data ValueDecl =
