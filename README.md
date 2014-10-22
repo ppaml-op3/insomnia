@@ -28,6 +28,9 @@ This creates a sandbox for insomnia in the current directory.
     $ cabal configure
     $ cabal build
 
+Note that installing the upstream dependencies may take a significant
+amount of time.
+
 5. Try an example
 
     $ dist/build/Insomnia/insomnia t.ism
