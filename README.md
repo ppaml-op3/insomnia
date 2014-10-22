@@ -35,5 +35,7 @@ amount of time.
 
     $ dist/build/Insomnia/insomnia t.ism
 
-
+The expected output is a message that the file typechecked okay,
+followed by a pretty-printing of the source code, followed by the
+state of the type unification algorithm at the end of typechecking.
     
