@@ -337,9 +337,9 @@ expr = maybeAnn
 
 factor :: Parser Expr
 factor = (lam <?> "lambda expression")
-         <|> (var <?> "variable")
-         <|> (qvar <?> "qualified variable")
-         <|> (con <?> "type constructor")
+         <|> (try var <?> "variable")
+         <|> (try con <?> "type constructor")
+         <|> (try qvar <?> "qualified variable")
          <|> (lit <?> "literal")
          <|> (parens expr <?> "parenthesized expression")
          <|> (letExpr <?> "let expression")

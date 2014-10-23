@@ -2,6 +2,10 @@ model type PRELUDE {
    data Bool = True | False
 
    sig cond :: forall (c :: *) . Bool -> c -> c -> c
+
+  data Proxy (a :: *) = Proxy
+  sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
+  sig flip :: Real -> Dist Bool
 }
 
 model Prelude :: PRELUDE {
@@ -15,18 +19,17 @@ model Prelude :: PRELUDE {
         True -> t
       ; False -> f
       }
- }
+
+   data Proxy (a :: *) = Proxy
+
+   sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
+   sig flip :: Real -> Dist Bool
+}
 
 model Raining {
 
-data Proxy (a :: *) = Proxy
-
-sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
-
 sig raining :: Prelude.Bool
-val raining ~ uniform Proxy
-
-sig flip :: Real -> Dist Prelude.Bool
+val raining ~ (Prelude.uniform Prelude.Proxy)
 
 enum T 10
 
@@ -34,7 +37,7 @@ sig thinksRain :: T -> Prelude.Bool
 
 fun thinksRain t = let {
   forall (x :: T) in
-    g x ~ Prelude.cond raining (flip 0.9) (flip 0.1)
+    g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
   } in g t
 
 }
