@@ -57,6 +57,9 @@ instance (Pretty k, Pretty v) => Pretty (M.Map k v) where
 
                   
 
+instance Pretty () where
+  pp () = text "()"
+
 instance Pretty Int where
   pp = int
 
@@ -111,6 +114,7 @@ bindingsToList (ConsBs (U.unrebind -> (b1, bs))) =
 instance Pretty Expr where
   pp (V v) = pp v
   pp (C c) = pp c
+  pp (Q q) = pp q
   pp (L l) = pp l
   pp (App e1 e2) = infixOp 10 mempty mempty AssocLeft (pp e1) (pp e2)
   pp (Lam bnd) =
@@ -149,6 +153,9 @@ ppAnnVar (v, U.unembed -> (Annot mt)) =
 
 instance Pretty String where
   pp = text
+
+instance Pretty QVar where
+  pp = pp . unQVar
 
 instance Pretty Con where
   pp = pp . unCon
@@ -209,7 +216,7 @@ ppCollapseLam lam mavs dot e_ =
         avs = appEndo mavs []
       lam <+> fsep (map ppAnnVar avs) <+> indent dot (pp e_)
 
-ppDataDefn :: Con -> DataDefn -> PM Doc
+ppDataDefn :: Field -> DataDefn -> PM Doc
 ppDataDefn d bnd =
   let (vks, constrDefs) = UU.unsafeUnbind bnd
   in "data" <+> (nesting $ fsep
@@ -227,19 +234,20 @@ ppDataDefn d bnd =
 
 instance Pretty Decl where
   pp (TypeDefn c td) = ppTypeDefn c td
-  pp (ValueDecl vd) = pp vd
+  pp (ValueDecl f vd) = ppValueDecl f vd
 
-ppTypeDefn :: Con -> TypeDefn -> PM Doc
+ppTypeDefn :: Field -> TypeDefn -> PM Doc
 ppTypeDefn c (DataDefn d) = ppDataDefn c d
 ppTypeDefn c (EnumDefn n) = "enum" <+> pp c <+> pp n
 
-instance Pretty ValueDecl where
-  pp (SigDecl v t) = "sig" <+> pp v <+> indent coloncolon (pp t)
-  pp (FunDecl v e) = ppFunDecl v e 
-  pp (ValDecl v e) = ppValSampleDecl "=" v e
-  pp (SampleDecl v e) = ppValSampleDecl "~" v e
 
-ppFunDecl :: Var -> Expr -> PM Doc
+ppValueDecl :: Field -> ValueDecl -> PM Doc
+ppValueDecl v (SigDecl t) = "sig" <+> pp v <+> indent coloncolon (pp t)
+ppValueDecl v (FunDecl e) = ppFunDecl v e 
+ppValueDecl v (ValDecl e) = ppValSampleDecl "=" v e
+ppValueDecl v (SampleDecl e) = ppValSampleDecl "~" v e
+
+ppFunDecl :: Field -> Expr -> PM Doc
 ppFunDecl v e =
   case e of
     Lam bnd ->
@@ -247,7 +255,7 @@ ppFunDecl v e =
       in ppCollapseLam ("fun" <+> pp v) (Endo (av :)) "=" e1
     _ -> "fun" <+> pp v <+> indent "=" (pp e)
 
-ppValSampleDecl :: PM Doc -> Var -> Expr -> PM Doc
+ppValSampleDecl :: PM Doc -> Field -> Expr -> PM Doc
 ppValSampleDecl sym v e =
   "val" <+> pp v <+> indent sym (pp e)
 
@@ -276,7 +284,7 @@ instance Pretty ModelExpr where
   pp (ModelStruct model) = pp model
   pp (ModelAscribe model modelSig) =
     fsep [pp model, indent coloncolon (pp modelSig)]
-  pp ModelAssume = "assume"
+  pp (ModelAssume mtype) = fsep ["assume", nesting (pp mtype)]
 
 instance Pretty ModelType where
   pp (SigMT sig) = fsep ["{", nesting (pp sig), "}"]
@@ -284,14 +292,13 @@ instance Pretty ModelType where
 
 instance Pretty Signature where
   pp UnitSig = mempty
-  pp (ValueSig _fld bnd) =
-    let ((v, U.unembed -> ty), sig) = UU.unsafeUnbind bnd
-    in fsep ["val", pp v, indent coloncolon (pp ty)]
-       $$ pp sig
+  pp (ValueSig fld ty sig) =
+    fsep ["val", text fld, indent coloncolon (pp ty)]
+    $$ pp sig
   pp (TypeSig fld bnd) =
     let ((tv, U.unembed -> tsd), sig) = UU.unsafeUnbind bnd
     in case tsd of
-      TypeSigDecl _ (Just defn) -> ppTypeDefn (Con $ IdP $ U.s2n fld) defn $$ pp sig
+      TypeSigDecl _ (Just defn) -> ppTypeDefn fld defn $$ pp sig
       TypeSigDecl (Just k) Nothing ->
         fsep ["type", pp tv, indent coloncolon (pp k)]
         $$ pp sig

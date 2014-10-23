@@ -18,14 +18,20 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Identifier
 import Insomnia.Types
+import Insomnia.TypeDefn (TypeDefn)
 
 type Var = Name Expr
+
+-- | Qualified variables - references to other modules.
+newtype QVar = QVar { unQVar :: Path }
+             deriving (Show, Eq, Ord, Typeable, Generic)
 
 data Literal = IntL Integer
              | RealL Double
              deriving (Show, Typeable, Generic)
                       
 data Expr = V Var
+          | Q QVar -- qualified variable: Foo.Bar.t
           | C !Con
           | L !Literal
           | Lam (Bind AnnVar Expr)
@@ -87,6 +93,7 @@ data Pattern = WildcardP
 -- All these types have notions of alpha equivalence upto bound
 -- term and type variables.
 instance Alpha Expr
+instance Alpha QVar
 instance Alpha Pattern
 instance Alpha Clause
 instance Alpha Literal
@@ -121,6 +128,7 @@ instance Subst Type TabulatedFun
 instance Subst Type TabSample
 
 instance Subst Path Expr
+instance Subst Path QVar
 instance Subst Path Annot
 instance Subst Path Bindings
 instance Subst Path Binding
@@ -131,6 +139,9 @@ instance Subst Path TabSample
 
 -- leaf instances
 instance Subst Expr Con where
+  subst _ _ = id
+  substs _ = id
+instance Subst Expr QVar where
   subst _ _ = id
   substs _ = id
 instance Subst Expr Literal where
@@ -145,11 +156,18 @@ instance Subst Expr TabSelector where
 instance Subst Expr Type where
   subst _ _ = id
   substs _ = id
+instance Subst Expr TypeDefn where
+  subst _ _ = id
+  substs _ = id
+
 
 instance Subst Type Literal where
   subst _ _ = id
   substs _ = id
 instance Subst Type TabSelector where
+  subst _ _ = id
+  substs _ = id
+instance Subst Type QVar where
   subst _ _ = id
   substs _ = id
 
@@ -166,6 +184,7 @@ instance Subst Path TabSelector where
 
 instance Plated Expr where
   plate _ (e@V {}) = pure e
+  plate _ (e@Q {}) = pure e
   plate _ (e@C {}) = pure e
   plate _ (e@L {}) = pure e
   plate f (Lam bnd) =
@@ -214,6 +233,7 @@ instance TraverseExprs TabSample TabSample where
 
 instance TraverseTypes Expr Expr where
   traverseTypes _ (e@V {}) = pure e
+  traverseTypes _ (e@Q {}) = pure e
   traverseTypes _ (e@C {}) = pure e
   traverseTypes _ (e@L {}) = pure e
   traverseTypes f (Lam bnd) =

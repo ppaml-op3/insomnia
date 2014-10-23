@@ -8,6 +8,7 @@ import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
 
+import Insomnia.Identifier
 import Insomnia.Types
 
 -- | A declaration of a type.  Note that we omit providing the name
@@ -29,6 +30,9 @@ data ConstructorDef = ConstructorDef !Con [Type]
 -- term and type variables.
 instance Alpha ConstructorDef
 instance Alpha TypeDefn
+
+instance Subst Path TypeDefn
+instance Subst Path ConstructorDef
 
 -- Capture avoid substitution of types for type variables in the following.
 instance Subst Type ConstructorDef

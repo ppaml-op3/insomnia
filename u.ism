@@ -1,15 +1,23 @@
-model type PRELUDE {
-  data Bool = True | False
+-- model type PRELUDE {
+--   data Bool = True | False
 
-  sig cond :: forall (c :: *) . Bool -> c -> c -> c
-}
+--   sig cond :: forall (c :: *) . Bool -> c -> c -> c
+-- }
 
-model Prelude :: PRELUDE assume
+model Prelude {- :: PRELUDE -} {
+
+   data Bool = True | False
+
+   sig cond :: forall (c :: *) . Bool -> c -> c -> c
+   fun cond b t f =
+      case b of
+      {
+        True -> t
+      ; False -> f
+      }
+ }
 
 model Raining {
-
-sig cond :: forall (c :: *) . Prelude.Bool -> c -> c -> c
-
 
 data Proxy (a :: *) = Proxy
 

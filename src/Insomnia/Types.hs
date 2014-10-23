@@ -26,16 +26,16 @@ import Insomnia.Unify (UVar, Unifiable(..),
                     MonadUnificationExcept(..),
                     UnificationFailure(..))
 
--- | A short type constructor name.
-newtype ShortCon = ShortCon { unShortCon :: String }
-                   deriving (Show, Eq, Ord, Typeable, Generic)
-
 -- | A qualified name.
 -- At the term level, value constructor names.
 -- At the type level, type constructor names.
 newtype Con = Con { unCon :: Path }
               deriving (Show, Eq, Ord, Typeable, Generic)
                        
+-- | A short type constructor name.  The parser makes these when it
+-- sees unqualified Uppercase identifiers in positions where it
+-- expects a type.
+type ShortCon = Con
 
 type TyVar = Name Type
 type KindedTVar = (TyVar, Kind)

@@ -10,6 +10,7 @@ import Insomnia.Model
 --
 -- TODO: worth representing this stuff using Unbound binders?
 newtype Toplevel = Toplevel [ToplevelItem]
+                   deriving Show
 
 -- | Each toplevel item is either the binding of
 -- a model name to a model expression, or
@@ -17,4 +18,4 @@ newtype Toplevel = Toplevel [ToplevelItem]
 data ToplevelItem =
   ToplevelModel Identifier ModelExpr
   | ToplevelModelType Identifier ModelType
-  
+    deriving Show

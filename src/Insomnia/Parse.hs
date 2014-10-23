@@ -92,10 +92,6 @@ conId = (Con . mkPath) <$> qualifiedName tyconIdentifier
     mkPath ([], s) = headSkelFormToPath (U.s2n s, [])
     mkPath (s:fs, f) = headSkelFormToPath (U.s2n s, fs ++ [f])
 
--- | X a single upppercase component
-shortConId :: Parser ShortCon
-shortConId = ShortCon <$> tyconIdentifier
-
 tvarId :: Parser TyVar
 tvarId = U.s2n <$> variableIdentifier
 
@@ -123,7 +119,7 @@ modelExpr = mkModel
 modelContent :: Parser ModelExpr
 modelContent =
   ((ModelStruct . Model) <$> braces (many decl))
-  <|> (reserved "assume" *> pure ModelAssume)
+  <|> ((ModelAssume . IdentMT) <$> (reserved "assume" *> modelSigId))
 
 modelTypeExprToplevel :: Parser ToplevelItem
 modelTypeExprToplevel =
@@ -159,25 +155,23 @@ signature =
       (valueSig <$> (reserved "sig" *> varId <* coloncolon)
        <*> typeExpr)
       <|> (manifestTypeDefnSig <$> (dataDefn <|> enumDefn))
-      <|> (abstractTypeSig <$> (reserved "type" *> shortConId)
+      <|> (abstractTypeSig <$> (reserved "type" *> tyconIdentifier)
            <*> (coloncolon *> kindExpr))
                                 
     valueSig :: Var -> Type -> Endo Signature
     valueSig v t = Endo $ \rest ->
-      ValueSig (U.name2String v) (U.bind (v, U.embed t) rest)
+      ValueSig (U.name2String v) t rest
 
-    manifestTypeDefnSig :: (ShortCon, TypeDefn) -> Endo Signature
-    manifestTypeDefnSig (s, td) =
-      let fieldName = unShortCon s
-          tv = U.s2n fieldName
+    manifestTypeDefnSig :: (Field, TypeDefn) -> Endo Signature
+    manifestTypeDefnSig (fieldName, td) =
+      let tv = U.s2n fieldName
           tsd = TypeSigDecl Nothing (Just td)
       in Endo $ \rest ->
       TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
 
-    abstractTypeSig :: ShortCon -> Kind -> Endo Signature
-    abstractTypeSig c k =
-      let fieldName = unShortCon c
-          tv = U.s2n fieldName
+    abstractTypeSig :: Field -> Kind -> Endo Signature
+    abstractTypeSig fieldName k =
+      let tv = U.s2n fieldName
           tsd = TypeSigDecl (Just k) Nothing
       in Endo $ \rest ->
       TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
@@ -188,48 +182,47 @@ decl = (valueDecl <?> "value declaration")
 
 valueDecl :: Parser Decl
 valueDecl =
-  ValueDecl <$> ((funDecl <?> "function definition")
+  mkValueDecl <$> ((funDecl <?> "function definition")
                  <|> (sigDecl <?> "function signature")
                  <|> (valOrSampleDecl <?> "defined or sampled value"))
+  where
+    mkValueDecl (fld, d) = ValueDecl fld d
 
 typeDefn :: Parser Decl
 typeDefn =
   mkTypeDefn <$> ((dataDefn <?> "algebraic data type definition")
                   <|> (enumDefn <?> "enumeration declaration"))
   where
-    mkTypeDefn (s, d) =
-      let nm = unShortCon s
-          c = Con $ IdP $ U.s2n nm
-      in TypeDefn c d
+    mkTypeDefn (fld, d) = TypeDefn fld d
 
-valOrSampleDecl :: Parser ValueDecl
+valOrSampleDecl :: Parser (Field, ValueDecl)
 valOrSampleDecl =
   mkValOrSampleDecl
-  <$> (reserved "val" *> varId)
+  <$> (reserved "val" *> variableIdentifier)
   <*> ((pure ValDecl <* reservedOp "=")
        <|> (pure SampleDecl <* reservedOp "~"))
   <*> expr
   where
-    mkValOrSampleDecl v maker e = maker v e
+    mkValOrSampleDecl v maker e = (v, maker e)
 
-funDecl :: Parser ValueDecl
+funDecl :: Parser (Field, ValueDecl)
 funDecl = mkFunDecl
-          <$> (reserved "fun" *> varId)
+          <$> (reserved "fun" *> variableIdentifier)
           <*> (some annVar)
           <*> (reservedOp "=" *> expr)
   where
-    mkFunDecl f xs e = FunDecl f (mkLams xs e)
+    mkFunDecl f xs e = (f, FunDecl (mkLams xs e))
 
-sigDecl :: Parser ValueDecl
+sigDecl :: Parser (Field, ValueDecl)
 sigDecl = mkSigDecl
-          <$> (reserved "sig" *> varId <* coloncolon)
+          <$> (reserved "sig" *> variableIdentifier <* coloncolon)
           <*> typeExpr
   where
-    mkSigDecl f ty = SigDecl f ty
+    mkSigDecl f ty = (f, SigDecl ty)
 
-dataDefn :: Parser (ShortCon, TypeDefn)
+dataDefn :: Parser (Field, TypeDefn)
 dataDefn = mkDataDefn
-           <$> (reserved "data" *> shortConId)
+           <$> (reserved "data" *> tyconIdentifier)
            <*> many (kindedTVar)
            <*> (reservedOp "="
                 *> sepBy1 constructorDef (reservedOp "|"))
@@ -237,9 +230,9 @@ dataDefn = mkDataDefn
     mkDataDefn nm tyvars cons =
       (nm, DataDefn (U.bind tyvars cons))
 
-enumDefn :: Parser (ShortCon, TypeDefn)
+enumDefn :: Parser (Field, TypeDefn)
 enumDefn = mkEnumDefn
-           <$> (reserved "enum" *> shortConId)
+           <$> (reserved "enum" *> tyconIdentifier)
            <*> natural
   where
     mkEnumDefn nm card = (nm, EnumDefn card)

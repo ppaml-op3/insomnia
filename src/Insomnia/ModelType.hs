@@ -1,4 +1,5 @@
-{-# LANGUAGE DeriveDataTypeable, DeriveGeneric, TemplateHaskell
+{-# LANGUAGE DeriveDataTypeable, DeriveGeneric, TemplateHaskell,
+      MultiParamTypeClasses
   #-}
 module Insomnia.ModelType where
 
@@ -11,7 +12,6 @@ import Unbound.Generics.LocallyNameless
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn
-import Insomnia.Expr (Var)
 
 data ModelType =
   SigMT !Signature -- "{ decls ... }"
@@ -20,8 +20,8 @@ data ModelType =
 
 data Signature =
   UnitSig
-  | ValueSig Field (Bind (Var, Embed Type) Signature)
-  | TypeSig Field (Bind (TyVar, Embed TypeSigDecl) Signature)
+  | ValueSig Field Type Signature
+  | TypeSig Field (Bind (Identifier, Embed TypeSigDecl) Signature)
     deriving (Show, Typeable, Generic)
 
 -- | A type declaration in a signature.
@@ -40,3 +40,5 @@ instance Alpha ModelType
 instance Alpha Signature
 instance Alpha TypeSigDecl
 
+instance Subst Path Signature
+instance Subst Path TypeSigDecl
