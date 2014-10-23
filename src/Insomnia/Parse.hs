@@ -85,12 +85,20 @@ qualifiedName p =
         return (c:cs)
   in lexeme $ components
 
--- | X.Y.Z -- all components uppercase
+-- | Given a sequence of strings and a final one, make a path.
+-- Assumes the strings follow the lexical conventions for whichever
+-- sort of path this happens to be.
+mkQualifiedPath :: ([String], String) -> Path
+mkQualifiedPath ([], s) = headSkelFormToPath (U.s2n s, [])
+mkQualifiedPath (s:fs, f) = headSkelFormToPath (U.s2n s, fs ++ [f])
+
+-- | X.Y.Z -- all components initial-uppercase
 conId :: Parser Con
-conId = (Con . mkPath) <$> qualifiedName tyconIdentifier
-  where
-    mkPath ([], s) = headSkelFormToPath (U.s2n s, [])
-    mkPath (s:fs, f) = headSkelFormToPath (U.s2n s, fs ++ [f])
+conId = (Con . mkQualifiedPath) <$> qualifiedName tyconIdentifier
+
+-- | X.Y.Z.v -- all components except the last are initial-uppsercase
+qvarId :: Parser QVar
+qvarId = (QVar . mkQualifiedPath) <$> qualifiedName variableIdentifier
 
 tvarId :: Parser TyVar
 tvarId = U.s2n <$> variableIdentifier
@@ -330,6 +338,7 @@ expr = maybeAnn
 factor :: Parser Expr
 factor = (lam <?> "lambda expression")
          <|> (var <?> "variable")
+         <|> (qvar <?> "qualified variable")
          <|> (con <?> "type constructor")
          <|> (lit <?> "literal")
          <|> (parens expr <?> "parenthesized expression")
@@ -377,6 +386,9 @@ tyconIdentifier = try $ do
 
 var :: Parser Expr
 var = V <$> varId <?> "variable"
+
+qvar :: Parser Expr
+qvar = Q <$> qvarId <?> "qualified variable"
 
 con :: Parser Expr
 con = C <$> conId <?> "type constructor"
