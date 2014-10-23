@@ -12,13 +12,15 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Control.Monad.Error.Class (MonadError(..))
+import Data.Maybe (mapMaybe)
 import Data.List (foldl')
 import Data.Format (Format(..))
 import qualified Data.Format as F
 import qualified Data.Map as M
-import Data.Monoid (Monoid(..), (<>), First(..))
+import Data.Monoid (Monoid(..), (<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
+import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 
@@ -588,6 +590,20 @@ checkLiteral :: Literal -> Type -> TC ()
 checkLiteral (IntL {}) t = t =?= intT
 checkLiteral (RealL {}) t = t =?= realT
 
+checkVariable :: Pretty var
+                 => (var -> TC (Maybe Type))
+                 -> (var -> Expr)
+                 -> var
+                 -> Type
+                 -> TC Expr
+checkVariable lookupV mkV v t_ = do
+  mt <- lookupV v
+  case mt of
+    Nothing -> typeError ("unbound variable " <> formatErr v)
+    Just tv -> instantiate tv $ \t' -> do
+      t_ =?= t'
+      return $ mkV v
+
 checkExpr :: Expr -> Type -> TC Expr
 checkExpr e_ t_ = case e_ of
   Lam bnd ->
@@ -600,13 +616,8 @@ checkExpr e_ t_ = case e_ of
   L l -> do
     checkLiteral l t_
     return (L l)
-  V v -> do
-    mt <- lookupVar v
-    case mt of
-      Nothing -> typeError ("unbound variable " <> formatErr v)
-      Just tv -> instantiate tv $ \t' -> do
-        t_ =?= t'
-        return $ V v
+  V v -> checkVariable lookupLocal V v t_
+  Q q -> checkVariable lookupGlobal Q q t_
   C c -> do
     constr <- lookupCCon c
     ty <- mkConstructorType constr
@@ -794,9 +805,12 @@ extendDCtx pmod d =
     TypeDefn fld td -> \rest kont -> do
       let p = (ProjP pmod fld)
           shortIdent = U.s2n fld
+          substitution_ = selfifyTypeDefn pmod td
+          substitution = (shortIdent, p) : substitution_
           -- replace short name occurrences by the qualified name
-          rest' = U.subst shortIdent p rest
-      extendTypeDefnCtx (Con p) td (kont rest')
+          td' = U.substs substitution td
+          rest' = U.substs substitution rest
+      extendTypeDefnCtx (Con p) td' (kont rest')
 
 extendModelTypeCtx :: Identifier -> Signature -> TC a -> TC a
 extendModelTypeCtx ident msig =
@@ -993,25 +1007,25 @@ naturalSignature = go . modelDecls
     goDecl :: Decl -> TC Signature -> TC Signature
     goDecl decl kont =
       case decl of
-        ValueDecl fld (FunDecl {}) -> kont
-        ValueDecl fld (ValDecl {}) -> kont
-        ValueDecl fld (SampleDecl {}) -> kont
+        ValueDecl _fld (FunDecl {}) -> kont
+        ValueDecl _fld (ValDecl {}) -> kont
+        ValueDecl _fld (SampleDecl {}) -> kont
         ValueDecl fld (SigDecl ty) -> do
           sig' <- kont
           return (ValueSig fld ty sig')
         TypeDefn fld defn -> do
           let ident = U.s2n fld
               dcon = Con (IdP ident)
-          sig' <- extendTypeDefnCtx dcon defn $ kont
+          sig' <- extendTypeDefnCtx dcon defn kont
           let tsd = TypeSigDecl Nothing (Just defn)
           return (TypeSig fld (U.bind (ident, U.embed tsd) sig'))
 
 checkSignature :: Signature -> TC Signature
-checkSignature sig = checkSignature' sig ensureNoDuplicateFields
+checkSignature = flip checkSignature' ensureNoDuplicateFields
   where
     -- TODO: actually check that the field names are unique.
     ensureNoDuplicateFields :: (Signature, [Field]) -> TC Signature
-    ensureNoDuplicateFields (sig, flds) = return sig
+    ensureNoDuplicateFields (sig, _flds) = return sig
     checkSignature' :: Signature -> ((Signature, [Field]) -> TC Signature)
                        -> TC Signature
     checkSignature' UnitSig kont = kont (UnitSig, [])
@@ -1047,7 +1061,7 @@ checkTypeSigDecl dcon tsd =
 -- @msig2@ is more general than @msig1@.  Returns the second
 -- signature.
 mayAscribe :: Signature -> Signature -> TC Signature
-mayAscribe msig1 msig2 = return $ msig2
+mayAscribe _msig1 msig2 = return $ msig2
 
 -- | "Selfification" (c.f. TILT) is the process of adding to the current scope
 -- a type variable of singleton kind (ie, a module variable standing
@@ -1066,11 +1080,40 @@ selfifyModelType pmod msig_ =
       let p = ProjP pmod fld
           -- replace the local Con (IdP tyId) way of refering to
           -- this definition in the rest of the signature by
-          -- the full projection from the model path.
-          msig' = U.subst tyId p msig
+          -- the full projection from the model path.  Also replace the
+          -- type constructors
+          substitution_ = selfifyTypeSigDecl pmod tsd
+          substitution = (tyId, p) : substitution_
+          tsd' = U.substs substitution tsd
+          msig' = U.substs substitution msig
       selfSig <- selfifyModelType pmod msig'
-      return $ TypeSelfSig (Con p) tsd selfSig
+      return $ TypeSelfSig (Con p) tsd' selfSig
   
+-- | Given the path to a type defintion and the type definition, construct
+-- a substitution that replaces unqualified references to the components of
+-- the definition (for example the value constructors of an algebraic datatype)
+-- by their qualified names with respect to the given path.
+selfifyTypeDefn :: Path -> TypeDefn -> [(Identifier, Path)]
+selfifyTypeDefn _pmod (EnumDefn _) = []
+selfifyTypeDefn pmod (DataDefn bnd) = let
+  (_, constrDefs) = UU.unsafeUnbind bnd
+  cs = map (\(ConstructorDef c _) -> c) constrDefs
+  in mapMaybe (mkSubst pmod) cs
+  where
+    mkSubst :: Path -> Con -> Maybe (Identifier, Path)
+    mkSubst p (Con (IdP short)) = let fld = U.name2String short
+                                      long = ProjP p fld
+                                  in Just (short, long)
+    mkSubst _ _                 = Nothing
+
+selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(Identifier, Path)]
+selfifyTypeSigDecl pmod tsd =
+  case tsd of
+    TypeSigDecl Nothing Nothing -> error "selfifyTypeSigDecl: impossible"
+    TypeSigDecl (Just _k) Nothing -> mempty
+    TypeSigDecl Nothing (Just defn) -> selfifyTypeDefn pmod defn
+    TypeSigDecl (Just _) (Just _) -> error "selfifyTypeSigDecl: impossible"
+
 throwTCError :: TCError -> TC a
 throwTCError = lift . lift . throwError
 

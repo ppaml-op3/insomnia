@@ -34,7 +34,7 @@ sig thinksRain :: T -> Prelude.Bool
 
 fun thinksRain t = let {
   forall (x :: T) in
-    g x ~ cond raining (flip 0.9) (flip 0.1)
+    g x ~ Prelude.cond raining (flip 0.9) (flip 0.1)
   } in g t
 
 }

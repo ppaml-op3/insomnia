@@ -20,9 +20,11 @@ data TypeDefn =
   | EnumDefn !Nat
   deriving (Show, Typeable, Generic)
 
--- a DataDefn of kind k1 -> ... -> kN -> * with the given construtors.
+-- | a DataDefn of kind k1 -> ... -> kN -> * with the given construtors.
 type DataDefn = Bind [KindedTVar] [ConstructorDef]
 
+-- | A value constructor with the given name, taking arguments of
+-- the given types.
 data ConstructorDef = ConstructorDef !Con [Type]
                     deriving (Show, Typeable, Generic)
 
