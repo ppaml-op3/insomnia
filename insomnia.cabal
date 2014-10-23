@@ -35,6 +35,18 @@ library
                        Insomnia.Parse
                        --
                        Insomnia.Unify
+                       --
+                       Insomnia.Typecheck.Env
+                       --
+                       Insomnia.Typecheck.Type
+                       Insomnia.Typecheck.Expr
+                       --
+                       Insomnia.Typecheck.TypeDefn
+                       Insomnia.Typecheck.ModelType
+                       --
+                       Insomnia.Typecheck.Selfify
+                       --
+                       Insomnia.Typecheck.Model
                        Insomnia.Typecheck
                        --
                        Insomnia.Pretty

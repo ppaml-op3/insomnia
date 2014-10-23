@@ -1,10 +1,10 @@
--- model type PRELUDE {
---   data Bool = True | False
+model type PRELUDE {
+   data Bool = True | False
 
---   sig cond :: forall (c :: *) . Bool -> c -> c -> c
--- }
+   sig cond :: forall (c :: *) . Bool -> c -> c -> c
+}
 
-model Prelude {- :: PRELUDE -} {
+model Prelude :: PRELUDE {
 
    data Bool = True | False
 

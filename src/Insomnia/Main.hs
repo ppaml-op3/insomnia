@@ -41,8 +41,7 @@ parseAndCheck fp = do
     Left err -> showErrorAndDie "parsing" err
     Right ast -> return ast
   putStrLn "--------------------✂✄--------------------"
-  -- F.putStrDoc (F.format $ ppDefault ast)
-  putStrLn $ show ast
+  F.putStrDoc (F.format $ ppDefault ast)
   putStrLn ""
   putStrLn "--------------------✂✄--------------------"
   let
