@@ -35,9 +35,18 @@ enum T 10
 
 sig thinksRain :: T -> Prelude.Bool
 
-fun thinksRain t = let {
+-- fun thinksRain t = let {
+--    forall (x :: T) in
+--      g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
+--    } in g t
+
+-- Ryan observes that the version above creates a new table every time
+-- that 'thinksRain' is called.  Instead what we want is to create the
+-- table once.
+val thinksRain = let {
   forall (x :: T) in
     g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
-  } in g t
+  } in g
+
 
 }
