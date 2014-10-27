@@ -1,7 +1,8 @@
 model type PRELUDE {
-   data Bool = True | False
+  data Bool = True | False
+  -- type Bool :: *
 
-   sig cond :: forall (c :: *) . Bool -> c -> c -> c
+  sig cond :: forall (c :: *) . Bool -> c -> c -> c
 
   data Proxy (a :: *) = Proxy
   sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
@@ -10,7 +11,7 @@ model type PRELUDE {
 
 model Prelude :: PRELUDE {
 
-   data Bool = True | False
+   data Bool = False | True
 
    sig cond :: forall (c :: *) . Bool -> c -> c -> c
    fun cond b t f =

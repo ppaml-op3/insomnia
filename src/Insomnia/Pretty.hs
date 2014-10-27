@@ -236,6 +236,9 @@ instance Pretty Decl where
   pp (TypeDefn c td) = ppTypeDefn c td
   pp (ValueDecl f vd) = ppValueDecl f vd
 
+instance Pretty PrettyTypeDefn where
+  pp (PrettyTypeDefn fld defn) = ppTypeDefn fld defn
+
 ppTypeDefn :: Field -> TypeDefn -> PM Doc
 ppTypeDefn c (DataDefn d) = ppDataDefn c d
 ppTypeDefn c (EnumDefn n) = "enum" <+> pp c <+> pp n

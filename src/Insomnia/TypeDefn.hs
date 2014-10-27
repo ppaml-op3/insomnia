@@ -1,8 +1,11 @@
 {-# LANGUAGE DeriveDataTypeable, DeriveGeneric,
-      MultiParamTypeClasses
+      MultiParamTypeClasses, TemplateHaskell
   #-}
 module Insomnia.TypeDefn where
 
+import Control.Lens
+import Data.List (sortBy)
+import Data.Ord (comparing)
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
@@ -23,10 +26,22 @@ data TypeDefn =
 -- | a DataDefn of kind k1 -> ... -> kN -> * with the given construtors.
 type DataDefn = Bind [KindedTVar] [ConstructorDef]
 
+-- | This type exists merely so that we can give it a Pretty instance
+-- in the pretty printer.
+data PrettyTypeDefn = PrettyTypeDefn Field TypeDefn
+
 -- | A value constructor with the given name, taking arguments of
 -- the given types.
-data ConstructorDef = ConstructorDef !Con [Type]
+data ConstructorDef = ConstructorDef {
+  _constructorDefCon :: !Con
+  , _constructorDefTypes :: [Type]
+  }
                     deriving (Show, Typeable, Generic)
+
+$(makeLenses ''ConstructorDef)
+
+canonicalizeConstructorDefs :: [ConstructorDef] -> [ConstructorDef]
+canonicalizeConstructorDefs = sortBy $ comparing $ view constructorDefCon
 
 -- All these types have notions of alpha equivalence upto bound
 -- term and type variables.

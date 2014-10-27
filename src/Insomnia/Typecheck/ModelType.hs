@@ -2,8 +2,6 @@
 -- | Typecheck "model type" expressions.
 module Insomnia.Typecheck.ModelType where
 
-import Control.Applicative ((<$>))
-
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier (Field, Path(..))
@@ -57,8 +55,9 @@ checkSignature = flip checkSignature' ensureNoDuplicateFields
 checkTypeSigDecl :: Con -> TypeSigDecl -> TC TypeSigDecl
 checkTypeSigDecl dcon tsd =
   case tsd of
-    TypeSigDecl Nothing (Just defn) ->
-      TypeSigDecl Nothing . Just <$> checkTypeDefn dcon defn
+    TypeSigDecl Nothing (Just defn) -> do
+      (defn', _) <-  checkTypeDefn dcon defn
+      return $ TypeSigDecl Nothing (Just defn')
     TypeSigDecl (Just k) Nothing -> do
       checkKind k
       return $ TypeSigDecl (Just k) Nothing

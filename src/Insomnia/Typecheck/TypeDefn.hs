@@ -17,13 +17,13 @@ import Insomnia.TypeDefn
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType)
 
-checkTypeDefn :: Con -> TypeDefn -> TC TypeDefn
+checkTypeDefn :: Con -> TypeDefn -> TC (TypeDefn, Kind)
 checkTypeDefn dcon td =
   case td of
     DataDefn constrs -> checkDataDefn dcon constrs
     EnumDefn n -> checkEnumDefn dcon n
 
-checkDataDefn :: Con -> DataDefn -> TC TypeDefn
+checkDataDefn :: Con -> DataDefn -> TC (TypeDefn, Kind)
 checkDataDefn dcon bnd = do
   U.lunbind bnd $ \ (vks, constrs) -> do
     -- k1 -> k2 -> ... -> *
@@ -33,16 +33,17 @@ checkDataDefn dcon bnd = do
     mapM_ checkKind kparams
     constrs' <- extendDConCtx dcon (AlgebraicType algty)
                 $ extendTyVarsCtx vks $ forM constrs checkConstructor
-    return $ DataDefn $ U.bind vks constrs'
+    return (DataDefn $ U.bind vks constrs',
+            foldr KArr KType (map snd vks))
 
-checkEnumDefn :: Con -> Nat -> TC TypeDefn
+checkEnumDefn :: Con -> Nat -> TC (TypeDefn, Kind)
 checkEnumDefn dcon n = do
   unless (n > 0) $ do
     typeError ("when checking declaration of enumeration type "
                <> formatErr dcon
                <> " the number of elements "
                <> formatErr n <> "was negative")
-  return $ EnumDefn n
+  return (EnumDefn n, KType)
 
 
 checkConstructor :: ConstructorDef -> TC ConstructorDef

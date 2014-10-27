@@ -27,6 +27,7 @@ import Insomnia.Typecheck.Expr (checkExpr)
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, extendTypeDefnCtx)
 import Insomnia.Typecheck.ModelType (checkModelType)
 import Insomnia.Typecheck.Selfify (selfifyTypeDefn)
+import Insomnia.Typecheck.MayAscribe (mayAscribe)
 
 -- | Infer the signature of the given model expression
 inferModelExpr :: Path -> ModelExpr -> (ModelExpr -> Signature -> TC a) -> TC a
@@ -69,15 +70,6 @@ naturalSignature = go . modelDecls
           let tsd = TypeSigDecl Nothing (Just defn)
           return (TypeSig fld (U.bind (ident, U.embed tsd) sig'))
 
--- | TODO: @msig1 `mayAscribe` msig2@ succeeds if it is okay to
--- ascribe @msig2@ to any model whose type is @msig1@.  That is,
--- @msig2@ is more general than @msig1@.  Returns the second
--- signature.
-mayAscribe :: Signature -> Signature -> TC Signature
-mayAscribe _msig1 msig2 =
-  -- TODO: This perhaps belongs in a different module.
-  return $ msig2
-
 -- | Typecheck the contents of a model.
 checkModel :: Path -> Model -> TC Model
 checkModel pmod =
@@ -97,7 +89,8 @@ checkDecl pmod d =
     TypeDefn fld td -> do
       let dcon = Con (ProjP pmod fld)
       guardDuplicateDConDecl dcon
-      TypeDefn fld <$> checkTypeDefn dcon td
+      (td', _) <- checkTypeDefn dcon td
+      return $ TypeDefn fld td'
     ValueDecl fld vd ->
       let qfld = QVar (ProjP pmod fld)
       in ValueDecl fld <$> checkValueDecl fld qfld vd
