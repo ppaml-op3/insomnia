@@ -20,25 +20,9 @@ import Insomnia.Toplevel
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.ModelType (checkModelType, extendTypeSigDeclCtx)
-import Insomnia.Typecheck.Selfify (selfifyTypeDefn)
+import Insomnia.Typecheck.Selfify (selfifyModelType, selfifyTypeDefn)
 import Insomnia.Typecheck.Model (inferModelExpr)
-
--- | Find a model type component with the given name in the context,
--- return its kind.
-lookupPathType :: Path -> TC Kind
-lookupPathType (IdP identifier) =
-  typeError ("found module name "
-             <> formatErr identifier
-             <> ", but expected a type")
-lookupPathType path_@(ProjP path field) = do
-  s <- lookupModel path
-  tdecl <- projectModelTypeTypeDecl s field
-  k <- case tdecl ^. typeSigDeclKind of
-    Nothing -> typeError ("internal error, path " <> formatErr path_
-                          <> " has no kind associated in model type "
-                          <> formatErr s)
-    Just k -> return k
-  return $ k
+import Insomnia.Typecheck.SelfSig (SelfSig(..))
 
 -- | Find a model with the given name in the context, return its
 -- type.
@@ -49,22 +33,11 @@ lookupModel (ProjP model field) = do
   s <- lookupModel model
   projectModelTypeModel s field
 
-
-projectModelTypeTypeDecl :: ModelType -> Field -> TC TypeSigDecl
-projectModelTypeTypeDecl modelType field =
-  unimplemented ("projectModelTypeTypeDecl " <> formatErr modelType
-                 <> " field " <> formatErr field)
-
 projectModelTypeModel :: ModelType -> Field -> TC ModelType
 projectModelTypeModel modelType field =
   unimplemented ("projectModelTypeModel" <> formatErr modelType
                  <> " model " <> formatErr field)
   
-extendModelTypeCtx :: Identifier -> Signature -> TC a -> TC a
-extendModelTypeCtx ident msig =
-  local (envSigs . at ident ?~ msig)
-
-
 -- | Given a (selfified) signature, add all of its fields to the context
 -- by prefixing them with the given path - presumably the path of this
 -- very module.
@@ -102,38 +75,3 @@ checkToplevelItem item kont =
       (modType', msig) <- checkModelType modType
       extendModelTypeCtx modelTypeIdent msig
         $ kont $ ToplevelModelType modelTypeIdent modType'
-
--- | "Selfification" (c.f. TILT) is the process of adding to the current scope
--- a type variable of singleton kind (ie, a module variable standing
--- for a module expression) such that the module variable is given its principal
--- kind (exposes maximal sharing).
-selfifyModelType :: Path -> Signature -> TC SelfSig
-selfifyModelType pmod msig_ =
-  case msig_ of
-    UnitSig -> return UnitSelfSig
-    ValueSig fld ty msig -> do
-      let qvar = QVar (ProjP pmod fld)
-      selfSig <- selfifyModelType pmod msig
-      return $ ValueSelfSig qvar ty selfSig
-    TypeSig fld bnd ->
-      U.lunbind bnd $ \((tyId, U.unembed -> tsd), msig) -> do
-      let p = ProjP pmod fld
-          -- replace the local Con (IdP tyId) way of refering to
-          -- this definition in the rest of the signature by
-          -- the full projection from the model path.  Also replace the
-          -- type constructors
-          substitution_ = selfifyTypeSigDecl pmod tsd
-          substitution = (tyId, p) : substitution_
-          tsd' = U.substs substitution tsd
-          msig' = U.substs substitution msig
-      selfSig <- selfifyModelType pmod msig'
-      return $ TypeSelfSig (Con p) tsd' selfSig
-  
-
-selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(Identifier, Path)]
-selfifyTypeSigDecl pmod tsd =
-  case tsd of
-    TypeSigDecl Nothing Nothing -> error "selfifyTypeSigDecl: impossible"
-    TypeSigDecl (Just _k) Nothing -> mempty
-    TypeSigDecl Nothing (Just defn) -> selfifyTypeDefn pmod defn
-    TypeSigDecl (Just _) (Just _) -> error "selfifyTypeSigDecl: impossible"

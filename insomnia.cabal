@@ -44,6 +44,7 @@ library
                        Insomnia.Typecheck.TypeDefn
                        Insomnia.Typecheck.ModelType
                        --
+                       Insomnia.Typecheck.SelfSig
                        Insomnia.Typecheck.Selfify
                        --
                        Insomnia.Typecheck.Model

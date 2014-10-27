@@ -28,7 +28,7 @@ import Insomnia.Except (Except, runExcept)
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr (Var, QVar)
-import Insomnia.ModelType (TypeSigDecl, Signature)
+import Insomnia.ModelType (Signature)
 
 import Insomnia.Unify (MonadUnificationExcept(..),
                        UVar,
@@ -75,14 +75,6 @@ data GenerativeType =
   | EnumerationType !Nat -- ^ a finite enumeration type of N elements
   | AbstractType !Kind -- ^ an abstract type with no (visible) definition.
 --   | RecordType Rows -- ^ a record type with the given rows
-
--- | A selfified signature.  After selfification, all references to
--- declared types and values within the model are referenced
--- by their fully qualified name with respect to the path to the model.
-data SelfSig =
-  UnitSelfSig
-  | ValueSelfSig QVar Type SelfSig
-  | TypeSelfSig Con TypeSigDecl SelfSig
 
 $(makeLenses ''AlgConstructor)
 $(makeLenses ''AlgType)
@@ -266,6 +258,13 @@ lookupModelType ident = do
     Just msig -> return msig
     Nothing -> typeError ("no model type " <> formatErr ident
                           <> " in scope")
+
+-- | Extend the type signatures environment by adding the given
+-- signature.
+extendModelTypeCtx :: Identifier -> Signature -> TC a -> TC a
+extendModelTypeCtx ident msig =
+  local (envSigs . at ident ?~ msig)
+
 
 -- | Extend the data type environment by adding the declaration
 -- of the given data type with the given kind
