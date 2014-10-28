@@ -1,6 +1,7 @@
 model type PRELUDE {
   data Bool = True | False
   -- type Bool :: *
+  type Bool2 = Bool
 
   sig cond :: forall (c :: *) . Bool -> c -> c -> c
 

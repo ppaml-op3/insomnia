@@ -163,8 +163,12 @@ signature =
       (valueSig <$> (reserved "sig" *> varId <* coloncolon)
        <*> typeExpr)
       <|> (manifestTypeDefnSig <$> (dataDefn <|> enumDefn))
-      <|> (abstractTypeSig <$> (reserved "type" *> tyconIdentifier)
-           <*> (coloncolon *> kindExpr))
+      <|> (abstractOrAlias <$> (reserved "type" *> tyconIdentifier)
+           <*> ((Left <$> (coloncolon *> kindExpr))
+                <|> (Right <$> ((,)
+                                <$> many kindedTVar
+                                <* reservedOp "="
+                                <*> typeExpr))))
                                 
     valueSig :: Var -> Type -> Endo Signature
     valueSig v t = Endo $ \rest ->
@@ -177,6 +181,11 @@ signature =
       in Endo $ \rest ->
       TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
 
+    abstractOrAlias :: Field -> Either Kind ([(TyVar,Kind)], Type)
+                       -> Endo Signature
+    abstractOrAlias fieldName (Left k) = abstractTypeSig fieldName k
+    abstractOrAlias fieldName (Right ty) = typeAliasSig fieldName ty
+
     abstractTypeSig :: Field -> Kind -> Endo Signature
     abstractTypeSig fieldName k =
       let tv = U.s2n fieldName
@@ -184,9 +193,18 @@ signature =
       in Endo $ \rest ->
       TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
 
+    typeAliasSig :: Field -> ([(TyVar, Kind)], Type) -> Endo Signature
+    typeAliasSig fieldName (tyvars, ty) =
+      let tv = U.s2n fieldName
+          tsd = AliasTypeSigDecl (TypeAlias $ U.bind tyvars ty)
+      in Endo $ \rest ->
+      TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
+                                         
+
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
        <|> (typeDefn <?> "type definition")
+       <|> (typeAliasDefn <?> "type alias definition")
 
 valueDecl :: Parser Decl
 valueDecl =
@@ -244,6 +262,16 @@ enumDefn = mkEnumDefn
            <*> natural
   where
     mkEnumDefn nm card = (nm, EnumDefn card)
+
+typeAliasDefn :: Parser Decl
+typeAliasDefn = mkTypeAliasDefn
+                <$> (reserved "type" *> tyconIdentifier)
+                <*> many kindedTVar
+                <* reservedOp "="
+                <*> typeExpr
+  where
+    mkTypeAliasDefn fld tyvars ty =
+      TypeAliasDefn fld (TypeAlias $ U.bind tyvars ty)
 
 kindedTVar :: Parser (TyVar, Kind)
 kindedTVar =

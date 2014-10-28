@@ -226,15 +226,20 @@ ppDataDefn d bnd =
                  , indent "=" (ppConstrDefs constrDefs)
                  ])
   where
-    ppTyVarBindings = fsep . map ppTyVarBinding
-    ppTyVarBinding (v,k) = parens (pp v <+> indent coloncolon (pp k))
     ppConstrDefs = sep . prePunctuate "|" . map ppConstructorDef
     ppConstructorDef (ConstructorDef c ts) =
       pp c <+> nesting (fsep $ map pp ts)
 
+ppTyVarBindings :: [(TyVar, Kind)] -> PM Doc
+ppTyVarBindings = fsep . map ppTyVarBinding
+  where
+    ppTyVarBinding (v,k) = parens (pp v <+> indent coloncolon (pp k))
+
+
 instance Pretty Decl where
   pp (TypeDefn c td) = ppTypeDefn c td
   pp (ValueDecl f vd) = ppValueDecl f vd
+  pp (TypeAliasDefn f a) = ppTypeAlias f a
 
 instance Pretty PrettyTypeDefn where
   pp (PrettyTypeDefn fld defn) = ppTypeDefn fld defn
@@ -242,6 +247,16 @@ instance Pretty PrettyTypeDefn where
 ppTypeDefn :: Field -> TypeDefn -> PM Doc
 ppTypeDefn c (DataDefn d) = ppDataDefn c d
 ppTypeDefn c (EnumDefn n) = "enum" <+> pp c <+> pp n
+
+ppTypeAlias :: Field -> TypeAlias -> PM Doc
+ppTypeAlias c (TypeAlias bnd) =
+  let (tvks, ty) = UU.unsafeUnbind bnd
+  in "type" <+> (nesting $ fsep
+                 [
+                   pp c
+                 , ppTyVarBindings tvks
+                 , indent "=" (pp ty)
+                 ])
 
 
 ppValueDecl :: Field -> ValueDecl -> PM Doc
@@ -305,7 +320,9 @@ instance Pretty Signature where
       AbstractTypeSigDecl k ->
         fsep ["type", pp tv, indent coloncolon (pp k)]
         $$ pp sig
-
+      AliasTypeSigDecl a ->
+        ppTypeAlias fld a
+        
 instance Pretty (UVar a) where
   pp = text . show
 

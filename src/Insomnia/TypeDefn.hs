@@ -17,7 +17,7 @@ import Insomnia.Types
 
 -- | A type alias does not define a new type, but it defines a new name for
 -- an existing type expression.
-data TypeAlias = TypeAlias (Bind [KindedTVar] Type)
+newtype TypeAlias = TypeAlias (Bind [KindedTVar] Type)
                deriving (Show, Typeable, Generic)
 
 -- | A declaration of a type.  Note that we omit providing the name
