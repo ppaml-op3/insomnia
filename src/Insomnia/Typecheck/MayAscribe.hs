@@ -183,9 +183,9 @@ checkTypeSigDecl :: Field
                     -> TC ()
 checkTypeSigDecl fld tsd1 tsd2 =
   case tsd1 of
-    TypeSigDecl (Just k1) Nothing ->
+    AbstractTypeSigDecl k1 ->
       checkAbstractTypeDecl fld k1 tsd2
-    TypeSigDecl Nothing (Just defn1) ->
+    ManifestTypeSigDecl defn1 ->
       checkManifestTypeDecl fld defn1 tsd2
     _ -> error "MayAscribe.checkTypeSigDecl: internal error - either a kind or a definition should be specified"
 
@@ -198,17 +198,16 @@ checkAbstractTypeDecl :: Field
                       -> TC ()
 checkAbstractTypeDecl fld k1 tsd2 =
   case tsd2 of
-    TypeSigDecl (Just k2) Nothing ->
+    AbstractTypeSigDecl k2 ->
       unless (k1 `U.aeq` k2) $
       typeError ("abstract type " <> formatErr fld
                  <> " has kind " <> formatErr k1
                  <> " but signature expects " <> formatErr k2)
-    TypeSigDecl Nothing (Just defn2) ->
+    ManifestTypeSigDecl defn2 ->
       typeError ("abstract type " <> formatErr fld
                  <> " with kind " <> formatErr k1
                  <> " has been provided a definition in the signature "
                  <> formatErr (PrettyTypeDefn fld defn2))
-    _ -> error "MayAscribe.checkAbstractTypeDecl : internal error - either a kind or a definition should be specified"
 
 -- | Given a manifest type definition in the more specific signature, check
 -- that its declaration in the less specific signature is either the same
@@ -216,13 +215,13 @@ checkAbstractTypeDecl fld k1 tsd2 =
 checkManifestTypeDecl :: Field -> TypeDefn -> TypeSigDecl -> TC ()
 checkManifestTypeDecl fld defn1 tsd2 =
   case tsd2 of
-    TypeSigDecl (Just k2) Nothing -> do
+    AbstractTypeSigDecl k2 -> do
       (_, k1) <- checkTypeDefn (Con $ IdP $ U.s2n fld) defn1
       unless (k1 `U.aeq` k2) $
         typeError ("type declaration " <> formatErr (PrettyTypeDefn fld defn1)
                    <> " has kind " <> formatErr k1
                    <> " but expected " <> formatErr k2)
-    TypeSigDecl Nothing (Just defn2) ->
+    ManifestTypeSigDecl defn2 ->
       equivTypeDefn fld defn1 defn2
     _ -> error "MayAscribe.checkManifestTypeDecl : internal error - either a kind of a definition should be specified"
 

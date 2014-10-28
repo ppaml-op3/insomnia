@@ -18,7 +18,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Identifier
 import Insomnia.Types
-import Insomnia.TypeDefn (TypeDefn)
+import Insomnia.TypeDefn (TypeDefn, TypeAlias)
 
 type Var = Name Expr
 
@@ -159,7 +159,9 @@ instance Subst Expr Type where
 instance Subst Expr TypeDefn where
   subst _ _ = id
   substs _ = id
-
+instance Subst Expr TypeAlias where
+  subst _ _ = id
+  substs _ = id
 
 instance Subst Type Literal where
   subst _ _ = id

@@ -301,12 +301,9 @@ instance Pretty Signature where
   pp (TypeSig fld bnd) =
     let ((tv, U.unembed -> tsd), sig) = UU.unsafeUnbind bnd
     in case tsd of
-      TypeSigDecl _ (Just defn) -> ppTypeDefn fld defn $$ pp sig
-      TypeSigDecl (Just k) Nothing ->
+      ManifestTypeSigDecl defn -> ppTypeDefn fld defn $$ pp sig
+      AbstractTypeSigDecl k ->
         fsep ["type", pp tv, indent coloncolon (pp k)]
-        $$ pp sig
-      TypeSigDecl Nothing Nothing ->
-        ("<<internal error - TypeSigDecl Nothing Nothing for field" <+> pp tv)
         $$ pp sig
 
 instance Pretty (UVar a) where

@@ -15,9 +15,8 @@ import Insomnia.Typecheck.TypeDefn (checkTypeDefn, extendTypeDefnCtx)
 extendTypeSigDeclCtx :: Con -> TypeSigDecl -> TC a -> TC a
 extendTypeSigDeclCtx dcon tsd = do
   case tsd of
-    TypeSigDecl _ (Just defn) -> extendTypeDefnCtx dcon defn
-    TypeSigDecl (Just k) Nothing -> extendDConCtx dcon (AbstractType k)
-    TypeSigDecl _ _ -> error "unexpected TypeSigDecl in extendTypeSigDeclCtx"
+    ManifestTypeSigDecl defn -> extendTypeDefnCtx dcon defn
+    AbstractTypeSigDecl k -> extendDConCtx dcon (AbstractType k)
 
 -- | Check that the given model type expression is well-formed, and
 -- return both the model type expression and the signature that it
@@ -55,14 +54,10 @@ checkSignature = flip checkSignature' ensureNoDuplicateFields
 checkTypeSigDecl :: Con -> TypeSigDecl -> TC TypeSigDecl
 checkTypeSigDecl dcon tsd =
   case tsd of
-    TypeSigDecl Nothing (Just defn) -> do
+    ManifestTypeSigDecl defn -> do
       (defn', _) <-  checkTypeDefn dcon defn
-      return $ TypeSigDecl Nothing (Just defn')
-    TypeSigDecl (Just k) Nothing -> do
+      return $ ManifestTypeSigDecl defn'
+    AbstractTypeSigDecl k -> do
       checkKind k
-      return $ TypeSigDecl (Just k) Nothing
-    TypeSigDecl Nothing Nothing ->
-      typeError "checkTypeSigDecl: Nothing Nothing - internal error"
-    TypeSigDecl (Just _) (Just _) ->
-      -- TODO: what do we think of this? Just keep the definition
-      typeError "checkTypeSigDecl: Just Just - internal error, perhaps."
+      return $ AbstractTypeSigDecl k
+

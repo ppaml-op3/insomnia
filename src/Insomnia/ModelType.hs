@@ -1,9 +1,8 @@
-{-# LANGUAGE DeriveDataTypeable, DeriveGeneric, TemplateHaskell,
+{-# LANGUAGE DeriveDataTypeable, DeriveGeneric,
       MultiParamTypeClasses
   #-}
 module Insomnia.ModelType where
 
-import Control.Lens
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
@@ -29,12 +28,10 @@ data Signature =
 -- @Either Kind (Kind, TypeDefn)@, but we will separate them, for now.
 -- The invariant, however, is that both Maybes can't be Nothing.
 data TypeSigDecl =
-  TypeSigDecl { _typeSigDeclKind :: Maybe Kind
-              , _typeSigDeclManifest :: Maybe TypeDefn
-              }
+  AbstractTypeSigDecl !Kind
+  | ManifestTypeSigDecl !TypeDefn
+  | AliasTypeSigDecl !TypeAlias
   deriving (Show, Typeable, Generic)
-
-$(makeLenses ''TypeSigDecl)
 
 instance Alpha ModelType
 instance Alpha Signature
@@ -42,3 +39,4 @@ instance Alpha TypeSigDecl
 
 instance Subst Path Signature
 instance Subst Path TypeSigDecl
+

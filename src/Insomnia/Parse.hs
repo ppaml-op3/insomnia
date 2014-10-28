@@ -173,14 +173,14 @@ signature =
     manifestTypeDefnSig :: (Field, TypeDefn) -> Endo Signature
     manifestTypeDefnSig (fieldName, td) =
       let tv = U.s2n fieldName
-          tsd = TypeSigDecl Nothing (Just td)
+          tsd = ManifestTypeSigDecl td
       in Endo $ \rest ->
       TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
 
     abstractTypeSig :: Field -> Kind -> Endo Signature
     abstractTypeSig fieldName k =
       let tv = U.s2n fieldName
-          tsd = TypeSigDecl (Just k) Nothing
+          tsd = AbstractTypeSigDecl k
       in Endo $ \rest ->
       TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
 

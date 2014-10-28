@@ -67,7 +67,7 @@ naturalSignature = go . modelDecls
           let ident = U.s2n fld
               dcon = Con (IdP ident)
           sig' <- extendTypeDefnCtx dcon defn kont
-          let tsd = TypeSigDecl Nothing (Just defn)
+          let tsd = ManifestTypeSigDecl defn
           return (TypeSig fld (U.bind (ident, U.embed tsd) sig'))
 
 -- | Typecheck the contents of a model.

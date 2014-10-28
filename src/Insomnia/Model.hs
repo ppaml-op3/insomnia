@@ -31,6 +31,7 @@ data Model = Model { modelDecls :: [Decl] }
 data Decl =
   ValueDecl !Field !ValueDecl -- ^ declaration of a value
   | TypeDefn !Field !TypeDefn   -- ^ generative construction of new types
+  | TypeAliasDefn !Field !TypeAlias -- ^ a type alias definition
   deriving (Show, Typeable, Generic)
 
 data ValueDecl =
@@ -48,4 +49,3 @@ instance Subst Path ValueDecl
 
 instance Subst Expr Decl
 instance Subst Expr ValueDecl
-

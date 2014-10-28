@@ -49,10 +49,8 @@ selfifyModelType pmod msig_ =
 selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(Identifier, Path)]
 selfifyTypeSigDecl pmod tsd =
   case tsd of
-    TypeSigDecl Nothing Nothing -> error "selfifyTypeSigDecl: impossible"
-    TypeSigDecl (Just _k) Nothing -> mempty
-    TypeSigDecl Nothing (Just defn) -> selfifyTypeDefn pmod defn
-    TypeSigDecl (Just _) (Just _) -> error "selfifyTypeSigDecl: impossible"
+    AbstractTypeSigDecl _k -> mempty
+    ManifestTypeSigDecl defn -> selfifyTypeDefn pmod defn
 
 -- | Given the path to a type defintion and the type definition, construct
 -- a substitution that replaces unqualified references to the components of

@@ -14,6 +14,12 @@ import Unbound.Generics.LocallyNameless
 import Insomnia.Identifier
 import Insomnia.Types
 
+
+-- | A type alias does not define a new type, but it defines a new name for
+-- an existing type expression.
+data TypeAlias = TypeAlias (Bind [KindedTVar] Type)
+               deriving (Show, Typeable, Generic)
+
 -- | A declaration of a type.  Note that we omit providing the name
 -- of the type here. It will be provided by the model that the definition
 -- is a part of.
@@ -47,9 +53,12 @@ canonicalizeConstructorDefs = sortBy $ comparing $ view constructorDefCon
 -- term and type variables.
 instance Alpha ConstructorDef
 instance Alpha TypeDefn
+instance Alpha TypeAlias
 
 instance Subst Path TypeDefn
 instance Subst Path ConstructorDef
+instance Subst Path TypeAlias
 
 -- Capture avoid substitution of types for type variables in the following.
 instance Subst Type ConstructorDef
+instance Subst Type TypeAlias
