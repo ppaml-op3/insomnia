@@ -8,15 +8,16 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier (Identifier, Path(..), Field)
-import Insomnia.Types (Con(..), Type, Kind)
+import Insomnia.Types (Con(..), Type, Kind, kArrs)
 import Insomnia.TypeDefn
 import Insomnia.ModelType (Signature(..), TypeSigDecl(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.ModelType (extendTypeSigDeclCtx)
 
-import Insomnia.Typecheck.TypeDefn (checkTypeDefn)
+import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
 import Insomnia.Typecheck.Equiv.TypeDefn (equivTypeDefn)
+import Insomnia.Typecheck.Equiv.TypeAlias (equivTypeAlias)
 
 -- | TODO: @msig1 `mayAscribe` msig2@ succeeds if it is okay to
 -- ascribe @msig2@ to any model whose type is @msig1@.  That is,
@@ -175,7 +176,7 @@ checkTypeFieldTail fld bnd msig1 kont =
             extendTypeSigDeclCtx dcon1 tsd1 $
               kont (TypePreSig fld' ident1 tsd1 (TailPreSig mrest1)) mrest2
         
--- | TODO: @checkTypeSigDecl fld tsd1 tsd2@ checks that the type declaration
+-- | @checkTypeSigDecl fld tsd1 tsd2@ checks that the type declaration
 -- @tsd2@ is compatible with and is no more specific than @tsd1@.
 checkTypeSigDecl :: Field
                     -> TypeSigDecl
@@ -187,8 +188,9 @@ checkTypeSigDecl fld tsd1 tsd2 =
       checkAbstractTypeDecl fld k1 tsd2
     ManifestTypeSigDecl defn1 ->
       checkManifestTypeDecl fld defn1 tsd2
-    _ -> error "MayAscribe.checkTypeSigDecl: internal error - either a kind or a definition should be specified"
-
+    AliasTypeSigDecl alias ->
+      checkAliasTypeDecl fld alias tsd2
+      
 -- | Given an abstract type in the more specific signature, check
 -- that its corresponding declaration in the less specific signature is
 -- also an abstract type of equivalent kind.
@@ -207,7 +209,7 @@ checkAbstractTypeDecl fld k1 tsd2 =
       typeError ("abstract type " <> formatErr fld
                  <> " with kind " <> formatErr k1
                  <> " has been provided a definition in the signature "
-                 <> formatErr (PrettyTypeDefn fld defn2))
+                 <> formatErr (PrettyField fld defn2))
 
 -- | Given a manifest type definition in the more specific signature, check
 -- that its declaration in the less specific signature is either the same
@@ -218,10 +220,31 @@ checkManifestTypeDecl fld defn1 tsd2 =
     AbstractTypeSigDecl k2 -> do
       (_, k1) <- checkTypeDefn (Con $ IdP $ U.s2n fld) defn1
       unless (k1 `U.aeq` k2) $
-        typeError ("type declaration " <> formatErr (PrettyTypeDefn fld defn1)
+        typeError ("type declaration " <> formatErr (PrettyField fld defn1)
                    <> " has kind " <> formatErr k1
                    <> " but expected " <> formatErr k2)
     ManifestTypeSigDecl defn2 ->
       equivTypeDefn fld defn1 defn2
-    _ -> error "MayAscribe.checkManifestTypeDecl : internal error - either a kind of a definition should be specified"
+
+-- | Given a type alias in the moder specific signature, check that
+-- its declaration in the less specific signature is either an
+-- abstract type with the same kind.
+checkAliasTypeDecl :: Field -> TypeAlias -> TypeSigDecl -> TC ()
+checkAliasTypeDecl fld alias1 tsd2 =
+  case tsd2 of
+    AbstractTypeSigDecl k2 -> do
+      (_, aliasInfo) <- checkTypeAlias alias1
+      let
+        k1 = typeAliasInfoKind aliasInfo 
+      unless (k1 `U.aeq` k2) $
+        typeError ("The type alias " <> formatErr (PrettyField fld alias1)
+                   <> "has kind " <> formatErr k1
+                   <> " but expected " <> formatErr k2)
+    ManifestTypeSigDecl defn2 ->
+      typeError ("The module containing type alias "
+                 <> formatErr (PrettyField fld alias1)
+                 <> " cannot be ascribed a signature with type defined "
+                 <> formatErr (PrettyField fld defn2))
+    AliasTypeSigDecl alias2 ->
+      equivTypeAlias fld alias1 alias2
 

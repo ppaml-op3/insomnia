@@ -241,8 +241,11 @@ instance Pretty Decl where
   pp (ValueDecl f vd) = ppValueDecl f vd
   pp (TypeAliasDefn f a) = ppTypeAlias f a
 
-instance Pretty PrettyTypeDefn where
-  pp (PrettyTypeDefn fld defn) = ppTypeDefn fld defn
+instance Pretty (PrettyField TypeDefn) where
+  pp (PrettyField fld defn) = ppTypeDefn fld defn
+
+instance Pretty (PrettyField TypeAlias) where
+  pp (PrettyField fld alias) = ppTypeAlias fld alias
 
 ppTypeDefn :: Field -> TypeDefn -> PM Doc
 ppTypeDefn c (DataDefn d) = ppDataDefn c d

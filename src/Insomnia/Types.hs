@@ -61,6 +61,18 @@ data Type = TV TyVar
 
 infixl 6 `TApp`
 
+-- | iterate kind arrow construction
+-- @kArrs [k1, ... kN] kcod = k1 `KArr` k2 `KArr` ... `KArr` kN `kArr` kcod@
+kArrs :: [Kind] -> Kind -> Kind
+kArrs [] kcod = kcod
+kArrs (kdom:ks) kcod = kdom `KArr` kArrs ks kcod
+
+-- | iterate type application
+-- @tApps t0 [t1, ..., tN] = t0 `TApp` t1 `TApp` ... `TApp` tN
+tApps :: Type -> [Type] -> Type
+tApps t0 [] = t0
+tApps t0 (t1:ts) = tApps (TApp t0 t1) ts
+
 -- Formatted output
 instance Format Con
 instance Format Kind

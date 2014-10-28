@@ -48,6 +48,7 @@ library
                        Insomnia.Typecheck.Selfify
                        --
                        Insomnia.Typecheck.Equiv.TypeDefn
+                       Insomnia.Typecheck.Equiv.TypeAlias
                        --
                        Insomnia.Typecheck.MayAscribe
                        --

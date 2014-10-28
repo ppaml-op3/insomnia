@@ -4,10 +4,15 @@
 module Insomnia.Typecheck.Type where
 
 import Control.Lens
-import Data.Monoid ((<>))
+import Control.Monad (zipWithM_, when)
+import Control.Monad.Reader.Class (MonadReader(..))
+
+import Data.List (intersperse)
+import Data.Monoid (Monoid(..),(<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
+import Insomnia.TypeDefn (TypeAlias(..))
 import Insomnia.Types
 
 import Insomnia.Typecheck.Env
@@ -36,7 +41,7 @@ ensureSubkind (tblame, ksub) ksup =
 ensureKArr :: Kind -> Type -> TC (Kind, Kind)
 ensureKArr k t =
   case k of
-    KType -> typeError ("expected an arrow kind, got ⋆ when checking"
+    KType -> typeError ("expected an arrow kind, got ⋆ when checking "
                         <> formatErr t)
     KArr k1 k2 -> return (k1, k2)
 
@@ -51,10 +56,10 @@ checkType t k = do
 inferType :: Type  -> TC (Type, Kind)
 inferType t =
   case t of
-    TC dcon -> do
-      gt <- lookupDCon dcon
-      k' <- inferGenerativeType gt
-      return (t,k')
+    TC {} ->
+      expandAliasApplication t []
+    TApp t1 t2 ->
+      expandAliasApplication t1 [t2]
     TUVar u -> typeError ("unexpected unification variable "
                           <> formatErr u)
     TV v -> do
@@ -64,16 +69,86 @@ inferType t =
       checkKind k1
       t1' <- checkType t1 k1
       return (TAnn t1' k1, k1)
-    TApp t1 t2 -> do
-      (t1', k1) <- inferType t1
-      (k1dom, k1cod) <- ensureKArr k1 t
-      t2' <- checkType t2 k1dom
-      return (TApp t1' t2', k1cod)
     TForall bnd -> do
       U.lunbind bnd $ \((v, kdom), tcod) -> do
         checkKind kdom
         tcod' <- extendTyVarCtx v kdom $ checkType tcod KType
         return (TForall (U.bind (v, kdom) tcod'), KType)        
+
+-- | @expandAliasApplication t targs@ recursively unfolds t until a
+-- type alias is exposed which is then expanded with the given
+-- arguments and the resulting type is returned.  If the head is some
+-- other higher-kinded type, the sequence of type applications is
+-- typechecked in the normal manner and the result type is just the
+-- sequence of type applcations.
+--
+-- Notes:
+-- 1. It is an error to apply a type alias to fewer arguments than it expects.
+-- 2. The result of expanding a type alias may be higher-kinded, so the alias
+--    could appear under _more_ applications than its number of arguments.
+-- 3. The result of expanding an alias may itself be an alias.  Cycles are
+--    assumed not to occur, so we expand recursively until there are no more
+--    aliases at the head.
+expandAliasApplication :: Type -> [Type] -> TC (Type, Kind)
+expandAliasApplication t targs =
+  case t of
+    TApp t' targ -> expandAliasApplication t' (targ:targs)
+    TC dcon -> do
+      desc <- lookupDCon dcon
+      case desc of
+        GenerativeTyCon gt -> do
+          k' <- inferGenerativeType gt
+          reconstructApplication (t,k') targs
+        AliasTyCon aliasInfo aliasClosure -> do
+          (tsubArgs, tAppArgs) <- checkAliasInfoArgs dcon aliasInfo targs
+          tRHS <- expandAliasClosure aliasClosure tsubArgs
+          -- maybe RHS is also an alias, expand it again.
+          expandAliasApplication tRHS tAppArgs
+    TV v -> do
+      k' <- lookupTyVar v
+      reconstructApplication (t, k') targs
+    _ -> typeError ("Type " <> formatErr t
+                    <> "cannot be applied to "
+                    <> mconcat (intersperse ", " $ map formatErr targs))
+
+-- | Given a type alias and some number of types to which it is applied,
+-- split up the arguments into the set that's required by the alias,
+-- and the rest to which the RHS of the alias will be applied.
+-- Also check that the mandatory args are of the correct kind.
+checkAliasInfoArgs :: Con -> TypeAliasInfo -> [Type] -> TC ([Type], [Type])
+checkAliasInfoArgs dcon (TypeAliasInfo kargs _kRHS) targs = do
+  let
+    n = length kargs
+  when (length targs < n) $
+    typeError ("Type alias " <> formatErr dcon
+               <> " expects " <> formatErr n
+               <> " type arguments, but applied only to "
+               <> formatErr (length targs)
+               <> " types")
+  let (tsubArgs, tAppArgs) = splitAt n targs
+  zipWithM_ checkType tsubArgs kargs
+  return (tsubArgs, tAppArgs)
+
+expandAliasClosure :: TypeAliasClosure -> [Type] -> TC Type
+expandAliasClosure (TypeAliasClosure env (TypeAlias bnd)) targs =
+  local (const env)
+  $ U.lunbind bnd
+  $ \(tvks, ty) -> return $ let tvs = map fst tvks
+                                substitution = zip tvs targs
+                            in U.substs substitution ty
+
+-- | @reconstructApplication (thead, khead) [t1,...,tN]@ returns the
+-- type @thead `TApp` t1 `TApp` ... `TApp` tN@ and its infered kind
+-- after checking that each argument checks against its corresponding
+-- kind in @khead@
+reconstructApplication :: (Type, Kind) -> [Type] -> TC (Type, Kind)
+reconstructApplication (thead, k) targs =
+  case targs of
+    [] -> return (thead, k)
+    (targ:targs') -> do
+      (kdom, kcod) <- ensureKArr k thead
+      targ' <- checkType targ kdom
+      reconstructApplication (TApp thead targ', kcod) targs'
 
 inferGenerativeType :: GenerativeType -> TC Kind
 inferGenerativeType (AlgebraicType algTy) =

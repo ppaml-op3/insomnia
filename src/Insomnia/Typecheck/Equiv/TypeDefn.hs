@@ -11,7 +11,7 @@ import Insomnia.Identifier (Field)
 import Insomnia.Types (Kind, TyVar)
 import Insomnia.TypeDefn (TypeDefn (..),
                           ConstructorDef(..),
-                          PrettyTypeDefn(..),
+                          PrettyField(..),
                           canonicalizeConstructorDefs)
 
 import Insomnia.Typecheck.Env
@@ -32,9 +32,9 @@ equivTypeDefn fld defn1 defn2 =
       U.lunbind2 bnd1 bnd2 $ \res ->
         case res of
           Nothing -> typeError ("data type "
-                                <> formatErr (PrettyTypeDefn fld defn1)
+                                <> formatErr (PrettyField fld defn1)
                                 <> " has different number of type parameters than "
-                                <> formatErr (PrettyTypeDefn fld defn2))
+                                <> formatErr (PrettyField fld defn2))
           Just (kvs1, cdefs1_, kvs2, cdefs2_) -> do
             zipWithM_ (equivTypeParameter fld) kvs1 kvs2
             extendTyVarsCtx kvs1 $ do
@@ -43,21 +43,21 @@ equivTypeDefn fld defn1 defn2 =
                 cdefs2 = canonicalizeConstructorDefs cdefs2_
               unless (length cdefs1 == length cdefs2) $
                 typeError ("data type definition "
-                           <> formatErr (PrettyTypeDefn fld defn1)
+                           <> formatErr (PrettyField fld defn1)
                            <> " has a different number of constructors than "
-                           <> formatErr (PrettyTypeDefn fld defn2))
+                           <> formatErr (PrettyField fld defn2))
               eqCs <- zipWithM equivConstructorDef cdefs1 cdefs2
               let
                 allCsEq = getAll $ foldMap All eqCs
               unless allCsEq $
                 typeError ("data type definiton "
-                           <> formatErr (PrettyTypeDefn fld defn1)
+                           <> formatErr (PrettyField fld defn1)
                            <> " has different constructors than "
-                           <> formatErr (PrettyTypeDefn fld defn2))
+                           <> formatErr (PrettyField fld defn2))
     _ -> typeError ("conflicting definitions "
-                    <> formatErr (PrettyTypeDefn fld defn1)
+                    <> formatErr (PrettyField fld defn1)
                     <> " and "
-                    <> formatErr (PrettyTypeDefn fld defn2))
+                    <> formatErr (PrettyField fld defn2))
 
 equivTypeParameter :: Field
                       -> (TyVar, Kind)

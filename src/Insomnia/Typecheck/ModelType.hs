@@ -10,13 +10,16 @@ import Insomnia.ModelType
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType)
-import Insomnia.Typecheck.TypeDefn (checkTypeDefn, extendTypeDefnCtx)
+import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias,
+                                    extendTypeDefnCtx, extendTypeAliasCtx)
 
 extendTypeSigDeclCtx :: Con -> TypeSigDecl -> TC a -> TC a
 extendTypeSigDeclCtx dcon tsd = do
   case tsd of
     ManifestTypeSigDecl defn -> extendTypeDefnCtx dcon defn
-    AbstractTypeSigDecl k -> extendDConCtx dcon (AbstractType k)
+    AbstractTypeSigDecl k ->
+      extendDConCtx dcon (GenerativeTyCon $ AbstractType k)
+    AliasTypeSigDecl alias -> extendTypeAliasCtx dcon alias
 
 -- | Check that the given model type expression is well-formed, and
 -- return both the model type expression and the signature that it
@@ -60,4 +63,7 @@ checkTypeSigDecl dcon tsd =
     AbstractTypeSigDecl k -> do
       checkKind k
       return $ AbstractTypeSigDecl k
+    AliasTypeSigDecl alias -> do
+      (alias', _) <- checkTypeAlias alias
+      return $ AliasTypeSigDecl alias'
 

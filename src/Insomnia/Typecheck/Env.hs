@@ -27,6 +27,7 @@ import Insomnia.Except (Except, runExcept)
 
 import Insomnia.Identifier
 import Insomnia.Types
+import Insomnia.TypeDefn (TypeAlias(..))
 import Insomnia.Expr (Var, QVar)
 import Insomnia.ModelType (Signature)
 
@@ -35,7 +36,8 @@ import Insomnia.Unify (MonadUnificationExcept(..),
                        UnificationT,
                        runUnificationT)
 
-import Insomnia.Pretty (Pretty(..), ppDefault, text, vcat, fsep, punctuate)
+import Insomnia.Pretty (Pretty(..), ppDefault, ppTypeAlias,
+                        text, vcat, fsep, punctuate)
 
 
 -- | Type checker errors
@@ -76,13 +78,24 @@ data GenerativeType =
   | AbstractType !Kind -- ^ an abstract type with no (visible) definition.
 --   | RecordType Rows -- ^ a record type with the given rows
 
-$(makeLenses ''AlgConstructor)
-$(makeLenses ''AlgType)
-  
+data TypeAliasInfo =
+  TypeAliasInfo { _typeAliasInfoMandatoryArity :: [Kind] -- type parameters that the type alias requires
+                , _typeAliasInfoRHSKind :: Kind -- the kind of the result of the alias
+                }
+
+-- | Type constructor descriptors.  A type constructor is either
+-- generative (denotes a "new" type) or it is an alias.
+data TyConDesc =
+  GenerativeTyCon !GenerativeType
+  | AliasTyCon !TypeAliasInfo !TypeAliasClosure
+
+-- | A Type alias closure captures the environment (actually just the tycon descriptors, due to phase distinction)
+data TypeAliasClosure = TypeAliasClosure !Env !TypeAlias
+
 -- | Typechecking environment
 data Env = Env {
   _envSigs :: M.Map Identifier Signature -- ^ signatures
-  , _envDCons :: M.Map Con GenerativeType -- ^ data types
+  , _envDCons :: M.Map Con TyConDesc -- ^ type constructor descriptors
   , _envCCons :: M.Map Con AlgConstructor -- ^ value constructors
   , _envGlobals :: M.Map QVar Type      -- ^ declared global vars
   , _envGlobalDefns :: M.Map QVar ()    -- ^ defined global vars
@@ -91,6 +104,10 @@ data Env = Env {
   , _envVisibleSelector :: M.Map Var () -- ^ local vars that may be used as indices of tabulated functions.  (Come into scope in "forall" expressions)
   }
 
+
+$(makeLenses ''AlgConstructor)
+$(makeLenses ''AlgType)
+$(makeLenses ''TypeAliasInfo)
 
 $(makeLenses ''Env)
 
@@ -109,6 +126,13 @@ instance Pretty GenerativeType where
   pp (EnumerationType n) = pp n
   pp (AbstractType k) = pp k
 
+instance Pretty TyConDesc where
+  pp (GenerativeTyCon gt) = pp gt
+  pp (AliasTyCon _ clo) = pp clo
+
+instance Pretty TypeAliasClosure where
+  pp (TypeAliasClosure _ a) = ppTypeAlias "_" a
+
 
 instance Pretty Env where
   pp env = vcat [ "sigs", pp (env^.envSigs)
@@ -119,6 +143,9 @@ instance Pretty Env where
                                   -- TODO: the rest of the env
                 ]
 
+typeAliasInfoKind :: TypeAliasInfo -> Kind
+typeAliasInfoKind (TypeAliasInfo kdoms kcod) = kArrs kdoms kcod
+
 -- | The empty typechecking environment
 emptyEnv :: Env
 emptyEnv = Env mempty mempty mempty mempty mempty mempty mempty mempty
@@ -126,10 +153,10 @@ emptyEnv = Env mempty mempty mempty mempty mempty mempty mempty mempty
 -- | Base environment with builtin types.
 baseEnv :: Env
 baseEnv = emptyEnv
-          & (envDCons . at conArrow) .~ Just (AlgebraicType algArrow)
-          & (envDCons . at conDist) .~ Just (AlgebraicType algDist)
-          & (envDCons . at conInt) .~ Just (AlgebraicType algInt)
-          & (envDCons . at conReal) .~ Just (AlgebraicType algReal)
+          & (envDCons . at conArrow) ?~ GenerativeTyCon (AlgebraicType algArrow)
+          & (envDCons . at conDist) ?~ GenerativeTyCon (AlgebraicType algDist)
+          & (envDCons . at conInt) ?~ GenerativeTyCon (AlgebraicType algInt)
+          & (envDCons . at conReal) ?~ GenerativeTyCon (AlgebraicType algReal)
 
 builtinCon :: String -> Con
 builtinCon = Con . IdP . U.s2n
@@ -211,7 +238,7 @@ mkConstructorType constr =
     go t (tvk:tvks) = go (TForall (U.bind tvk t)) tvks
 
 -- | Look up info about a datatype
-lookupDCon :: Con -> TC GenerativeType
+lookupDCon :: Con -> TC TyConDesc
 lookupDCon d = do
   m <- view (envDCons . at d)
   case m of
@@ -268,7 +295,7 @@ extendModelTypeCtx ident msig =
 
 -- | Extend the data type environment by adding the declaration
 -- of the given data type with the given kind
-extendDConCtx :: Con -> GenerativeType -> TC a -> TC a
+extendDConCtx :: Con -> TyConDesc -> TC a -> TC a
 extendDConCtx dcon k = local (envDCons . at dcon ?~ k)
 
 extendConstructorsCtx :: [(Con, AlgConstructor)] -> TC a -> TC a

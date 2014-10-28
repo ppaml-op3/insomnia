@@ -34,7 +34,10 @@ type DataDefn = Bind [KindedTVar] [ConstructorDef]
 
 -- | This type exists merely so that we can give it a Pretty instance
 -- in the pretty printer.
-data PrettyTypeDefn = PrettyTypeDefn Field TypeDefn
+data PrettyField a = PrettyField !Field !a
+
+type PrettyTypeDefn = PrettyField TypeDefn
+type PrettyTypeAlias = PrettyField TypeAlias
 
 -- | A value constructor with the given name, taking arguments of
 -- the given types.

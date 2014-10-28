@@ -51,6 +51,7 @@ selfifyTypeSigDecl pmod tsd =
   case tsd of
     AbstractTypeSigDecl _k -> mempty
     ManifestTypeSigDecl defn -> selfifyTypeDefn pmod defn
+    AliasTypeSigDecl alias -> mempty
 
 -- | Given the path to a type defintion and the type definition, construct
 -- a substitution that replaces unqualified references to the components of
@@ -68,4 +69,3 @@ selfifyTypeDefn pmod (DataDefn bnd) = let
                                       long = ProjP p fld
                                   in Just (short, long)
     mkSubst _ _                 = Nothing
-

@@ -24,7 +24,10 @@ import Insomnia.Unify (Unifiable(..),
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkType)
 import Insomnia.Typecheck.Expr (checkExpr)
-import Insomnia.Typecheck.TypeDefn (checkTypeDefn, extendTypeDefnCtx)
+import Insomnia.Typecheck.TypeDefn (checkTypeDefn,
+                                    checkTypeAlias,
+                                    extendTypeDefnCtx,
+                                    extendTypeAliasCtx)
 import Insomnia.Typecheck.ModelType (checkModelType)
 import Insomnia.Typecheck.Selfify (selfifyTypeDefn)
 import Insomnia.Typecheck.MayAscribe (mayAscribe)
@@ -68,7 +71,13 @@ naturalSignature = go . modelDecls
               dcon = Con (IdP ident)
           sig' <- extendTypeDefnCtx dcon defn kont
           let tsd = ManifestTypeSigDecl defn
-          return (TypeSig fld (U.bind (ident, U.embed tsd) sig'))
+          return $ TypeSig fld (U.bind (ident, U.embed tsd) sig')
+        TypeAliasDefn fld alias -> do
+          let ident = U.s2n fld
+              dcon = Con (IdP ident)
+          sig' <- extendTypeAliasCtx dcon alias kont
+          let tsd = AliasTypeSigDecl alias
+          return $ TypeSig fld (U.bind (ident, U.embed tsd) sig')
 
 -- | Typecheck the contents of a model.
 checkModel :: Path -> Model -> TC Model
@@ -91,6 +100,11 @@ checkDecl pmod d =
       guardDuplicateDConDecl dcon
       (td', _) <- checkTypeDefn dcon td
       return $ TypeDefn fld td'
+    TypeAliasDefn fld alias -> do
+      let dcon = Con (ProjP pmod fld)
+      guardDuplicateDConDecl dcon
+      (alias', _) <- checkTypeAlias alias
+      return $ TypeAliasDefn fld alias'
     ValueDecl fld vd ->
       let qfld = QVar (ProjP pmod fld)
       in ValueDecl fld <$> checkValueDecl fld qfld vd
@@ -193,7 +207,7 @@ extendDCtx pmod d =
   case d of
     ValueDecl fld vd -> extendValueDeclCtx pmod fld vd
     TypeDefn fld td -> \rest kont -> do
-      let p = (ProjP pmod fld)
+      let p = ProjP pmod fld
           shortIdent = U.s2n fld
           substitution_ = selfifyTypeDefn pmod td
           substitution = (shortIdent, p) : substitution_
@@ -201,6 +215,14 @@ extendDCtx pmod d =
           td' = U.substs substitution td
           rest' = U.substs substitution rest
       extendTypeDefnCtx (Con p) td' (kont rest')
+    TypeAliasDefn fld alias -> \rest kont -> do
+      let p = ProjP pmod fld
+          shortIdent = U.s2n fld
+          substitution = [(shortIdent, p)]
+          -- don't need to substitute into 'alias' because type
+          -- aliases are not allowed to be recursive.
+          rest' = U.substs substitution rest
+      extendTypeAliasCtx (Con p) alias (kont rest')
 
 extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC [Decl]) -> TC [Decl]
 extendValueDeclCtx pmod fld vd =
