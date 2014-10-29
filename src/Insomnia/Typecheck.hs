@@ -8,19 +8,15 @@ module Insomnia.Typecheck ( Insomnia.Typecheck.Env.runTC
 import Control.Lens
 import Control.Applicative ((<$>))
 import Control.Monad.Reader.Class (MonadReader(..))
-import Data.Monoid (Monoid(..), (<>))
-
-import qualified Unbound.Generics.LocallyNameless as U
+import Data.Monoid ((<>))
 
 import Insomnia.Identifier
-import Insomnia.Types
-import Insomnia.Expr
 import Insomnia.ModelType
 import Insomnia.Toplevel
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.ModelType (checkModelType, extendTypeSigDeclCtx)
-import Insomnia.Typecheck.Selfify (selfifyModelType, selfifyTypeDefn)
+import Insomnia.Typecheck.Selfify (selfifyModelType)
 import Insomnia.Typecheck.Model (inferModelExpr)
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
 

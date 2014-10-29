@@ -8,7 +8,7 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier (Identifier, Path(..), Field)
-import Insomnia.Types (Con(..), Type, Kind, kArrs)
+import Insomnia.Types (Con(..), Type, Kind)
 import Insomnia.TypeDefn
 import Insomnia.ModelType (Signature(..), TypeSigDecl(..))
 
@@ -210,6 +210,8 @@ checkAbstractTypeDecl fld k1 tsd2 =
                  <> " with kind " <> formatErr k1
                  <> " has been provided a definition in the signature "
                  <> formatErr (PrettyField fld defn2))
+    AliasTypeSigDecl alias2 ->
+      error ("MayAscribe.checkAbstractTypeDecl: need to check that the alias expands to the same abstract type")
 
 -- | Given a manifest type definition in the more specific signature, check
 -- that its declaration in the less specific signature is either the same
@@ -225,6 +227,11 @@ checkManifestTypeDecl fld defn1 tsd2 =
                    <> " but expected " <> formatErr k2)
     ManifestTypeSigDecl defn2 ->
       equivTypeDefn fld defn1 defn2
+    AliasTypeSigDecl alias2 ->
+      typeError ("module defining type declaration "
+                 <> formatErr (PrettyField fld defn1)
+                 <> " cannot be ascribed a type alias "
+                 <> formatErr (PrettyField fld alias2))
 
 -- | Given a type alias in the moder specific signature, check that
 -- its declaration in the less specific signature is either an
