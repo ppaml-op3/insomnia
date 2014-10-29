@@ -6,6 +6,7 @@
 --     = {t : Self(p; K1),  Self(p; K2[p.t/a])}
 module Insomnia.Typecheck.SelfSig where
 
+import Insomnia.Identifier (Path)
 import Insomnia.Types (Con, Type)
 import Insomnia.Expr (QVar)
 import Insomnia.ModelType (TypeSigDecl)
@@ -17,3 +18,4 @@ data SelfSig =
   UnitSelfSig
   | ValueSelfSig QVar Type SelfSig
   | TypeSelfSig Con TypeSigDecl SelfSig
+  | SubmodelSelfSig Path SelfSig SelfSig

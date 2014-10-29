@@ -14,10 +14,11 @@ import Insomnia.Identifier (Path(..), Identifier)
 import Insomnia.Types (Con(..))
 import Insomnia.Expr (QVar(..))
 import Insomnia.TypeDefn (TypeDefn(..), ConstructorDef(..))
-import Insomnia.ModelType (Signature(..), TypeSigDecl(..))
+import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
+import Insomnia.Typecheck.SigOfModelType (signatureOfModelType)
 
 -- | "Selfification" (c.f. TILT) is the process of adding to the current scope
 -- a type variable of singleton kind (ie, a module variable standing
@@ -44,14 +45,21 @@ selfifyModelType pmod msig_ =
           msig' = U.substs substitution msig
       selfSig <- selfifyModelType pmod msig'
       return $ TypeSelfSig (Con p) tsd' selfSig
-  
+    SubmodelSig fld bnd ->
+      U.lunbind bnd $ \((modId, U.unembed -> modTy), msig) -> do
+        let p = ProjP pmod fld
+        modSig <- signatureOfModelType modTy
+        modSelfSig' <- selfifyModelType p modSig
+        let msig' = U.subst modId p msig
+        selfSig' <- selfifyModelType pmod msig'
+        return $ SubmodelSelfSig p modSelfSig' selfSig'
 
 selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(Identifier, Path)]
 selfifyTypeSigDecl pmod tsd =
   case tsd of
     AbstractTypeSigDecl _k -> mempty
     ManifestTypeSigDecl defn -> selfifyTypeDefn pmod defn
-    AliasTypeSigDecl alias -> mempty
+    AliasTypeSigDecl _alias -> mempty
 
 -- | Given the path to a type defintion and the type definition, construct
 -- a substitution that replaces unqualified references to the components of

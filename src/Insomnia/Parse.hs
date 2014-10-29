@@ -119,10 +119,10 @@ modelExpr = mkModel
   where
     mkModel modelName maybeSigId content =
       let
-        modelExpr = case maybeSigId of
+        m = case maybeSigId of
           Nothing -> content
           Just msigId -> ModelAscribe content (IdentMT msigId)
-      in ToplevelModel modelName modelExpr
+      in ToplevelModel modelName m
 
 modelContent :: Parser ModelExpr
 modelContent =
@@ -137,6 +137,11 @@ modelTypeExprToplevel =
   where
     mkModelType modelSigName sig =
       ToplevelModelType modelSigName (SigMT sig)
+
+modelTypeExpr :: Parser ModelType
+modelTypeExpr =
+  (IdentMT <$> modelSigId)
+  <|> (SigMT <$> braces signature)
 
 modelIdentifier :: Parser String
 modelIdentifier = try $ do
@@ -160,8 +165,11 @@ signature =
 
     specification :: Parser (Endo Signature)
     specification =
-      (valueSig <$> (reserved "sig" *> varId <* coloncolon)
-       <*> typeExpr)
+      (submodelSig
+       <$> (reserved "model" *> modelId <* coloncolon)
+       <*> modelTypeExpr)
+      <|>(valueSig <$> (reserved "sig" *> varId <* coloncolon)
+          <*> typeExpr)
       <|> (manifestTypeDefnSig <$> (dataDefn <|> enumDefn))
       <|> (abstractOrAlias <$> (reserved "type" *> tyconIdentifier)
            <*> ((Left <$> (coloncolon *> kindExpr))
@@ -200,6 +208,13 @@ signature =
       in Endo $ \rest ->
       TypeSig fieldName (U.bind (tv, U.embed tsd) rest)
                                          
+    submodelSig :: Identifier -> ModelType -> Endo Signature
+    submodelSig mId modelType =
+      let fieldName = (U.name2String mId)
+      in Endo $ \rest ->
+      SubmodelSig fieldName (U.bind (mId, U.embed modelType) rest)
+
+
 
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")

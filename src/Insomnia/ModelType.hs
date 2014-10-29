@@ -10,6 +10,7 @@ import Unbound.Generics.LocallyNameless
 
 import Insomnia.Identifier
 import Insomnia.Types
+import Insomnia.Expr (Expr)
 import Insomnia.TypeDefn
 
 data ModelType =
@@ -21,6 +22,7 @@ data Signature =
   UnitSig
   | ValueSig Field Type Signature
   | TypeSig Field (Bind (Identifier, Embed TypeSigDecl) Signature)
+  | SubmodelSig Field (Bind (Identifier, Embed ModelType) Signature)
     deriving (Show, Typeable, Generic)
 
 -- | A type declaration in a signature.
@@ -39,4 +41,9 @@ instance Alpha TypeSigDecl
 
 instance Subst Path Signature
 instance Subst Path TypeSigDecl
+instance Subst Path ModelType
 
+-- model types do not have expressions in them.
+instance Subst Expr ModelType where
+  subst _ _ = id
+  substs _ = id

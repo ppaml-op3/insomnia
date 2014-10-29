@@ -41,11 +41,13 @@ library
                        Insomnia.Typecheck.Type
                        Insomnia.Typecheck.Expr
                        --
+                       Insomnia.Typecheck.SelfSig
+                       Insomnia.Typecheck.ExtendModelCtx
+                       Insomnia.Typecheck.SigOfModelType
+                       Insomnia.Typecheck.Selfify
+                       --
                        Insomnia.Typecheck.TypeDefn
                        Insomnia.Typecheck.ModelType
-                       --
-                       Insomnia.Typecheck.SelfSig
-                       Insomnia.Typecheck.Selfify
                        --
                        Insomnia.Typecheck.Equiv.TypeDefn
                        Insomnia.Typecheck.Equiv.TypeAlias

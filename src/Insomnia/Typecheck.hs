@@ -5,49 +5,16 @@ module Insomnia.Typecheck ( Insomnia.Typecheck.Env.runTC
                           , checkToplevel
                           ) where
 
-import Control.Lens
 import Control.Applicative ((<$>))
-import Control.Monad.Reader.Class (MonadReader(..))
-import Data.Monoid ((<>))
 
 import Insomnia.Identifier
-import Insomnia.ModelType
 import Insomnia.Toplevel
 
 import Insomnia.Typecheck.Env
-import Insomnia.Typecheck.ModelType (checkModelType, extendTypeSigDeclCtx)
+import Insomnia.Typecheck.ModelType (checkModelType)
 import Insomnia.Typecheck.Selfify (selfifyModelType)
+import Insomnia.Typecheck.ExtendModelCtx (extendModelCtx)
 import Insomnia.Typecheck.Model (inferModelExpr)
-import Insomnia.Typecheck.SelfSig (SelfSig(..))
-
--- | Find a model with the given name in the context, return its
--- type.
-lookupModel :: Path -> TC ModelType
-lookupModel (IdP identifier) =
-  unimplemented $ "lookupModel with identifier " <> formatErr identifier
-lookupModel (ProjP model field) = do
-  s <- lookupModel model
-  projectModelTypeModel s field
-
-projectModelTypeModel :: ModelType -> Field -> TC ModelType
-projectModelTypeModel modelType field =
-  unimplemented ("projectModelTypeModel" <> formatErr modelType
-                 <> " model " <> formatErr field)
-  
--- | Given a (selfified) signature, add all of its fields to the context
--- by prefixing them with the given path - presumably the path of this
--- very module.
-extendModelCtx :: SelfSig -> TC a -> TC a
-extendModelCtx UnitSelfSig = id
-extendModelCtx (ValueSelfSig qvar ty msig) =
-  -- TODO: if we are modeling joint distributions, does it ever make
-  -- sense to talk about value components of other models?
-  local (envGlobals . at qvar ?~ ty)
-  . extendModelCtx msig
-extendModelCtx (TypeSelfSig dcon tsd msig) =
-  extendTypeSigDeclCtx dcon tsd
-  . extendModelCtx msig
-  
 
 checkToplevel :: Toplevel -> TC Toplevel
 checkToplevel (Toplevel items_) =

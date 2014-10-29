@@ -318,13 +318,17 @@ instance Pretty Signature where
     $$ pp sig
   pp (TypeSig fld bnd) =
     let ((tv, U.unembed -> tsd), sig) = UU.unsafeUnbind bnd
-    in case tsd of
-      ManifestTypeSigDecl defn -> ppTypeDefn fld defn $$ pp sig
-      AbstractTypeSigDecl k ->
-        fsep ["type", pp tv, indent coloncolon (pp k)]
-        $$ pp sig
-      AliasTypeSigDecl a ->
-        ppTypeAlias fld a
+    in (case tsd of
+           ManifestTypeSigDecl defn -> ppTypeDefn fld defn
+           AbstractTypeSigDecl k ->
+             fsep ["type", pp tv, indent coloncolon (pp k)]
+           AliasTypeSigDecl a ->
+             ppTypeAlias fld a)
+       $$ pp sig
+  pp (SubmodelSig fld bnd) =
+    let ((mId, U.unembed -> mTy), sig) = UU.unsafeUnbind bnd
+    in fsep ["model", pp mId, indent coloncolon (pp mTy)]
+       $$ pp sig
         
 instance Pretty (UVar a) where
   pp = text . show

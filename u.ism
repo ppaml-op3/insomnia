@@ -1,7 +1,15 @@
+model type S_SIG {
+  type T :: *
+}
+
 model type PRELUDE {
   data Bool = True | False
   -- type Bool :: *
   type Bool2 = Bool
+
+  model S :: {
+    model S2 :: S_SIG
+  }
 
   sig cond :: forall (c :: *) . Bool -> c -> c -> c
 
