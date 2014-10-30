@@ -240,6 +240,7 @@ instance Pretty Decl where
   pp (TypeDefn c td) = ppTypeDefn c td
   pp (ValueDecl f vd) = ppValueDecl f vd
   pp (TypeAliasDefn f a) = ppTypeAlias f a
+  pp (SubmodelDefn f m) = ppModel (pp f) m
 
 instance Pretty (PrettyField TypeDefn) where
   pp (PrettyField fld defn) = ppTypeDefn fld defn
@@ -290,14 +291,19 @@ instance Pretty Toplevel where
   pp (Toplevel items) =
     vcat $ punctuate "\n" $ map pp items
 
+ppModel :: PM Doc -> ModelExpr -> PM Doc
+ppModel ppName modelExpr =
+  case modelExpr of
+    ModelAscribe modelExpr' modelSig ->
+      fsep ["model", ppName
+           , indent coloncolon (pp modelSig)
+           , nesting (pp modelExpr')
+           ]
+    _ ->
+      fsep ["model", ppName, nesting (pp modelExpr)]
+
 instance Pretty ToplevelItem where
-  pp (ToplevelModel identifier (ModelAscribe modelExpr modelSig)) =
-    fsep ["model", pp identifier
-         , indent coloncolon (pp modelSig)
-         , nesting (pp modelExpr)
-         ]
-  pp (ToplevelModel identifier modelExpr) =
-    fsep ["model", pp identifier, nesting (pp modelExpr)]
+  pp (ToplevelModel identifier model) = ppModel (pp identifier) model
   pp (ToplevelModelType identifier modelType) =
     fsep ["model", "type", pp identifier, pp modelType]
 
@@ -325,7 +331,7 @@ instance Pretty Signature where
            AliasTypeSigDecl a ->
              ppTypeAlias fld a)
        $$ pp sig
-  pp (SubmodelSig fld bnd) =
+  pp (SubmodelSig _fld bnd) =
     let ((mId, U.unembed -> mTy), sig) = UU.unsafeUnbind bnd
     in fsep ["model", pp mId, indent coloncolon (pp mTy)]
        $$ pp sig

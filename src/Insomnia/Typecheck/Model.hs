@@ -14,7 +14,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), Con(..), Type(..), freshUVarT)
 import Insomnia.Expr (Var, QVar(..), Expr(Q))
-import Insomnia.ModelType (Signature(..), TypeSigDecl(..))
+import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
 import Insomnia.Model
 
 import Insomnia.Unify (Unifiable(..),
@@ -29,7 +29,9 @@ import Insomnia.Typecheck.TypeDefn (checkTypeDefn,
                                     extendTypeDefnCtx,
                                     extendTypeAliasCtx)
 import Insomnia.Typecheck.ModelType (checkModelType)
-import Insomnia.Typecheck.Selfify (selfifyTypeDefn)
+import Insomnia.Typecheck.Selfify (selfifyTypeDefn, selfifyModelType)
+import Insomnia.Typecheck.ExtendModelCtx (extendModelCtx)
+import Insomnia.Typecheck.SigOfModelType (signatureOfModelType)
 import Insomnia.Typecheck.MayAscribe (mayAscribe)
 
 -- | Infer the signature of the given model expression
@@ -68,16 +70,25 @@ naturalSignature = go . modelDecls
           return (ValueSig fld ty sig')
         TypeDefn fld defn -> do
           let ident = U.s2n fld
-              dcon = Con (IdP ident)
-          sig' <- extendTypeDefnCtx dcon defn kont
+          sig' <- kont
           let tsd = ManifestTypeSigDecl defn
           return $ TypeSig fld (U.bind (ident, U.embed tsd) sig')
         TypeAliasDefn fld alias -> do
           let ident = U.s2n fld
-              dcon = Con (IdP ident)
-          sig' <- extendTypeAliasCtx dcon alias kont
+          sig' <- kont
           let tsd = AliasTypeSigDecl alias
           return $ TypeSig fld (U.bind (ident, U.embed tsd) sig')
+        SubmodelDefn fld modelExpr -> do
+          subSig <- naturalSignatureModelExpr modelExpr
+          let ident = U.s2n fld
+              modelTy = SigMT subSig
+          sig' <- kont 
+          return $ SubmodelSig fld (U.bind (ident, U.embed modelTy) sig')
+            
+naturalSignatureModelExpr :: ModelExpr -> TC Signature
+naturalSignatureModelExpr (ModelStruct model) = naturalSignature model
+naturalSignatureModelExpr (ModelAscribe _ mt) = signatureOfModelType mt
+naturalSignatureModelExpr (ModelAssume mt) = signatureOfModelType mt
 
 -- | Typecheck the contents of a model.
 checkModel :: Path -> Model -> TC Model
@@ -108,6 +119,10 @@ checkDecl pmod d =
     ValueDecl fld vd ->
       let qfld = QVar (ProjP pmod fld)
       in ValueDecl fld <$> checkValueDecl fld qfld vd
+    SubmodelDefn fld modelExpr -> do
+      modelExpr' <- inferModelExpr (ProjP pmod fld) modelExpr
+                    (\modelExpr' _sig -> return modelExpr')
+      return $ SubmodelDefn fld modelExpr'
 
 checkValueDecl :: Field -> QVar -> ValueDecl -> TC ValueDecl
 checkValueDecl fld qlf vd =
@@ -223,6 +238,14 @@ extendDCtx pmod d =
           -- aliases are not allowed to be recursive.
           rest' = U.substs substitution rest
       extendTypeAliasCtx (Con p) alias (kont rest')
+    SubmodelDefn fld modelExpr -> \rest kont -> do
+      let pSubMod = ProjP pmod fld
+          shortIdent = U.s2n fld
+          substitution = [(shortIdent, pSubMod)]
+          rest' = U.substs substitution rest
+      subSig <- naturalSignatureModelExpr modelExpr
+      subSelfSig <- selfifyModelType pSubMod subSig
+      extendModelCtx subSelfSig $ kont rest'
 
 extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC [Decl]) -> TC [Decl]
 extendValueDeclCtx pmod fld vd =

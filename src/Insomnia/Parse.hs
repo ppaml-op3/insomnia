@@ -220,6 +220,7 @@ decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
        <|> (typeDefn <?> "type definition")
        <|> (typeAliasDefn <?> "type alias definition")
+       <|> (modelDefn <?> "submodel definition")
 
 valueDecl :: Parser Decl
 valueDecl =
@@ -235,6 +236,20 @@ typeDefn =
                   <|> (enumDefn <?> "enumeration declaration"))
   where
     mkTypeDefn (fld, d) = TypeDefn fld d
+
+modelDefn :: Parser Decl
+modelDefn =
+  mkModelDefn <$> (reserved "model" *> modelId)
+  <*> optional (coloncolon *> modelSigId)
+  <*> modelContent
+  where
+    mkModelDefn modId maybeSigId content =
+      let
+        fld = U.name2String modId
+        m = case maybeSigId of
+          Nothing -> content
+          Just msigId -> ModelAscribe content (IdentMT msigId)
+      in SubmodelDefn fld m
 
 valOrSampleDecl :: Parser (Field, ValueDecl)
 valOrSampleDecl =

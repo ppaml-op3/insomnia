@@ -8,7 +8,7 @@ model type PRELUDE {
   type Bool2 = Bool
 
   model S :: {
-    model S2 :: S_SIG
+     model S2 :: S_SIG
   }
 
   sig cond :: forall (c :: *) . Bool -> c -> c -> c
@@ -20,22 +20,32 @@ model type PRELUDE {
 
 model Prelude :: PRELUDE {
 
+   model S {
+      model S2 {
+         type T = Int
+      }
+      type W = Int
+   }
+
    data Bool = False | True
 
    type Bool2 = Bool
 
    sig cond :: forall (c :: *) . Bool -> c -> c -> c
    fun cond b t f =
-      case b of
-      {
-        True -> t
-      ; False -> f
-      }
+       case b of
+       {
+         True -> t
+       ; False -> f
+       }
 
    data Proxy (a :: *) = Proxy
 
    sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
    sig flip :: Real -> Dist Bool
+
+   sig foo :: S.W -> S.S2.T
+   fun foo x = x
 }
 
 model Raining {
