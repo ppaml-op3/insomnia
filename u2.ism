@@ -1,0 +1,86 @@
+model type S_SIG {
+  type T :: *
+}
+
+model type PRELUDE {
+  data Bool = True | False
+  -- type Bool :: *
+  type Bool2 = Bool
+
+  model S :: {
+     model S2 :: S_SIG
+     type W = S2.T
+  }
+
+  sig cond :: forall (d :: *) . Bool -> d -> d -> d
+
+  data Proxy (a :: *) = Proxy
+  sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
+  sig flip :: Real -> Dist Bool
+
+  type H = S.W -> Int
+
+  sig foo :: S.W -> S.S2.T
+}
+
+model Prelude :: PRELUDE {
+
+   model S {
+      model S2 {
+         type T = Int
+      }
+      type W = S2.T
+   }
+
+   data Bool = False | True
+
+   type Bool2 = Bool
+
+   sig cond :: forall (c :: *) . Bool -> c -> c -> c
+   fun cond b t f =
+       case b of
+       {
+         True -> t
+       ; False -> f
+       }
+
+   data Proxy (a :: *) = Proxy
+
+   sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
+   sig flip :: Real -> Dist Bool
+
+   type H = S.W -> S.S2.T
+
+   sig foo :: S.W -> S.S2.T
+   fun foo x = x
+}
+
+model Q = Prelude.S
+
+model Raining {
+
+sig raining :: Prelude.Bool2
+val raining ~ (Prelude.uniform Prelude.Proxy)
+
+sig bar :: Prelude.S.S2.T -> Prelude.S.W
+fun bar x = Prelude.foo x
+
+enum T 10
+
+sig thinksRain :: T -> Prelude.Bool
+
+-- fun thinksRain t = let {
+--    forall (x :: T) in
+--      g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
+--    } in g t
+
+-- Ryan observes that the version above creates a new table every time
+-- that 'thinksRain' is called.  Instead what we want is to create the
+-- table once.
+val thinksRain = let {
+  forall (x :: T) in
+    g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
+  } in g
+
+
+}

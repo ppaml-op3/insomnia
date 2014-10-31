@@ -31,6 +31,7 @@ import Insomnia.Typecheck.TypeDefn (checkTypeDefn,
                                     extendTypeAliasCtx)
 import Insomnia.Typecheck.ModelType (checkModelType)
 import Insomnia.Typecheck.Selfify (selfifyTypeDefn, selfifyModelType)
+import Insomnia.Typecheck.ClarifySignature (clarifySignature)
 import Insomnia.Typecheck.ExtendModelCtx (extendModelCtx)
 import Insomnia.Typecheck.SigOfModelType (signatureOfModelType)
 import Insomnia.Typecheck.MayAscribe (mayAscribe)
@@ -55,10 +56,11 @@ inferModelExpr pmod (ModelAssume modelType) kont = do
                         <??@ ("while checking postulated signature of "
                               <> formatErr pmod)
   kont (ModelAssume modelType') msig
-inferModelExpr pmod (ModelId modPath) kont = do
-  msig <- lookupModelSigPath modPath
+inferModelExpr pmod (ModelId modPathRHS) kont = do
+  msig <- lookupModelSigPath modPathRHS
           <??@ ("while checking the definition of " <> formatErr pmod)
-  kont (ModelId modPath) msig
+  msig' <- clarifySignature modPathRHS msig
+  kont (ModelId modPathRHS) msig'
   -- lookup a model's signature (selfified?) and return it.
 
 lookupModelSigPath :: Path -> TC Signature

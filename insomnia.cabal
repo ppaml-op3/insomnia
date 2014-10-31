@@ -45,6 +45,7 @@ library
                        Insomnia.Typecheck.ExtendModelCtx
                        Insomnia.Typecheck.SigOfModelType
                        Insomnia.Typecheck.Selfify
+                       Insomnia.Typecheck.ClarifySignature
                        --
                        Insomnia.Typecheck.TypeDefn
                        Insomnia.Typecheck.ModelType
