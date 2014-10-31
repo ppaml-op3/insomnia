@@ -9,7 +9,6 @@ module Insomnia.Typecheck.Env where
 
 import Control.Lens
 
-import Control.Monad.Trans.Class (lift)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.Trans.Reader (ReaderT (..))
 import Control.Monad.Error.Class (MonadError(..))
@@ -385,7 +384,7 @@ formatErr = format . ppDefault
 
 -- | Throw some kind of type checking error
 throwTCError :: TCError -> TC a
-throwTCError = lift . lift . throwError
+throwTCError = throwError
 
 -- | Throw a type error with the given message.
 typeError :: F.Doc -> TC a

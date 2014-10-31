@@ -7,6 +7,7 @@ module Insomnia.Types where
 
 import Control.Applicative
 import Control.Lens
+import Control.Monad (liftM)
 
 import qualified Data.Map as M
 import Data.Typeable(Typeable)
@@ -133,7 +134,7 @@ instance HasUVars Type Type where
 
 -- | Make a fresh unification variable
 freshUVarT :: MonadUnify e Type m => m Type
-freshUVarT = TUVar <$> unconstrained
+freshUVarT = liftM TUVar unconstrained
 
 -- | Construct a fresh type expression composed of a unification var
 -- of the given kind applied to sufficiently many ground arguments
@@ -200,9 +201,9 @@ instance Plated Type where
   plate _ (t@TUVar {}) = pure t
   plate _ (t@TV {}) = pure t
   plate _ (t@TC {}) = pure t
+  plate _ (t@TForall {}) = pure t
   plate f (TAnn t k) = TAnn <$> f t <*> pure k
   plate f (TApp t1 t2) = TApp <$> f t1 <*> f t2
-  plate f (t@TForall {}) = pure t
 
 -- | Traverse the types in the given container
 class TraverseTypes s t where
