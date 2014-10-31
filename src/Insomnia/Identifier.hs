@@ -12,7 +12,8 @@ module Insomnia.Identifier (
   Field,
   Path(..),
   pathHeadSkelForm,
-  headSkelFormToPath
+  headSkelFormToPath,
+  lastOfPath
   ) where
 
 import Data.Function (on)
@@ -47,6 +48,12 @@ instance Ord Path where
   compare = compare `on` pathHeadSkelForm
 
 type HeadSkelForm = (Identifier, [Field])
+
+-- | Get the last field of a path or the name of the head identifier
+-- for a simple path.
+lastOfPath :: Path -> Field
+lastOfPath (ProjP _ fld) = fld
+lastOfPath (IdP ident) = name2String ident
 
 -- | A path in head and skeleton form.
 -- hs (ident) = (ident, [])

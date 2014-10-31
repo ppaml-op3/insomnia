@@ -19,3 +19,5 @@ data SelfSig =
   | ValueSelfSig QVar Type SelfSig
   | TypeSelfSig Con TypeSigDecl SelfSig
   | SubmodelSelfSig Path SelfSig SelfSig
+
+

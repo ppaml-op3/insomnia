@@ -33,7 +33,9 @@ checkToplevelItem item kont =
       let pmod = IdP modelIdent
       in inferModelExpr pmod me $ \me' msig -> do
         selfSig <- selfifyModelType pmod msig
-        extendModelCtx selfSig (kont $ ToplevelModel modelIdent me')
+        extendModelSigCtx modelIdent msig
+          $ extendModelCtx selfSig
+          $ kont $ ToplevelModel modelIdent me'
     ToplevelModelType modelTypeIdent modType -> do
       (modType', msig) <- checkModelType modType
       extendModelTypeCtx modelTypeIdent msig

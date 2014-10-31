@@ -109,14 +109,17 @@ toplevel = Toplevel <$> (whiteSpace *> many toplevelItem <* eof)
 toplevelItem :: Parser ToplevelItem
 toplevelItem = 
   (modelTypeExprToplevel <?> "model type definition")
-  <|> (modelExpr <?> "model definition")
+  <|> (modelExprToplevel <?> "model definition")
 
-modelExpr :: Parser ToplevelItem
-modelExpr = mkModel
+modelExprToplevel :: Parser ToplevelItem
+modelExprToplevel = mkModel
              <$> (try (reserved "model" *> modelId))
              <*> optional (coloncolon *> modelSigId)
-             <*> modelContent
+             <*> ((reservedOp "=" *> modelExpr)
+                  <|> literalModelShorthand)
   where
+    literalModelShorthand = (ModelStruct . Model) <$> braces (many decl)
+    
     mkModel modelName maybeSigId content =
       let
         m = case maybeSigId of
@@ -124,10 +127,23 @@ modelExpr = mkModel
           Just msigId -> ModelAscribe content (IdentMT msigId)
       in ToplevelModel modelName m
 
-modelContent :: Parser ModelExpr
-modelContent =
-  ((ModelStruct . Model) <$> braces (many decl))
-  <|> ((ModelAssume . IdentMT) <$> (reserved "assume" *> modelSigId))
+modelExpr :: Parser ModelExpr
+modelExpr =
+  (modelLiteral <?> "braced model definition")
+  <|> (modelAssume <?> "model postulate (\"assume\")")
+  <|> (nestedModel <?> "model signature ascription")
+  <|> (modelPath <?> "qualified model name")
+  where
+    modelLiteral = (ModelStruct . Model) <$> braces (many decl)
+    modelAssume =  (ModelAssume . IdentMT)
+                   <$> (reserved "assume" *> modelSigId)
+    nestedModel = parens (mkNestedModelExpr
+                          <$> modelExpr
+                          <*> optional (coloncolon *> modelTypeExpr))
+    modelPath = (ModelId . mkQualifiedPath) <$> qualifiedName modelIdentifier
+
+    mkNestedModelExpr modExpr Nothing = modExpr
+    mkNestedModelExpr modExpr (Just modTy) = ModelAscribe modExpr modTy
 
 modelTypeExprToplevel :: Parser ToplevelItem
 modelTypeExprToplevel =
@@ -241,7 +257,7 @@ modelDefn :: Parser Decl
 modelDefn =
   mkModelDefn <$> (reserved "model" *> modelId)
   <*> optional (coloncolon *> modelSigId)
-  <*> modelContent
+  <*> modelExpr
   where
     mkModelDefn modId maybeSigId content =
       let

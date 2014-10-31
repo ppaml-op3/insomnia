@@ -21,6 +21,7 @@ data ModelExpr =
   ModelStruct !Model -- model specified here
   | ModelAscribe !ModelExpr !ModelType -- transluscent ascription
   | ModelAssume !ModelType    -- model assumed to exist.
+  | ModelId !Path       -- previously named model
   deriving (Show, Typeable, Generic)
 
 -- A single model.

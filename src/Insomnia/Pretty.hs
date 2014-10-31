@@ -294,13 +294,13 @@ instance Pretty Toplevel where
 ppModel :: PM Doc -> ModelExpr -> PM Doc
 ppModel ppName modelExpr =
   case modelExpr of
-    ModelAscribe modelExpr' modelSig ->
+    ModelAscribe modelExpr'@(ModelStruct {}) modelSig ->
       fsep ["model", ppName
            , indent coloncolon (pp modelSig)
            , nesting (pp modelExpr')
            ]
     _ ->
-      fsep ["model", ppName, nesting (pp modelExpr)]
+      fsep ["model", ppName, indent "=" (pp modelExpr)]
 
 instance Pretty ToplevelItem where
   pp (ToplevelModel identifier model) = ppModel (pp identifier) model
@@ -310,8 +310,9 @@ instance Pretty ToplevelItem where
 instance Pretty ModelExpr where
   pp (ModelStruct model) = pp model
   pp (ModelAscribe model modelSig) =
-    fsep [pp model, indent coloncolon (pp modelSig)]
+    parens (fsep [pp model, indent coloncolon (pp modelSig)])
   pp (ModelAssume mtype) = fsep ["assume", nesting (pp mtype)]
+  pp (ModelId modPath) = pp modPath
 
 instance Pretty ModelType where
   pp (SigMT sig) = fsep ["{", nesting (pp sig), "}"]

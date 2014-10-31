@@ -138,6 +138,9 @@ instance Subst Path TabulatedFun
 instance Subst Path TabSample
 
 -- leaf instances
+instance Subst Expr Path where
+  subst _ _ = id
+  substs _ = id
 instance Subst Expr Con where
   subst _ _ = id
   substs _ = id

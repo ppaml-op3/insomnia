@@ -49,6 +49,7 @@ library
                        Insomnia.Typecheck.TypeDefn
                        Insomnia.Typecheck.ModelType
                        --
+                       Insomnia.Typecheck.Equiv.Types
                        Insomnia.Typecheck.Equiv.TypeDefn
                        Insomnia.Typecheck.Equiv.TypeAlias
                        --

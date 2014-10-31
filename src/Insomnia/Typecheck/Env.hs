@@ -95,6 +95,7 @@ data TypeAliasClosure = TypeAliasClosure !Env !TypeAlias
 -- | Typechecking environment
 data Env = Env {
   _envSigs :: M.Map Identifier Signature -- ^ signatures
+  , _envModelSigs :: M.Map Identifier Signature -- ^ models' unselfified signatures (invariant: their selfified contents have been added to DCons and Globals)
   , _envDCons :: M.Map Con TyConDesc -- ^ type constructor descriptors
   , _envCCons :: M.Map Con AlgConstructor -- ^ value constructors
   , _envGlobals :: M.Map QVar Type      -- ^ declared global vars
@@ -148,7 +149,7 @@ typeAliasInfoKind (TypeAliasInfo kdoms kcod) = kArrs kdoms kcod
 
 -- | The empty typechecking environment
 emptyEnv :: Env
-emptyEnv = Env mempty mempty mempty mempty mempty mempty mempty mempty
+emptyEnv = Env mempty mempty mempty mempty mempty mempty mempty mempty mempty
 
 -- | Base environment with builtin types.
 baseEnv :: Env
@@ -237,6 +238,14 @@ mkConstructorType constr =
     go t [] = t
     go t (tvk:tvks) = go (TForall (U.bind tvk t)) tvks
 
+-- | Lookup info about a (toplevel) module.
+lookupModelSig :: Identifier -> TC Signature
+lookupModelSig ident = do
+  m <- view (envModelSigs . at ident)
+  case m of
+    Just sig -> return sig
+    Nothing -> typeError $ "no module " <> formatErr ident
+
 -- | Look up info about a datatype
 lookupDCon :: Con -> TC TyConDesc
 lookupDCon d = do
@@ -285,6 +294,13 @@ lookupModelType ident = do
     Just msig -> return msig
     Nothing -> typeError ("no model type " <> formatErr ident
                           <> " in scope")
+
+-- | Extend the toplevel modules environment by adding the given
+-- module.  Invariant - the selfified types, constructors and terms
+-- should be added separately using extendDConCtx, etc.
+extendModelSigCtx :: Identifier -> Signature -> TC a -> TC a
+extendModelSigCtx ident msig =
+  local (envModelSigs . at ident ?~ msig)
 
 -- | Extend the type signatures environment by adding the given
 -- signature.

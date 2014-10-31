@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 -- | Infer the natural signature of a model by typechecking its constituents.
 --
 module Insomnia.Typecheck.Model (inferModelExpr, extendDCtx) where
@@ -48,6 +48,43 @@ inferModelExpr pmod (ModelAscribe model mtypeAscribed) kont = do
 inferModelExpr _pmod (ModelAssume modelType) kont = do
   (modelType', msig) <- checkModelType modelType
   kont (ModelAssume modelType') msig
+inferModelExpr _pmod (ModelId modPath) kont = do
+  msig <- lookupModelSigPath modPath
+  kont (ModelId modPath) msig
+  -- lookup a model's signature (selfified?) and return it.
+
+lookupModelSigPath :: Path -> TC Signature
+lookupModelSigPath (IdP ident) = lookupModelSig ident
+lookupModelSigPath (ProjP pmod fieldName) = do
+  sig <- lookupModelSigPath pmod
+  projectModelField pmod fieldName sig
+
+projectModelField :: Path -> Field -> Signature -> TC Signature
+projectModelField pmod fieldName = go
+  where
+    go :: Signature -> TC Signature
+    go UnitSig = typeError ("The module " <> formatErr pmod
+                            <> " does not have a submodule named "
+                            <> formatErr fieldName)
+    go (ValueSig _ _ mrest) = go mrest
+    go (TypeSig fld' bnd) =
+      U.lunbind bnd $ \((ident', _), mrest_) ->
+      -- slightly tricky - we have to replace the ident' in the rest
+      -- of the module by the selfified name of the component so that
+      -- once we finally find the signature that we need, it will
+      -- refer to earlier components of its parent model by the
+      -- correct name.
+      let mrest = U.subst ident' (ProjP pmod fld') mrest_
+      in go mrest
+    go (SubmodelSig fld' bnd) =
+      if fieldName /= fld'
+      then
+        U.lunbind bnd $ \((ident', _), mrest_) ->
+        let mrest = U.subst ident' (ProjP pmod fld') mrest_
+        in go mrest
+      else
+        U.lunbind bnd $ \((_, U.unembed -> modTy), _) ->
+        signatureOfModelType modTy
 
 -- | Returns the "natural" signature of a model.
 -- This is a signature in which all type equations are preserved, all
@@ -89,6 +126,7 @@ naturalSignatureModelExpr :: ModelExpr -> TC Signature
 naturalSignatureModelExpr (ModelStruct model) = naturalSignature model
 naturalSignatureModelExpr (ModelAscribe _ mt) = signatureOfModelType mt
 naturalSignatureModelExpr (ModelAssume mt) = signatureOfModelType mt
+naturalSignatureModelExpr (ModelId path) = lookupModelSigPath path
 
 -- | Typecheck the contents of a model.
 checkModel :: Path -> Model -> TC Model

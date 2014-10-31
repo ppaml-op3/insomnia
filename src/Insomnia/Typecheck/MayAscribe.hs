@@ -8,7 +8,7 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier (Identifier, Path(..), Field)
-import Insomnia.Types (Con(..), Type, Kind)
+import Insomnia.Types (Con(..), Type, Kind(..))
 import Insomnia.TypeDefn
 import Insomnia.ModelType (ModelType, Signature(..), TypeSigDecl(..))
 
@@ -18,6 +18,7 @@ import Insomnia.Typecheck.ExtendModelCtx (extendTypeSigDeclCtx, extendModelCtx)
 import Insomnia.Typecheck.Selfify (selfifyModelType, )
 
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
+import Insomnia.Typecheck.Equiv.Types (equivTypes)
 import Insomnia.Typecheck.Equiv.TypeDefn (equivTypeDefn)
 import Insomnia.Typecheck.Equiv.TypeAlias (equivTypeAlias)
 
@@ -95,8 +96,9 @@ matchValueField :: (Field, Type)
                 -> TC ()
 matchValueField (fld, ty) (fld', ty') kNoMatch =
   if fld == fld'
-  then
-    unless (ty `U.aeq` ty') $ do
+  then do
+    same <- equivTypes ty ty' KType
+    unless same $
       typeError ("value field " <> formatErr fld
                  <> " has type " <> formatErr ty'
                  <> " but signature requires " <> formatErr ty)

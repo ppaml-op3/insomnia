@@ -10,7 +10,7 @@ import Data.Monoid (Monoid(..))
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
-import Insomnia.Identifier (Path(..), Identifier)
+import Insomnia.Identifier (Path(..), Identifier, lastOfPath)
 import Insomnia.Types (Con(..))
 import Insomnia.Expr (QVar(..))
 import Insomnia.TypeDefn (TypeDefn(..), ConstructorDef(..))
@@ -53,6 +53,25 @@ selfifyModelType pmod msig_ =
         let msig' = U.subst modId p msig
         selfSig' <- selfifyModelType pmod msig'
         return $ SubmodelSelfSig p modSelfSig' selfSig'
+
+selfSigToSignature :: SelfSig -> TC Signature
+selfSigToSignature UnitSelfSig = return UnitSig
+selfSigToSignature (ValueSelfSig (QVar valuePath) ty selfSig) = do
+  let fieldName = lastOfPath valuePath
+  sig <- selfSigToSignature selfSig
+  return $ ValueSig fieldName ty sig
+selfSigToSignature (TypeSelfSig (Con typePath) tsd selfSig) = do
+  let fieldName = lastOfPath typePath
+  freshId <- U.lfresh (U.s2n fieldName)
+  sig <- selfSigToSignature selfSig
+  return $ TypeSig fieldName (U.bind (freshId, U.embed tsd) sig)
+selfSigToSignature (SubmodelSelfSig path subSelfSig selfSig) = do
+  let fieldName = lastOfPath path
+  freshId <- U.lfresh (U.s2n fieldName)
+  subSig <- selfSigToSignature subSelfSig
+  sig <- selfSigToSignature selfSig
+  let subModTy = SigMT subSig
+  return $ SubmodelSig fieldName (U.bind (freshId, U.embed subModTy) sig)
 
 selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(Identifier, Path)]
 selfifyTypeSigDecl pmod tsd =
