@@ -16,6 +16,7 @@ import Insomnia.Types (Kind(..), Con(..), Type(..), freshUVarT)
 import Insomnia.Expr (Var, QVar(..), Expr(Q))
 import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
 import Insomnia.Model
+import Insomnia.Pretty (PrettyShort(..))
 
 import Insomnia.Unify (Unifiable(..),
                        solveUnification,
@@ -38,18 +39,25 @@ import Insomnia.Typecheck.MayAscribe (mayAscribe)
 inferModelExpr :: Path -> ModelExpr -> (ModelExpr -> Signature -> TC a) -> TC a
 inferModelExpr pmod (ModelStruct model) kont = do
   model' <- checkModel pmod model
+            <??@ "while checking model " <> formatErr pmod
   msig <- naturalSignature model
   kont (ModelStruct model') msig
 inferModelExpr pmod (ModelAscribe model mtypeAscribed) kont = do
   inferModelExpr pmod model $ \model' msigInferred -> do
     (mtypeAscribed', msigAscribed) <- checkModelType mtypeAscribed
+                                      <??@ ("while checking ascribed signature of " <> formatErr pmod)
     msigAscribed' <- mayAscribe msigInferred msigAscribed
+                     <??@ ("while checking validity of signature ascription to "
+                           <> formatErr pmod)
     kont (ModelAscribe model' mtypeAscribed') msigAscribed'
-inferModelExpr _pmod (ModelAssume modelType) kont = do
+inferModelExpr pmod (ModelAssume modelType) kont = do
   (modelType', msig) <- checkModelType modelType
+                        <??@ ("while checking postulated signature of "
+                              <> formatErr pmod)
   kont (ModelAssume modelType') msig
-inferModelExpr _pmod (ModelId modPath) kont = do
+inferModelExpr pmod (ModelId modPath) kont = do
   msig <- lookupModelSigPath modPath
+          <??@ ("while checking the definition of " <> formatErr pmod)
   kont (ModelId modPath) msig
   -- lookup a model's signature (selfified?) and return it.
 
@@ -140,9 +148,14 @@ checkModel pmod =
       decls' <- extendDCtx pmod decl' decls go
       return (decl':decls')
 
--- | Given the path to the module, check the declarations.
 checkDecl :: Path -> Decl -> TC Decl
 checkDecl pmod d =
+  checkDecl' pmod d
+  <??@ "while checking " <> formatErr (PrettyShort d)
+
+-- | Given the path to the module, check the declarations.
+checkDecl' :: Path -> Decl -> TC Decl
+checkDecl' pmod d =
   case d of
     TypeDefn fld td -> do
       let dcon = Con (ProjP pmod fld)

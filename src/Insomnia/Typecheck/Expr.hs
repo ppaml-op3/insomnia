@@ -66,8 +66,15 @@ checkExpr e_ t_ = case e_ of
   App e1_ e2_ -> do
     (t1, e1') <- inferExpr e1_
     (tdom, tcod) <- unifyFunctionT t1
+                    <??@ ("while trying to apply " <> formatErr e1_
+                          <> " to " <> formatErr e2_)
     e2' <- checkExpr e2_ tdom
-    tcod =?= t_
+           <??@ ("when checking argument " <> formatErr e2_
+                 <> " of " <> formatErr e1_)
+    tcod =?= t_ <??@ ("expecting " <> formatErr t_
+                      <> " but got result " <> formatErr tcod
+                      <> " when applying " <> formatErr e1_
+                      <> " to " <> formatErr e2_)
     return $ App e1' e2'
   Let bnd ->
     U.lunbind bnd $ \(binds, body) ->
@@ -81,6 +88,8 @@ checkExpr e_ t_ = case e_ of
   Ann e1_ t1_ -> do
     t1 <- checkType t1_ KType
     e1 <- checkExpr e1_ t1
+          <??@ ("while checking " <> formatErr e1_
+                <> "against type annotation " <> formatErr t_)
     t1 =?= t_
     return (Ann e1 t1)
 
@@ -202,7 +211,10 @@ inferExpr e_ = case e_ of
   App e1_ e2_ -> do
     (t1, e1') <- inferExpr e1_
     (tdom, tcod) <- unifyFunctionT t1
+                    <??@ ("while trying to apply " <> formatErr e1_ <> " to " <> formatErr e2_)
     e2' <- checkExpr e2_ tdom
+           <??@ ("when checking argument " <> formatErr e2_
+                 <> " of " <> formatErr e1_)
     return (tcod, App e1' e2')
   C c -> do
     constr <- lookupCCon c
@@ -210,7 +222,10 @@ inferExpr e_ = case e_ of
     return (ty, C c)
   Ann e1_ t_ -> do
     t <- checkType t_ KType
+         <??@ ("while checking type annotation " <> formatErr e_)
     e1' <- checkExpr e1_ t
+           <??@ ("while checking " <> formatErr e1_
+                 <> "against type annotation " <> formatErr t_)
     tannot <- applyCurrentSubstitution t
     return (t, Ann e1' tannot)
   Case {} -> typeError ("cannot infer the type of a case expression "

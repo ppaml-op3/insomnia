@@ -394,6 +394,21 @@ typeError msg = do
                           <> "\nEnvironment:\n"
                           <> formatErr env)
 
+-- | Add an annotation to the type error from the given subcomputation
+-- if it fails.
+(<??@) :: TC a -> F.Doc -> TC a
+comp <??@ note =
+  catchError comp (\(TCError msg) -> throwTCError $ TCError (msg <> "\n"
+                                                             <> note))
+
+-- | A version of '<??@' with the arguments reversed.
+(@??>) :: F.Doc -> TC a -> TC a
+(@??>) = flip (<??@)
+
+infixl 0 <??@
+infixr 0 @??>
+
+
 -- | Throw an error with the given message indicating that
 -- part of the typechecker is unimplemented.
 unimplemented :: F.Doc -> TC a

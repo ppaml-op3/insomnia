@@ -5,6 +5,7 @@ module Insomnia.Typecheck ( Insomnia.Typecheck.Env.runTC
                           , checkToplevel
                           ) where
 
+import Data.Monoid ((<>))
 import Control.Applicative ((<$>))
 
 import Insomnia.Identifier
@@ -33,10 +34,15 @@ checkToplevelItem item kont =
       let pmod = IdP modelIdent
       in inferModelExpr pmod me $ \me' msig -> do
         selfSig <- selfifyModelType pmod msig
+                   <??@ "while selfifying model " <> formatErr modelIdent
         extendModelSigCtx modelIdent msig
           $ extendModelCtx selfSig
           $ kont $ ToplevelModel modelIdent me'
+          
     ToplevelModelType modelTypeIdent modType -> do
       (modType', msig) <- checkModelType modType
+                          <??@ ("while checking model type "
+                                <> formatErr modelTypeIdent)
       extendModelTypeCtx modelTypeIdent msig
-        $ kont $ ToplevelModelType modelTypeIdent modType'
+        $ kont $ToplevelModelType modelTypeIdent modType'
+        

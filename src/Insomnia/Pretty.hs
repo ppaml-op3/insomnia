@@ -44,11 +44,17 @@ instance IsString (PrettyCtx -> Doc) where
 class Pretty a where
   pp :: a -> PM Doc
 
+-- | A wrapper newtype to pretty print a "shorter" version of something.
+newtype PrettyShort a = PrettyShort {unPrettyShort :: a }
+
 ppDefault :: Pretty a => a -> Doc
 ppDefault x = pp x (PrettyCtx True 0)
 
 coloncolon :: PM Doc
 coloncolon = onUnicode "∷" "::"
+
+elipsis :: PM Doc
+elipsis = onUnicode "…" "..."
 
 instance (Pretty k, Pretty v) => Pretty (M.Map k v) where
   pp m = fsep ["Map", braces $ sep (map (nesting . ppKVPair) $ M.toList m)]
@@ -242,6 +248,14 @@ instance Pretty Decl where
   pp (TypeAliasDefn f a) = ppTypeAlias f a
   pp (SubmodelDefn f m) = ppModel (pp f) m
 
+instance Pretty (PrettyShort Decl) where
+  pp (PrettyShort (TypeDefn c td)) = ppShortTypeDefn c td
+  pp (PrettyShort (ValueDecl f vd)) = ppShortValueDecl f vd
+  pp (PrettyShort (TypeAliasDefn f _a)) =
+    "type" <+> pp f <+> "=" <+> elipsis
+  pp (PrettyShort (SubmodelDefn f _m)) =
+    "model" <+> pp f <+> "=" <+> elipsis
+    
 instance Pretty (PrettyField TypeDefn) where
   pp (PrettyField fld defn) = ppTypeDefn fld defn
 
@@ -251,6 +265,10 @@ instance Pretty (PrettyField TypeAlias) where
 ppTypeDefn :: Field -> TypeDefn -> PM Doc
 ppTypeDefn c (DataDefn d) = ppDataDefn c d
 ppTypeDefn c (EnumDefn n) = "enum" <+> pp c <+> pp n
+
+ppShortTypeDefn :: Field -> TypeDefn -> PM Doc
+ppShortTypeDefn c (DataDefn _) = "data" <+> pp c <+> elipsis
+ppShortTypeDefn c (EnumDefn n) = "enum" <+> pp c <+> pp n
 
 ppTypeAlias :: Field -> TypeAlias -> PM Doc
 ppTypeAlias c (TypeAlias bnd) =
@@ -268,6 +286,12 @@ ppValueDecl v (SigDecl t) = "sig" <+> pp v <+> indent coloncolon (pp t)
 ppValueDecl v (FunDecl e) = ppFunDecl v e 
 ppValueDecl v (ValDecl e) = ppValSampleDecl "=" v e
 ppValueDecl v (SampleDecl e) = ppValSampleDecl "~" v e
+
+ppShortValueDecl :: Field -> ValueDecl -> PM Doc
+ppShortValueDecl v (SigDecl t) = "sig" <+> pp v <+> indent coloncolon (pp t)
+ppShortValueDecl f (FunDecl _e) = "fun" <+> pp f <+> elipsis <+> "=" <+> elipsis
+ppShortValueDecl f (ValDecl _e) = "val" <+> pp f <+> "=" <+> elipsis
+ppShortValueDecl f (SampleDecl _e) = "val" <+> pp f <+> "~" <+> elipsis
 
 ppFunDecl :: Field -> Expr -> PM Doc
 ppFunDecl v e =
