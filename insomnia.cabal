@@ -20,6 +20,10 @@ library
   exposed-modules:
                        Insomnia.Main
                        --
+                       Insomnia.SurfaceSyntax.Syntax
+                       Insomnia.SurfaceSyntax.FixityParser
+                       Insomnia.SurfaceSyntax.ToAST
+                       --
                        Insomnia.Identifier
                        --
                        Insomnia.Types
