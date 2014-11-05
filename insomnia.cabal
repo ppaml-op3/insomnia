@@ -22,6 +22,7 @@ library
                        --
                        Insomnia.SurfaceSyntax.Syntax
                        Insomnia.SurfaceSyntax.FixityParser
+                       Insomnia.SurfaceSyntax.Parse
                        Insomnia.SurfaceSyntax.ToAST
                        --
                        Insomnia.Identifier
