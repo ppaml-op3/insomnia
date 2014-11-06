@@ -31,7 +31,6 @@ import Insomnia.SurfaceSyntax.FixityParser
 -- | Syntactic information about identifiers.
 data TyIdInfo =
   TyConII (Maybe Fixity)
-  | TyVarII
   deriving (Show)
 
 data ValIdInfo =
@@ -39,7 +38,7 @@ data ValIdInfo =
   | ValConII (Maybe Fixity)
   deriving (Show)
 
-data Ctx = Ctx {_tyIdInfo :: M.Map QualifiedIdent TyIdInfo
+data Ctx = Ctx {_tyIdInfo :: M.Map Con TyIdInfo
                   , _valIdInfo :: M.Map QualifiedIdent ValIdInfo
                   }
             deriving (Show)
@@ -66,9 +65,9 @@ instance Functor CTA where
 -- in the CPS version of TA, the Ctx is a state that persists
 -- within the continuation.
 instance MonadState Ctx CTA where
-  state transform = CTA $ \k -> do
+  state xform = CTA $ \k -> do
     ctx <- ask
-    let (x, ctx') = transform ctx
+    let (x, ctx') = xform ctx
     local (const ctx') $ k x
 
 -- main function
@@ -78,10 +77,10 @@ toAST = runToAST baseCtx . toplevel
     -- TODO: these really ought to be imported from somewhere, not built in.
     baseCtx = Ctx (M.fromList
                    [
-                     (QId [] "->", TyConII $ Just (Fixity AssocRight 5))
-                   , (QId [] "Dist", TyConII Nothing)
-                   , (QId [] "Int", TyConII Nothing)
-                   , (QId [] "Real", TyConII Nothing)
+                     (Con $ QId [] "->", TyConII $ Just (Fixity AssocRight 5))
+                   , (Con $ QId [] "Dist", TyConII Nothing)
+                   , (Con $ QId [] "Int", TyConII Nothing)
+                   , (Con $ QId [] "Real", TyConII Nothing)
                    ])
                   M.empty
 
@@ -134,24 +133,13 @@ updateWithFixity ident fixity =
       qid = QId [] ident
   in local (valIdInfo . ix qid %~ setFixity)
 
-withTyVar :: Ident -> TA a -> TA a
-withTyVar ident =
-  let addTyVar = M.insert (QId [] ident) TyVarII
-  in local (tyIdInfo %~ addTyVar)
-
-withTyVars :: [Ident] -> TA a -> TA a
-withTyVars idents =
-  let l = map (\ident -> (QId [] ident, TyVarII)) idents
-      addTyVars = M.union (M.fromList l)
-  in local (tyIdInfo %~ addTyVars)
-
-withTyCon :: Ident -> Maybe Fixity -> TA a -> TA a
-withTyCon ident fixity =
-  let addTyCon = M.insert (QId [] ident) (TyConII fixity)
+withTyCon :: Con -> Maybe Fixity -> TA a -> TA a
+withTyCon con fixity =
+  let addTyCon = M.insert con (TyConII fixity)
   in local (tyIdInfo %~ addTyCon)
 
 
-askTypeOperators :: TA (M.Map QualifiedIdent Fixity)
+askTypeOperators :: TA (M.Map Con Fixity)
 askTypeOperators =
   let justTypeOps (TyConII (Just fixity)) = Just fixity
       justTypeOps _                       = Nothing
@@ -163,6 +151,12 @@ askValOperators =
       justValOps (ValConII (Just fixity)) = Just fixity
       justValOps _                        = Nothing
   in views valIdInfo (M.mapMaybe justValOps)
+
+askValConstructors :: TA (M.Map Con Fixity)
+askValConstructors =
+  let justConOps (ValConII (Just fixity)) = Just fixity
+      justConOps _                        = Nothing
+  in views valIdInfo (M.mapKeysMonotonic Con . M.mapMaybe justConOps)
 
 toplevel :: Toplevel -> TA I.Toplevel
 toplevel (Toplevel items) = I.Toplevel <$> mapM toplevelItem items
@@ -211,8 +205,9 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
          updateWithFixity ident fixity kont
        TypeSig ident tsd -> do
          (f, ident') <- field ident
-         tsd' <- withTyCon ident Nothing $ typeSigDecl tsd
-         rest <- withTyCon ident Nothing $ kont
+         let con = Con $ QId [] ident
+         tsd' <- withTyCon con Nothing $ typeSigDecl tsd
+         rest <- withTyCon con Nothing $ kont
          return $ I.TypeSig f (U.bind (ident', U.embed tsd') rest)
        SubmodelSig ident mt -> do
          (f, ident') <- field ident
@@ -232,13 +227,15 @@ model (Model decls) = I.Model <$> foldr go (return []) decls
          return (I.ValueDecl f vd' : rest)
        TypeDefn ident td -> do
          (f, _) <- field ident
-         (td', idents) <- withTyCon ident Nothing $ typeDefn td
-         rest <- withValCons idents $ withTyCon ident Nothing $ kont
+         let con = Con $ QId [] ident
+         (td', idents) <- withTyCon con Nothing $ typeDefn td
+         rest <- withValCons idents $ withTyCon con Nothing $ kont
          return (I.TypeDefn f td' : rest)
        TypeAliasDefn ident alias -> do
          (f, _) <- field ident
          alias' <- typeAlias alias
-         rest <- withTyCon ident Nothing $ kont
+         let con = Con $ QId [] ident
+         rest <- withTyCon con Nothing $ kont
          return (I.TypeAliasDefn f alias' : rest)
        FixityDecl ident fixity ->
          updateWithFixity ident fixity $ kont
@@ -257,8 +254,8 @@ typeSigDecl (AliasTypeSigDecl alias) = I.AliasTypeSigDecl <$> typeAlias alias
 
 typeAlias :: TypeAlias -> TA I.TypeAlias
 typeAlias (TypeAlias tvks ty) = do
-  tvks' <- forM tvks $ \(tv, k) -> (,) <$> tyvar (QId [] tv) <*> kind k 
-  ty' <- withTyVars (map fst tvks) $ type' ty
+  tvks' <- forM tvks $ \(tv, k) -> (,) <$> tyvar tv <*> kind k 
+  ty' <- type' ty
   return $ I.TypeAlias $ U.bind tvks' ty'
 
 typeDefn :: TypeDefn -> TA (I.TypeDefn, [Ident])
@@ -269,8 +266,8 @@ typeDefn (EnumTD n) = return (I.EnumDefn n, [])
 
 dataDefn :: DataDefn -> TA (I.DataDefn, [Ident])
 dataDefn (DataDefn tvks constrs) = do
-  tvks' <- forM tvks $ \(tv, k) -> (,) <$> tyvar (QId [] tv) <*> kind k
-  constrs' <- withTyVars (map fst tvks) $ mapM constructorDef constrs
+  tvks' <- forM tvks $ \(tv, k) -> (,) <$> tyvar tv <*> kind k
+  constrs' <- mapM constructorDef constrs
   let idents = map (\(ConstructorDef ident _) -> ident) constrs
   return (U.bind tvks' constrs', idents)
 
@@ -284,30 +281,26 @@ kind :: Kind -> TA I.Kind
 kind KType = return I.KType
 kind (KArr k1 k2) = I.KArr <$> kind k1 <*> kind k2
 
-tyvar :: QualifiedIdent -> TA I.TyVar
-tyvar (QId [] nm) = return $ U.s2n nm
-tyvar _ = error "unexpected qualified type variable"
+tyvar :: TyVar -> TA I.TyVar
+tyvar (TyVar ident) = return $ U.s2n ident
 
-qualifiedTyCon :: QualifiedIdent -> TA I.Type
-qualifiedTyCon q = do
-  mt <- view (tyIdInfo . at q)
-  case mt of
-   Just (TyConII _) -> return $ I.TC $ I.Con $ qualifiedIdPath q
-   Just TyVarII -> I.TV <$> tyvar q
-   _ -> error ("unbound name " ++ show q ++ " where a type was expected")
+qualifiedTyCon :: Con -> TA I.Con
+qualifiedTyCon con = do
+  return $ I.Con $ qualifiedIdPath $ unCon con
 
 type' :: Type -> TA I.Type
-type' (TForall ident k ty) = do
-  tv' <- tyvar (QId [] ident)
+type' (TForall tv k ty) = do
+  tv' <- tyvar tv
   k' <- kind k
-  ty' <- withTyVar ident $ type' ty
+  ty' <- type' ty
   return $ I.TForall (U.bind (tv', k') ty')
 type' (TPhrase atms) = do
   tyOps <- askTypeOperators
   disfix atms tyOps
 
 typeAtom :: TypeAtom -> TA I.Type
-typeAtom (TI q) = qualifiedTyCon q
+typeAtom (TC c) = I.TC <$> qualifiedTyCon c
+typeAtom (TV tv) = I.TV <$> tyvar tv
 typeAtom (TEnclosed ty mk) = do
   ty' <- type' ty
   case mk of
@@ -344,19 +337,37 @@ expr (Phrase atms) = do
   valOps <- askValOperators
   disfix atms valOps
 
-qualifiedVal :: QualifiedIdent -> TA I.Expr
-qualifiedVal q = do
+qualifiedCon :: Con -> TA I.Con
+qualifiedCon con = do
+  let qid = unCon con
+  mii <- view (valIdInfo . at qid )
+  case mii of
+   Just (ValVarII _) -> error ("expected a value constructor, "
+                               ++ " but found a variable " ++ show con)
+   _ -> return $ I.Con $ qualifiedIdPath qid
+
+qualifiedVar :: QVar -> TA I.QVar
+qualifiedVar (QVar qid) = do
+  mii <- view (valIdInfo . at qid)
+  case mii of
+   Just (ValConII _) ->
+     error ("expected a variable, but found a value constructor " ++ show qid)
+   _ -> return $ I.QVar $ qualifiedIdPath qid
+   
+unqualifiedVar :: Var -> TA I.Var
+unqualifiedVar (Var ident) = do
+  let q = QId [] ident
   mii <- view (valIdInfo . at q)
   case mii of
-   Just (ValVarII _) -> (case hasNoQualification q of
-                          Just ident -> return $ I.V $ U.s2n ident
-                          Nothing-> return $ I.Q $ I.QVar $ qualifiedIdPath q)
-   Just (ValConII _) -> return $ I.C $ I.Con $ qualifiedIdPath q
-   Nothing -> error ("unknown identifier " ++ show q)
-                         
+   Just (ValVarII _) -> return $ U.s2n ident
+   Nothing -> return $ U.s2n ident
+   Just (ValConII _) ->
+     error ("expected a variable, but found a value constructor " ++ show ident)
 
 exprAtom :: ExprAtom -> TA I.Expr
-exprAtom (I q) = qualifiedVal q
+exprAtom (V v) = I.V <$> unqualifiedVar v
+exprAtom (Q qv) = I.Q <$> qualifiedVar qv
+exprAtom (C c) = I.C <$> qualifiedCon c
 exprAtom (Enclosed e mt) = do
   e' <- expr e
   mt' <- traverse type' mt
@@ -389,33 +400,22 @@ completePP :: PartialPattern -> I.Pattern
 completePP (CompletePP pat) = pat
 completePP (PartialPP patf) = patf []
 
-qualifiedPat :: QualifiedIdent -> CTA PartialPattern
-qualifiedPat qid = do
+patternAtom :: PatternAtom -> CTA PartialPattern
+patternAtom (VarP v) = (CompletePP . I.VarP) <$> liftCTA (unqualifiedVar v)
+patternAtom (ConP con) = do
+  let qid = unCon con
   mii <- use (valIdInfo . at qid)
   case mii of
-   Nothing -> unqual qid
-   Just (ValVarII _) -> unqual qid -- shadow existing variable
-   Just (ValConII mfixity) ->
-     -- literal data type constructor
-     return $ PartialPP $ I.ConP $ I.Con $ qualifiedIdPath qid
-  where
-    unqual q =
-      case hasNoQualification q of
-       Just ident -> do
-         -- add variable to context, note that it's not infix.
-         (valIdInfo . at q) .= Just (ValVarII Nothing)
-         return $ CompletePP $ I.VarP (U.s2n ident)
-       Nothing -> error $ "qualified variable in pattern " ++ show q
-
-patternAtom :: PatternAtom -> CTA PartialPattern
+   Just (ValConII _fix) -> (PartialPP . I.ConP) <$> liftCTA (qualifiedCon con)
+   _ -> error ("in pattern expected a constructor, but got variable "
+               ++ show con)
 patternAtom WildcardP = return $ CompletePP $ I.WildcardP
 patternAtom (EnclosedP p) = CompletePP <$> pattern p
-patternAtom (IdP qid) = qualifiedPat qid
 
 pattern :: Pattern -> CTA I.Pattern
 pattern (PhraseP atms) = do
-  valOps <- liftCTA askValOperators
-  pp <- disfix atms valOps
+  valCons <- liftCTA askValConstructors
+  pp <- disfix atms valCons
   return $ completePP pp
 
 
@@ -430,7 +430,7 @@ bindings (bnd:bnds) kont =
     prependBindings (x:xs) ys = I.ConsBs $ U.rebind x (prependBindings xs ys)
 
 binding :: Binding -> ([I.Binding] -> TA a) -> TA a
-binding (SigB ident ty) kont = kont []
+binding (SigB _ident _ty) kont = kont []
 binding (ValB ident e) kont = do
   let v = U.s2n ident
   e' <- expr e
@@ -450,12 +450,12 @@ binding (TabB idtys tfs) kont = do
     mty' <- traverse type' mty
     return (v, U.embed $ I.Annot mty')
   namedtfs' <- withValVars (map fst idtys) $ traverse (tabulatedFun annvs) tfs
-  let (names, bindings) =
+  let (names, bnds) =
         unzip $ map (\(name, tf) -> let
                         v = U.s2n name
                         in (name,
                             I.TabB v (U.embed tf))) namedtfs'
-  withValVars names $ kont bindings
+  withValVars names $ kont bnds
 
 tabulatedFun :: [I.AnnVar] -> TabulatedFun -> TA (Ident, I.TabulatedFun)
 tabulatedFun annvs (TabulatedFun ident ts) = do
@@ -473,7 +473,7 @@ tabSelector (TabIndex ident) = return (I.TabIndex $ U.s2n ident)
 
 ---------------------------------------- Infix parsing
 
-instance FixityParseable TypeAtom QualifiedIdent TA I.Type where
+instance FixityParseable TypeAtom Con TA I.Type where
   term = do
     ctx <- ask
     t <- P.tokenPrim show (\pos _tok _toks -> pos) (notInfix ctx)
@@ -481,16 +481,16 @@ instance FixityParseable TypeAtom QualifiedIdent TA I.Type where
     where
       notInfix ctx t =
         case t of
-         TI qid -> case ctx ^. tyIdInfo . at qid of
+         TC con -> case ctx ^. tyIdInfo . at con of
                     (Just (TyConII (Just _fixity))) -> Nothing
                     _ -> Just t
          _ -> Just t
   juxt = pure I.TApp
-  infx qid = do
-    tOp <- lift $ qualifiedTyCon qid
-    let match t@(TI qid2) | qid == qid2 = Just t
+  infx con = do
+    let match t@(TC con2) | con == con2 = Just t
         match _                         = Nothing
     _ <- P.tokenPrim show (\pos _tok _toks -> pos) match
+    tOp <- lift (I.TC <$> qualifiedTyCon con)
     return $ \t1 t2 -> I.tApps tOp [t1, t2]
 
 instance FixityParseable ExprAtom QualifiedIdent TA I.Expr where
@@ -501,21 +501,31 @@ instance FixityParseable ExprAtom QualifiedIdent TA I.Expr where
     where
       notInfix ctx e =
         case e of
-         I qid -> case ctx ^. valIdInfo . at qid of
-                   (Just (ValVarII (Just _fixity))) -> Nothing
-                   (Just (ValConII (Just _fixity))) -> Nothing
-                   _ -> Just e
+         V v -> let qid = QId [] (unVar v)
+                in notInfixQid ctx qid e
+         Q (QVar qid) -> notInfixQid ctx qid e
+         C (Con qid) -> notInfixQid ctx qid e
+         _ -> Just e
+      notInfixQid ctx qid e =
+        case ctx ^. valIdInfo . at qid of
+         (Just (ValVarII (Just _fixity))) -> Nothing
+         (Just (ValConII (Just _fixity))) -> Nothing
          _ -> Just e
   juxt = pure I.App
   infx qid = do
-    v <- lift $ qualifiedVal qid
     let
-      match e@(I qid2) | qid == qid2 = Just e
-      match _                        = Nothing
-    _ <- P.tokenPrim show (\pos _tok _toks -> pos) match
+      match (Q qv)  | unQVar qv == qid          = Just (I.Q
+                                                        <$> qualifiedVar qv)
+      match (V v)   | (QId [] $ unVar v) == qid = Just (I.V
+                                                        <$> unqualifiedVar v)
+      match (C con) | unCon con == qid          = Just (I.C
+                                                        <$> qualifiedCon con)
+      match _                                   = Nothing
+    m <- P.tokenPrim show (\pos _tok _toks -> pos) match
+    v <- lift $ m
     return $ \e1 e2 -> I.App (I.App v e1) e2
 
-instance FixityParseable PatternAtom QualifiedIdent CTA PartialPattern where
+instance FixityParseable PatternAtom Con CTA PartialPattern where
    term = do
      ctx <- get
      t <- P.tokenPrim show (\pos _tok _toks -> pos) (notInfix ctx)
@@ -525,31 +535,30 @@ instance FixityParseable PatternAtom QualifiedIdent CTA PartialPattern where
          case pa of
           WildcardP -> Just pa
           EnclosedP _ -> Just pa
-          IdP qid -> case ctx ^. valIdInfo . at qid of
-                      (Just (ValVarII (Just _fixity))) -> Nothing
-                      (Just (ValConII (Just _fixity))) -> Nothing
-                      _ -> Just pa
+          VarP _ -> Just pa
+          ConP con ->
+            case ctx ^. valIdInfo . at (unCon con) of
+             (Just (ValConII (Just _fixity))) -> Nothing
+             _ -> Just pa
    juxt = pure $ \pp1 pp2 ->
      case pp1 of
       CompletePP pat1 -> error ("badly formed pattern " ++ show pat1
                                 ++ show (completePP pp2))
       PartialPP patf -> PartialPP $ \rest -> patf (completePP pp2 : rest)
-   infx qid = do
+   infx con = do
      let
-       match pa@(IdP qid2) | qid == qid2 = Just pa
-       match _                           = Nothing
+       match pa@(ConP con2) | con == con2 = Just pa
+       match _                            = Nothing
      _ <- P.tokenPrim show (\pos _tok _toks -> pos) match
-     pp <- lift $ qualifiedPat qid
-     -- we "know" pp is going to be a PartialPP infix because "infx"
-     -- is only called by the fixity parser on infix names.
+     con' <- lift $ liftCTA $ qualifiedCon con
+     let pat = I.ConP con'
+     -- we "know" pat is going to be a binary infix constructor
+     -- because "infx" is only called by the fixity parser on infix
+     -- names.
      return $ (\pp1 pp2 ->
-                case pp of
-                 CompletePP pat -> error ("unexpected pattern "
-                                          ++ show pat
-                                          ++ " in infix position")
-                 PartialPP pat -> CompletePP $ pat [completePP pp1
-                                                   , completePP pp2
-                                                   ])
+                CompletePP $ pat [completePP pp1
+                                 , completePP pp2
+                                 ])
 ---------------------------------------- Utilities
   
 disfix :: (FixityParseable tok op m t, Monad m)
@@ -564,77 +573,79 @@ disfix atms precs = do
 
 ---------------------------------------- Examples/Tests
 
-example1 :: () -> I.Type
-example1 () = runReader (type' y) c
-  where
-    a = TI (QId [] "a")
-    arrow = TI (QId [] "->")
-    times = TI (QId [] "*")
-    -- a * a * a -> a * a
-    -- parsed as ((a * a) * a) -> (a * a)
-    x = TPhrase [a, times, a, times, a, arrow, a, times, a]
-    y = TForall "a" KType x
-    c = Ctx
-        (M.fromList
-         [
-           (QId [] "->", TyConII $ Just (Fixity AssocRight 5))
-         , (QId [] "*", TyConII $ Just (Fixity AssocLeft 6))
-         ]
-        )
-        M.empty
+-- TODO:
 
-example2 :: () -> I.Expr
-example2 () = runReader (expr e) ctx
-  where
-    c = I (QId [] "::")
-    n = I (QId [] "N")
-    plus = I (QId [] "+")
-    x = I (QId [] "x")
-    y = I (QId [] "y")
-    e = Phrase [x, plus, y, plus, x, c, y, plus, x, c, n]
+-- example1 :: () -> I.Type
+-- example1 () = runReader (type' y) c
+--   where
+--     a = TI (QId [] "a")
+--     arrow = TI (QId [] "->")
+--     times = TI (QId [] "*")
+--     -- a * a * a -> a * a
+--     -- parsed as ((a * a) * a) -> (a * a)
+--     x = TPhrase [a, times, a, times, a, arrow, a, times, a]
+--     y = TForall "a" KType x
+--     c = Ctx
+--         (M.fromList
+--          [
+--            (QId [] "->", TyConII $ Just (Fixity AssocRight 5))
+--          , (QId [] "*", TyConII $ Just (Fixity AssocLeft 6))
+--          ]
+--         )
+--         M.empty
 
-    ctx = Ctx
-          M.empty
-          (M.fromList
-           [
-             (QId [] "::", ValConII $ Just (Fixity AssocRight 3))
-           , (QId [] "+", ValVarII $ Just (Fixity AssocLeft 7))
-           , (QId [] "x", ValVarII Nothing)
-           , (QId [] "y", ValVarII Nothing)
-           , (QId [] "N", ValConII Nothing)
-           ]
-          )
+-- example2 :: () -> I.Expr
+-- example2 () = runReader (expr e) ctx
+--   where
+--     c = I (QId [] "::")
+--     n = I (QId [] "N")
+--     plus = I (QId [] "+")
+--     x = I (QId [] "x")
+--     y = I (QId [] "y")
+--     e = Phrase [x, plus, y, plus, x, c, y, plus, x, c, n]
 
-example3 :: () -> I.Clause
-example3 () = runReader (clause cls) ctx
-  where
-    c = (QId [] "::")
-    n = (QId [] "N")
-    x = (QId [] "x")
-    y = (QId [] "y")
-    p = PhraseP $ map IdP [x, c, y, c, n]
-    e = Phrase $ map I [y, c, x, c, n]
-    cls = Clause p e
-    ctx = Ctx
-          M.empty
-          (M.fromList
-           [
-             (QId [] "::", ValConII $ Just (Fixity AssocRight 3))
-           , (QId [] "N", ValConII Nothing)
-           , (QId [] "x", ValVarII Nothing) -- will be shadowed
-             -- note "y" not in scope yet.
-           ])
+--     ctx = Ctx
+--           M.empty
+--           (M.fromList
+--            [
+--              (QId [] "::", ValConII $ Just (Fixity AssocRight 3))
+--            , (QId [] "+", ValVarII $ Just (Fixity AssocLeft 7))
+--            , (QId [] "x", ValVarII Nothing)
+--            , (QId [] "y", ValVarII Nothing)
+--            , (QId [] "N", ValConII Nothing)
+--            ]
+--           )
+
+-- example3 :: () -> I.Clause
+-- example3 () = runReader (clause cls) ctx
+--   where
+--     c = (QId [] "::")
+--     n = (QId [] "N")
+--     x = (QId [] "x")
+--     y = (QId [] "y")
+--     p = PhraseP $ map IdP [x, c, y, c, n]
+--     e = Phrase $ map I [y, c, x, c, n]
+--     cls = Clause p e
+--     ctx = Ctx
+--           M.empty
+--           (M.fromList
+--            [
+--              (QId [] "::", ValConII $ Just (Fixity AssocRight 3))
+--            , (QId [] "N", ValConII Nothing)
+--            , (QId [] "x", ValVarII Nothing) -- will be shadowed
+--              -- note "y" not in scope yet.
+--            ])
     
-example4 :: () -> I.Clause
-example4 () = runReader (clause cls) ctx
-  where
-    x = (QId [] "x")
-    p = PhraseP [IdP x]
-    e = Phrase [I x]
-    cls = Clause p e
-    ctx = Ctx
-          M.empty
-          (M.fromList
-           [
-           ])
+-- example4 :: () -> I.Clause
+-- example4 () = runReader (clause cls) ctx
+--   where
+--     x = (QId [] "x")
+--     p = PhraseP [IdP x]
+--     e = Phrase [I x]
+--     cls = Clause p e
+--     ctx = Ctx
+--           M.empty
+--           (M.fromList
+--            [
+--            ])
     

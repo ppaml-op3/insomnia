@@ -11,6 +11,18 @@ type Nat = Integer
 data QualifiedIdent = QId ![Ident] !Ident
                     deriving (Show)
 
+newtype Con = Con { unCon :: QualifiedIdent }
+            deriving (Show, Eq, Ord)
+
+newtype TyVar = TyVar { unTyVar :: Ident }
+              deriving (Show)
+
+newtype Var = Var { unVar :: Ident }
+            deriving (Show)
+
+newtype QVar = QVar { unQVar :: QualifiedIdent }
+             deriving (Show)
+
 instance Ord QualifiedIdent where
   (QId p1 f1) `compare` (QId p2 f2) = compare p1 p2 <> compare f1 f2
 
@@ -57,7 +69,7 @@ data TypeDefn =
   | EnumTD !Nat
   deriving (Show)
 
-type KindedTVar = (Ident,Kind)
+type KindedTVar = (TyVar,Kind)
 
 data TypeAlias = TypeAlias ![KindedTVar] !Type
                deriving (Show)
@@ -88,19 +100,22 @@ data ValueDecl =
 data Kind = KType | KArr !Kind !Kind
           deriving (Show)
 
-data TypeAtom = TI !QualifiedIdent
+data TypeAtom = TC !Con
+              | TV !TyVar
               | TEnclosed !Type !(Maybe Kind)  -- '(' Type ')' or '(' Type ':' Kind ')'
               deriving (Show)
 
 data Type = TPhrase ![TypeAtom]
-          | TForall !Ident !Kind !Type
+          | TForall !TyVar !Kind !Type
           deriving (Show)
 
 data Literal = IntL !Integer
              | RealL !Double
              deriving (Show)
 
-data ExprAtom = I !QualifiedIdent
+data ExprAtom = V !Var
+              | Q !QVar
+              | C !Con
               | L !Literal
               | Enclosed !Expr !(Maybe Type) -- '(' Expr ')' or '(' Expr ':' Type ')'
               deriving (Show)
@@ -115,7 +130,8 @@ data Clause = Clause !Pattern !Expr
             deriving (Show)
 
 data PatternAtom = WildcardP
-                 | IdP !QualifiedIdent
+                 | VarP !Var
+                 | ConP !Con
                  | EnclosedP !Pattern
                   deriving (Show)
 

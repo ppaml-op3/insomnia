@@ -38,13 +38,14 @@ printUsage = putStrLn "Usage: insomnia [FILE | --help]"
 
 parseAndCheck :: FilePath -> IO ()
 parseAndCheck fp = do
-  result <- P1.parseFile fp
-  ast <- case result of
-    Left err -> showErrorAndDie "parsing" err
-    Right ast -> return ast
-  putStrLn "--------------------✂✄--------------------"
-  F.putStrDoc (F.format $ ppDefault ast)
-  putStrLn ""
+  -- --
+  -- result <- P1.parseFile fp
+  -- ast <- case result of
+  --   Left err -> showErrorAndDie "parsing" err
+  --   Right ast -> return ast
+  -- putStrLn "--------------------✂✄--------------------"
+  -- F.putStrDoc (F.format $ ppDefault ast)
+  -- putStrLn ""
   --
   result2 <- P2.parseFile fp
   ast2 <- case result2 of
@@ -56,7 +57,7 @@ parseAndCheck fp = do
   putStrLn ""
   --
   let
-    tc = runTC $ checkToplevel ast
+    tc = runTC $ checkToplevel ast2
   (elab, m) <- case tc of
     Left err -> showErrorAndDie "typechecking" err
     Right ans -> return ans

@@ -4,7 +4,7 @@ module Insomnia.SurfaceSyntax.Parse (parseFile) where
 import Control.Applicative
 import Control.Monad (guard)
 
-import Data.Char (isUpper)
+import Data.Char (isUpper, isLower)
 import Data.Functor.Identity (Identity(..))
 import Data.Text (Text)
 import qualified Data.Text.IO as T
@@ -65,8 +65,30 @@ exactly p x = (p >>= \x' -> guard (x == x')) <?> show x
 classify :: Parser ()
 classify = reservedOp "::" <|> reserved "∷"
 
-ident :: Parser Ident
-ident = identifier
+variableIdentifier :: Parser Ident
+variableIdentifier = try $ do
+  i <- identifier
+  let c = head i
+  guard (isLower c || c == '_')
+  return i
+
+variableOrPrefixInfixIdentifier :: Parser Ident
+variableOrPrefixInfixIdentifier =
+  try (parens operator)
+  <|> variableIdentifier
+
+modelIdentifier :: Parser Ident
+modelIdentifier = tyconIdentifier
+
+modelTypeIdentifier :: Parser Ident
+modelTypeIdentifier = tyconIdentifier
+
+tyconIdentifier :: Parser Ident
+tyconIdentifier = try $ do
+  i <- identifier
+  let c = head i
+  guard (isUpper c)
+  return i
 
 infixIdent :: Parser Ident
 infixIdent = operator
@@ -91,19 +113,40 @@ qualifiedName p =
         return (c:cs)
   in lexeme $ components
 
-qualifiedIdent :: Parser QualifiedIdent
-qualifiedIdent =
-  (mkQualifiedIdent <$> qualifiedName ident)
-  <?> "(possibly qualified) identifier"
-  where
-    mkQualifiedIdent (path, ident) = QId path ident
-
 qualifiedInfixIdent :: Parser QualifiedIdent
 qualifiedInfixIdent =
   (mkQualifiedIdent <$> qualifiedName infixIdent)
   <?> "(possibly qualified) infix identifier"
   where
     mkQualifiedIdent (path, ident) = QId path ident
+
+-- | X.Y.<op> where <op> is a symbolic operator
+infixConId :: Parser Con
+infixConId =
+  Con <$> qualifiedInfixIdent
+
+-- | X.Y.Z -- all components initial-uppercase
+conId :: Parser Con
+conId = (Con . mkQId) <$> qualifiedName tyconIdentifier
+  where
+    mkQId (path,ident) = QId path ident
+
+
+-- | X.Y.Z.v -- all components except the last are initial-uppsercase
+qvarId :: Parser QVar
+qvarId = (QVar . mkQId) <$> qualifiedName variableIdentifier
+  where
+    mkQId (path,ident) = QId path ident
+
+varId :: Parser Var
+varId = Var <$> variableIdentifier
+
+tvarId :: Parser TyVar
+tvarId = TyVar <$> variableIdentifier
+
+modelId :: Parser QualifiedIdent
+modelId = mkQId <$> qualifiedName modelIdentifier
+  where mkQId = uncurry QId
 
 ----------------------------------------
     
@@ -125,8 +168,8 @@ toplevelItem =
 toplevelModel :: Parser ToplevelItem
 toplevelModel =
   ToplevelModel
-  <$> (try (reserved "model" *> ident))
-  <*> optional (classify *> (IdentMT <$> ident))
+  <$> (try (reserved "model" *> modelIdentifier))
+  <*> optional (classify *> (IdentMT <$> modelTypeIdentifier))
   <*> ((reservedOp "=" *> modelExpr)
        <|> literalModelShorthand)
   where
@@ -135,7 +178,7 @@ toplevelModel =
 toplevelModelType :: Parser ToplevelItem
 toplevelModelType =
   ToplevelModelType
-  <$> (try (reserved "model" *> reserved "type" *> ident))
+  <$> (try (reserved "model" *> reserved "type" *> modelTypeIdentifier))
   <*> braces (SigMT <$> signature)
 
 signature :: Parser Signature
@@ -152,14 +195,14 @@ sigDecl =
 submodelSig :: Parser SigDecl
 submodelSig =
   SubmodelSig
-  <$> (reserved "model" *> ident)
+  <$> (reserved "model" *> modelIdentifier)
   <* classify
   <*> modelTypeExpr
 
 valueSig :: Parser SigDecl
 valueSig =
   ValueSig
-  <$> (reserved "sig" *> ident)
+  <$> (reserved "sig" *> variableOrPrefixInfixIdentifier)
   <* classify
   <*> typeExpr
 
@@ -175,7 +218,7 @@ typeSig =
 
     abstractDeclOrAliasDefn =
       abstractOrAlias
-      <$> (reserved "type" *> ident)
+      <$> (reserved "type" *> tyconIdentifier)
       <*> ((Left <$> (classify *> kindExpr))
            <|> (Right <$> ((,)
                            <$> many kindedTVar
@@ -197,7 +240,7 @@ fixity :: Parser (Ident, Fixity)
 fixity =
   mkFixity
   <$> fixityKW
-  <*> ident
+  <*> operator
   <*> fixprecedence
   where
     mkFixity assc ident prec = (ident, Fixity assc prec)
@@ -216,7 +259,7 @@ fixity =
 
 modelTypeExpr :: Parser ModelType
 modelTypeExpr =
-  (IdentMT <$> ident <?> "model type identifier")
+  (IdentMT <$> modelTypeIdentifier <?> "model type identifier")
   <|> (SigMT <$> braces signature <?> "model signature in braces")
 
 
@@ -229,11 +272,11 @@ modelExpr =
   where
     modelLiteral = (ModelStruct . Model) <$> braces (many decl)
     modelAssume =  (ModelAssume . IdentMT)
-                   <$> (reserved "assume" *> ident)
+                   <$> (reserved "assume" *> modelTypeIdentifier)
     nestedModel = parens (mkNestedModelExpr
                           <$> modelExpr
                           <*> optional (classify *> modelTypeExpr))
-    modelPath = ModelId <$> qualifiedIdent
+    modelPath = ModelId <$> modelId
 
     mkNestedModelExpr modExpr Nothing = modExpr
     mkNestedModelExpr modExpr (Just modTy) = ModelAscribe modExpr modTy
@@ -241,9 +284,13 @@ modelExpr =
 
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
+       <|> (fixityDecl <?> "fixity declaration")
        <|> (typeDefn <?> "type definition")
        <|> (typeAliasDefn <?> "type alias definition")
        <|> (modelDefn <?> "submodel definition")
+
+fixityDecl :: Parser Decl
+fixityDecl = uncurry FixityDecl <$> fixity
 
 valueDecl :: Parser Decl
 valueDecl =
@@ -263,7 +310,7 @@ typeDefn =
 typeAliasDefn :: Parser Decl
 typeAliasDefn =
   mkTypeAliasDefn
-  <$> (reserved "type" *> ident)
+  <$> (reserved "type" *> tyconIdentifier)
   <*> many kindedTVar
   <* reservedOp "="
   <*> typeExpr
@@ -274,8 +321,8 @@ typeAliasDefn =
 
 modelDefn :: Parser Decl
 modelDefn =
-  mkModelDefn <$> (reserved "model" *> ident)
-  <*> optional (classify *> ident)
+  mkModelDefn <$> (reserved "model" *> modelIdentifier)
+  <*> optional (classify *> modelTypeIdentifier)
   <*> modelExpr
   where
     mkModelDefn modIdent maybeSigId content =
@@ -288,7 +335,7 @@ modelDefn =
 funDecl :: Parser (Ident, ValueDecl)
 funDecl =
   mkFunDecl
-   <$> (reserved "fun" *> ident)
+   <$> (reserved "fun" *> variableOrPrefixInfixIdentifier)
    <*> (some annVar)
    <*> (reservedOp "=" *> expr)
   where
@@ -303,7 +350,7 @@ mkLams ((v, mty):vs) e = Lam v mty (mkLams vs e)
 valueSigDecl :: Parser (Ident, ValueDecl)
 valueSigDecl =
   mkSigDecl
-  <$> (reserved "sig" *> ident)
+  <$> (reserved "sig" *> variableOrPrefixInfixIdentifier)
   <* classify
   <*> typeExpr
   where
@@ -312,7 +359,7 @@ valueSigDecl =
 valOrSampleDecl :: Parser (Ident, ValueDecl)
 valOrSampleDecl =
   mkValOrSampleDecl
-  <$> (reserved "val" *> ident)
+  <$> (reserved "val" *> variableOrPrefixInfixIdentifier)
   <*> ((pure ValDecl <* reservedOp "=")
        <|> (pure SampleDecl <* reservedOp "~"))
   <*> expr
@@ -322,7 +369,7 @@ valOrSampleDecl =
 
 dataDefn :: Parser (Ident, TypeDefn)
 dataDefn = mkDataDefn
-           <$> (reserved "data" *> ident)
+           <$> (reserved "data" *> tyconIdentifier)
            <*> many (kindedTVar)
            <*> (reservedOp "="
                 *> sepBy1 constructorDef (reservedOp "|"))
@@ -331,7 +378,7 @@ dataDefn = mkDataDefn
 
 enumDefn :: Parser (Ident, TypeDefn)
 enumDefn = mkEnumDefn
-           <$> (reserved "enum" *> ident)
+           <$> (reserved "enum" *> tyconIdentifier)
            <*> natural
   where
     mkEnumDefn nm card = (nm, EnumTD card)
@@ -339,14 +386,14 @@ enumDefn = mkEnumDefn
 constructorDef :: Parser ConstructorDef
 constructorDef =
   ConstructorDef
-  <$> ident
+  <$> tyconIdentifier
   <*> many (atomicTy <$> typeAtom)
   where
     atomicTy atm = TPhrase [atm]
 
 kindedTVar :: Parser KindedTVar
 kindedTVar =
-  parens ((,) <$> ident
+  parens ((,) <$> tvarId
           <*> (classify *> kindExpr))
 
 kindExpr :: Parser Kind
@@ -367,7 +414,8 @@ kindExpr = buildExpressionParser table kindFactor
 
 typeAtom :: Parser TypeAtom
 typeAtom =
-  (TI <$> (qualifiedIdent <|> qualifiedInfixIdent))
+  (TV <$> tvarId)
+  <|> (TC <$> try (conId <|> infixConId))
   <|> (TEnclosed <$> tforall <*> pure Nothing)
   <|> parens (TEnclosed <$> typeExpr
               <*> optional (classify *> kindExpr))
@@ -388,9 +436,9 @@ tforall = mkForall
     forallKW = reserved "forall" <|> reserved "∀"
 
 annVar :: Parser (Ident, Maybe Type)
-annVar = (unannotated <$> ident)
+annVar = (unannotated <$> variableIdentifier)
          <|> parens (annotated
-                     <$> ident
+                     <$> variableIdentifier
                      <*> (classify *> typeExpr))
          <?> "var or (var :: ty)"
   where
@@ -406,7 +454,11 @@ expr =
 
 exprAtom :: Parser ExprAtom
 exprAtom =
-  (I <$> (qualifiedIdent <|> qualifiedInfixIdent))
+  (V <$> varId)
+  <|> ((V . Var) <$> infixIdent)
+  <|> ((Q . QVar) <$> try qualifiedInfixIdent)
+  <|> (Q <$> try qvarId)
+  <|> (C <$> try conId)
   <|> (L <$> literal)
   <|> parens (Enclosed <$> expr
               <*> optional (classify *> typeExpr))
@@ -442,8 +494,9 @@ clause = (Clause
 patternAtom :: Parser PatternAtom
 patternAtom =
   ((pure WildcardP <* reserved "_") <?> "wildcard pattern")
-  <|> ((IdP <$> (qualifiedIdent <|> qualifiedInfixIdent))
-       <?> "variable or constructor pattern")
+  <|> ((ConP <$> (conId <|> (Con <$> qualifiedInfixIdent)))
+       <?> "constructor pattern")
+  <|> (VarP <$> varId <?> "variable pattern")
   <|> parens (EnclosedP <$> pattern)
 
 pattern :: Parser Pattern
@@ -469,7 +522,7 @@ tabulatedFunB =
   *> (mkTabB
       <$> some annVar
       <* reserved "in"
-      <*> ident
+      <*> variableIdentifier
       <*> some tabSelector
       <* reservedOp "~"
       <*> expr)
@@ -478,4 +531,4 @@ tabulatedFunB =
       TabB avs [TabulatedFun y $ TabSample sels e]
 
 tabSelector :: Parser TabSelector
-tabSelector = (TabIndex <$> ident)
+tabSelector = (TabIndex <$> variableIdentifier)

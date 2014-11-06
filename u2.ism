@@ -7,6 +7,11 @@ model type PRELUDE {
   -- type Bool :: *
   type Bool2 = Bool
 
+  data List (a ∷ ⋆) = Nil | Cons a (List a)
+
+  sig (:) :: ∀ (a ∷ ⋆) . a -> List a -> List a
+  
+
   model S :: {
      model S2 :: S_SIG
      type W = S2.T
@@ -35,6 +40,32 @@ model Prelude :: PRELUDE {
    data Bool = False | True
 
    type Bool2 = Bool
+
+   sig (&&) :: Bool -> Bool -> Bool
+   fun (&&) b1 b2 =
+     case b1 of
+       { True -> b2
+       ; o -> False
+       }
+
+   infixl && 4
+
+   data List (a ∷ ⋆) = Nil | Cons a (List a)
+
+   sig (:) :: ∀ (a ∷ ⋆) . a -> List a -> List a
+   fun (:) x xs = Cons x xs
+
+   infixr : 6
+
+   sig l1 :: List Int
+   val l1 = (3 : 4 : Nil)
+
+   sig map :: ∀ (a :: *) (b :: *) . (a -> b) -> List a -> List b
+   fun map f xs =
+     case xs of
+     { Nil -> Nil
+     ; (Cons y ys) -> f y : map f ys
+     }
 
    sig cond :: forall (c :: *) . Bool -> c -> c -> c
    fun cond b t f =

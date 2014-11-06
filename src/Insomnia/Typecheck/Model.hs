@@ -162,7 +162,7 @@ checkDecl' pmod d =
     TypeDefn fld td -> do
       let dcon = Con (ProjP pmod fld)
       guardDuplicateDConDecl dcon
-      (td', _) <- checkTypeDefn dcon td
+      (td', _) <- checkTypeDefn (Con $ IdP $ U.s2n fld) td
       return $ TypeDefn fld td'
     TypeAliasDefn fld alias -> do
       let dcon = Con (ProjP pmod fld)

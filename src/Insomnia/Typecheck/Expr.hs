@@ -84,6 +84,7 @@ checkExpr e_ t_ = case e_ of
   Case scrut clauses -> do
     (tscrut, scrut') <- inferExpr scrut
     clauses' <- forM clauses (checkClause tscrut t_)
+                <??@ ("while checking case expression")
     return $ Case scrut' clauses'
   Ann e1_ t1_ -> do
     t1 <- checkType t1_ KType
@@ -98,10 +99,12 @@ type PatternMatch = [(Var, Type)]
 -- | check that the give clause scrutenized the given type and returns
 -- a result of the expected result type.
 checkClause :: Type -> Type -> Clause -> TC Clause
-checkClause tscrut texp (Clause bnd) =
+checkClause tscrut texp cls@(Clause bnd) =
   U.lunbind bnd $ \ (pat, expr) -> do
-    (pat', match) <- checkPattern tscrut pat
-    expr' <- extendLocalsCtx match $ checkExpr expr texp
+    (pat', match) <- (checkPattern tscrut pat)
+                     <??@ ("while checking clause " <> formatErr cls)
+    expr' <- (extendLocalsCtx match $ checkExpr expr texp)
+             <??@ ("while checking expression of clause " <> formatErr cls)
     return $ Clause $ U.bind pat' expr'
 
 checkPattern :: Type -> Pattern -> TC (Pattern, PatternMatch)
