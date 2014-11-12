@@ -84,7 +84,7 @@ checkExpr e_ t_ = case e_ of
   Case scrut clauses -> do
     (tscrut, scrut') <- inferExpr scrut
     clauses' <- forM clauses (checkClause tscrut t_)
-                <??@ ("while checking case expression")
+                <??@ ("while checking case expression " <> formatErr e_)
     return $ Case scrut' clauses'
   Ann e1_ t1_ -> do
     t1 <- checkType t1_ KType
@@ -112,7 +112,7 @@ checkPattern tscrut p =
   case p of
     WildcardP -> return (p, [])
     VarP v -> return (p, [(v, tscrut)])
-    ConP c ps -> do
+    ConP (U.unembed -> c) ps -> do
       alg <- lookupCCon c
       instantiateConstructorArgs (alg^.algConstructorArgs) $ \ tparams targs -> do
         unless (length ps == length targs) $
@@ -127,7 +127,7 @@ checkPattern tscrut p =
             dty = foldl' TApp (TC d) tparams
         tscrut =?= dty
         (ps', ms) <- unzip <$> zipWithM checkPattern targs ps
-        return (ConP c ps', mconcat ms)
+        return (ConP (U.embed c) ps', mconcat ms)
 -- | check a sequence of bindings and pass them to the given continuation
 -- in an environment suitably extended by the new bindings.
 checkBindings :: Bindings -> (Bindings -> TC a) -> TC a

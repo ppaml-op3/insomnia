@@ -39,5 +39,4 @@ model Prelude :: PRELUDE {
     { (Cons y ys) -> Cons (f y) (map f ys)
     ; Nil -> Nil
     }
-
 }

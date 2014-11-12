@@ -62,6 +62,13 @@ instance (Pretty k, Pretty v) => Pretty (M.Map k v) where
       ppKVPair (k, v) = pp k <+> indent (onUnicode "↦" "|->") (pp v)
 
                   
+data PrettyMapping a b = PrettyMapping !a !b
+
+instance (Pretty a, Pretty b) => Pretty (PrettyMapping a b) where
+  pp (PrettyMapping x y) = pp x <+> "↝" <+> pp y
+
+instance (Pretty a, Pretty b) => Pretty [PrettyMapping a b] where
+  pp pms = sep $ punctuate "," (map (nesting . pp) pms)
 
 instance Pretty () where
   pp () = text "()"
@@ -82,8 +89,8 @@ instance Pretty Literal where
 instance Pretty Pattern where
   pp WildcardP = "_"
   pp (VarP v) = pp v
-  pp (ConP c []) = pp c
-  pp (ConP c ps) = parens $ pp c <+> (nesting $ fsep $ map pp ps)
+  pp (ConP c []) = pp (U.unembed c)
+  pp (ConP c ps) = parens $ pp (U.unembed c) <+> (nesting $ fsep $ map pp ps)
 
 instance Pretty Clause where
   pp (Clause bnd) =
@@ -161,13 +168,13 @@ instance Pretty String where
   pp = text
 
 instance Pretty QVar where
-  pp = pp . unQVar
+  pp (QVar qid) = pp qid
 
 instance Pretty Con where
-  pp = pp . unCon
+  pp (Con qid) = pp qid
 
 instance Pretty (U.Name a) where
-  pp = text . show
+  pp n = text (show n)
 
 instance Pretty Path where
   pp (IdP identifier) = pp identifier

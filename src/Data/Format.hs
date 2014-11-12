@@ -4,6 +4,7 @@ module Data.Format
          Doc
        , Format(..)
        , docToText
+       , docToString
        , putStrDoc
        , WrapShow(..)
        ) where
@@ -82,6 +83,9 @@ instance Format (U.Name a)
 -- | convert the given 'Doc' to a 'T.Text'
 docToText :: Doc -> T.Text
 docToText = TB.toLazyText . unDoc
+
+docToString :: Doc -> String
+docToString = T.unpack . docToText
 
 -- | display the given Doc on stdOut
 putStrDoc :: Doc -> IO ()

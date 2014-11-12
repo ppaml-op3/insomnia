@@ -406,7 +406,7 @@ patternAtom (ConP con) = do
   let qid = unCon con
   mii <- use (valIdInfo . at qid)
   case mii of
-   Just (ValConII _fix) -> (PartialPP . I.ConP) <$> liftCTA (qualifiedCon con)
+   Just (ValConII _fix) -> (PartialPP . I.ConP . U.embed) <$> liftCTA (qualifiedCon con)
    _ -> error ("in pattern expected a constructor, but got variable "
                ++ show con)
 patternAtom WildcardP = return $ CompletePP $ I.WildcardP
@@ -551,7 +551,7 @@ instance FixityParseable PatternAtom Con CTA PartialPattern where
        match _                            = Nothing
      _ <- P.tokenPrim show (\pos _tok _toks -> pos) match
      con' <- lift $ liftCTA $ qualifiedCon con
-     let pat = I.ConP con'
+     let pat = I.ConP (U.embed con')
      -- we "know" pat is going to be a binary infix constructor
      -- because "infx" is only called by the fixity parser on infix
      -- names.

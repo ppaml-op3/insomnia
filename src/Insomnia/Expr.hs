@@ -87,7 +87,7 @@ data TabSelector =
 -- | A pattern in a case expression
 data Pattern = WildcardP
              | VarP Var
-             | ConP !Con [Pattern]
+             | ConP !(Embed Con) [Pattern]
                deriving (Show, Typeable, Generic)
 
 -- All these types have notions of alpha equivalence upto bound

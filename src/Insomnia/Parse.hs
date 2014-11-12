@@ -518,7 +518,7 @@ variablePattern = VarP <$> varId
 valueConstructorPattern :: Parser Pattern
 valueConstructorPattern =
   ConP
-  <$> conId
+  <$> (U.embed <$> conId)
   <*> many atomicPattern
 
 
