@@ -6,8 +6,7 @@ import System.Exit (exitFailure)
 import Data.Format (Format)
 import qualified Data.Format as F
 
-import qualified Insomnia.Parse as P1
-import qualified Insomnia.SurfaceSyntax.Parse as P2
+import qualified Insomnia.SurfaceSyntax.Parse as P
 import qualified Insomnia.SurfaceSyntax.ToAST as ToAST
 import Insomnia.Typecheck
 import Insomnia.Pretty
@@ -38,26 +37,16 @@ printUsage = putStrLn "Usage: insomnia [FILE | --help]"
 
 parseAndCheck :: FilePath -> IO ()
 parseAndCheck fp = do
-  -- --
-  -- result <- P1.parseFile fp
-  -- ast <- case result of
-  --   Left err -> showErrorAndDie "parsing" err
-  --   Right ast -> return ast
-  -- putStrLn "--------------------✂✄--------------------"
-  -- F.putStrDoc (F.format $ ppDefault ast)
-  -- putStrLn ""
-  --
-  result2 <- P2.parseFile fp
-  ast2 <- case result2 of
+  result <- P.parseFile fp
+  ast <- case result of
     Left err -> showErrorAndDie "alternate Parser" err
     Right surfaceAst -> return (ToAST.toAST surfaceAst)
   putStrLn "--------------------✂✄--------------------"
-  putStrLn "Alternate parser"
-  F.putStrDoc (F.format $ ppDefault ast2)
+  F.putStrDoc (F.format $ ppDefault ast)
   putStrLn ""
   --
   let
-    tc = runTC $ checkToplevel ast2
+    tc = runTC $ checkToplevel ast
   (elab, m) <- case tc of
     Left err -> showErrorAndDie "typechecking" err
     Right ans -> return ans

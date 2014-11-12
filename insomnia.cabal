@@ -37,8 +37,6 @@ library
                        --
                        Insomnia.Toplevel
                        --
-                       Insomnia.Parse
-                       --
                        Insomnia.Unify
                        --
                        Insomnia.Typecheck.Env
