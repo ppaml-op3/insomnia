@@ -7,9 +7,12 @@ module Insomnia.Types where
 
 import Control.Applicative
 import Control.Lens
-import Control.Monad (liftM)
+import Control.Monad (liftM, zipWithM_)
 
+import Data.Function (on)
 import qualified Data.Map as M
+import Data.List (sortBy)
+import Data.Ord (comparing)
 import Data.Typeable(Typeable)
 
 import Data.Format (Format(..))
@@ -72,9 +75,19 @@ data Type = TV TyVar
           | TAnn Type !Kind
           | TApp Type Type
           | TForall (Bind (TyVar, Kind) Type)
+          | TRecord Row
             deriving (Show, Typeable, Generic)
 
 infixl 6 `TApp`
+
+newtype Label = Label {labelName :: String}
+              deriving (Show, Eq, Ord, Typeable, Generic)
+
+-- | Rows associate a set of types with a set of labels.  For now this
+-- is syntactically separate from other types and we don't have row
+ -- variables, so this is really just plain old non-extensible records.
+data Row = Row [(Label, Type)]
+           deriving (Show, Typeable, Generic)
 
 -- | iterate kind arrow construction
 -- @kArrs [k1, ... kN] kcod = k1 `KArr` k2 `KArr` ... `KArr` kN `kArr` kcod@
@@ -88,6 +101,10 @@ tApps :: Type -> [Type] -> Type
 tApps t0 [] = t0
 tApps t0 (t1:ts) = tApps (TApp t0 t1) ts
 
+-- | Sort the labels of a row into a canonical order
+canonicalOrderRowLabels :: [(Label, a)] -> [(Label, a)]
+canonicalOrderRowLabels = sortBy (comparing fst)
+
 -- Formatted output
 instance Format Con
 instance Format Kind
@@ -95,10 +112,12 @@ instance Format Type
 
 -- Alpha equivalence
 
+instance Alpha Label
 instance Alpha Con
 instance Alpha TypeConstructor
 instance Alpha Type
 instance Alpha Kind
+instance Alpha Row
 
 -- Substitution
 
@@ -106,7 +125,11 @@ instance Alpha Kind
 instance Subst Type Type where
   isvar (TV v) = Just (SubstName v)
   isvar _ = Nothing
+instance Subst Type Row
 
+instance Subst Type Label where
+  subst _ _ = id
+  substs _ = id
 instance Subst Type Path where
   subst _ _ = id
   substs _ = id
@@ -126,10 +149,14 @@ instance Subst Type (UVar a) where
 instance Subst Path Kind where
   subst _ _ = id
   substs _ = id
+instance Subst Path Label where
+  subst _ _ = id
+  substs _ = id
 
 instance Subst Path Con
 instance Subst Path TypeConstructor
 instance Subst Path Type
+instance Subst Path Row
 
 instance Subst TypeConstructor TypeConstructor where
   isvar (TCLocal c) = Just (SubstName c)
@@ -141,6 +168,9 @@ instance Subst TypeConstructor Path where
 instance Subst TypeConstructor (UVar a) where
   subst _ _ = id
   substs _ = id
+instance Subst TypeConstructor Label where
+  subst _ _ = id
+  substs _ = id
 instance Subst TypeConstructor Con where
   subst _ _ = id
   substs _ = id
@@ -149,6 +179,7 @@ instance Subst TypeConstructor Kind where
   substs _ = id
 
 instance Subst TypeConstructor Type
+instance Subst TypeConstructor Row
 
 -- Unification
 
@@ -169,6 +200,11 @@ instance HasUVars Type Type where
       TForall bnd -> let
         (vk, t1) = UU.unsafeUnbind bnd
         in (TForall . bind vk) <$> allUVars f t1
+      TRecord row -> TRecord <$> allUVars f row
+
+instance HasUVars Type Row where
+  allUVars f (Row ts) = Row <$> traverseOf (traverse . _2 . allUVars) f  ts
+    
 
 -- | Make a fresh unification variable
 freshUVarT :: MonadUnify e Type m => m Type
@@ -195,6 +231,7 @@ groundUnificationVar = \ k -> do
 
 data TypeUnificationError =
   SimplificationFail (M.Map (UVar Type) Type) !Type !Type -- the two given types could not be simplified under the given constraints
+  | RowLabelsDifferFail !Row !Row -- the two given rows could not be unifified because they have different labels
 
 class MonadTypeAlias m where
   expandTypeAlias :: TypeConstructor -> m (Maybe Type)
@@ -221,6 +258,7 @@ instance (MonadUnify TypeUnificationError Type m,
           let t1' = subst v1 tu1 t1_
           t1' =?= t2
       (_, TForall {}) -> t2 =?= t1
+      (TRecord row1, TRecord row2) -> row1 =?= row2
       (TUVar u1, TUVar u2) | u1 == u2 -> return ()
       (TUVar u1, _)                   -> u1 -?= t2
       (_, TUVar u2)                   -> u2 -?= t1
@@ -255,6 +293,19 @@ instance (MonadUnify TypeUnificationError Type m,
         throwUnificationFailure
           $ Unsimplifiable (SimplificationFail constraintMap t1 t2)
 
+
+instance (MonadUnify TypeUnificationError Type m,
+          MonadUnificationExcept TypeUnificationError Type m,
+          MonadTypeAlias m,
+          LFresh m)
+         => Unifiable Type TypeUnificationError m Row where
+  r1@(Row ls1_) =?= r2@(Row ls2_) =
+    let ls1 = canonicalOrderRowLabels ls1_
+        ls2 = canonicalOrderRowLabels ls2_
+    in if map fst ls1 == map fst ls2
+       then zipWithM_ ((=?=) `on` snd) ls1 ls2
+       else throwUnificationFailure $ Unsimplifiable (RowLabelsDifferFail r1 r2)
+
 -- | note that this 'Traversal'' does not descend under binders.  The passed
 -- function should explore TForall on its own.
 instance Plated Type where
@@ -264,6 +315,7 @@ instance Plated Type where
   plate _ (t@TForall {}) = pure t
   plate f (TAnn t k) = TAnn <$> f t <*> pure k
   plate f (TApp t1 t2) = TApp <$> f t1 <*> f t2
+  plate f (TRecord ts) = TRecord <$> traverseTypes f ts
 
 -- | Traverse the types in the given container
 class TraverseTypes s t where
@@ -271,6 +323,9 @@ class TraverseTypes s t where
 
 instance TraverseTypes Type Type where
   traverseTypes = plate
+
+instance TraverseTypes Row Row where
+  traverseTypes f (Row ts) = Row <$> traverseOf (traverse . _2) f ts
 
 transformEveryTypeM :: (TraverseTypes a a, Plated a, Monad m) => (Type -> m Type) -> a -> m a
 transformEveryTypeM f = transformM (transformMOn traverseTypes f)

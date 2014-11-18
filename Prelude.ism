@@ -40,3 +40,15 @@ model Prelude :: PRELUDE {
     ; Nil -> Nil
     }
 }
+
+model type DIST_PARAMS {
+  type NormalParams = { μ :: Real ; σ :: Real }
+
+  sig normal :: NormalParams -> Dist Real
+}
+
+model DistParams :: DIST_PARAMS {
+   type NormalParams = { μ :: Real ; σ :: Real }
+
+   sig normal :: NormalParams -> Dist Real
+}

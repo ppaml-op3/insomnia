@@ -317,6 +317,7 @@ typeConstructor (Con (QId (h:ps) f)) = return $ I.TCGlobal (I.ProjP path f)
 typeAtom :: TypeAtom -> TA I.Type
 typeAtom (TC c) = I.TC <$> typeConstructor c
 typeAtom (TV tv) = I.TV <$> tyvar tv
+typeAtom (TRecord rw) = I.TRecord <$> row rw
 typeAtom (TEnclosed ty mk) = do
   ty' <- type' ty
   case mk of
@@ -324,6 +325,12 @@ typeAtom (TEnclosed ty mk) = do
    Just k -> do
      k' <- kind k
      return $ I.TAnn ty' k'
+
+row :: Row -> TA I.Row
+row (Row lts) = I.Row <$> mapM labeledType lts
+  where
+    labeledType (l, ty) = (,) <$> pure (label l) <*> type' ty
+    label = I.Label . labelName
 
 valueDecl :: ValueDecl -> TA I.ValueDecl
 valueDecl (FunDecl e) = I.FunDecl <$> expr e

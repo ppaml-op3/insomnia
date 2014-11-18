@@ -206,6 +206,16 @@ instance Pretty Type where
     -- todo: do this safely; collapse consecutive foralls
     let (vk, t) = UU.unsafeUnbind bnd
     in ppCollapseForalls (Endo (vk :)) t
+  pp (TRecord row) = pp row
+
+instance Pretty Row where
+  pp (Row ts) = braces . fsep . punctuate ";" $ map ppLabeledType ts
+
+instance Pretty Label where
+  pp (Label n) = pp n
+
+ppLabeledType :: (Label, Type) -> PM Doc
+ppLabeledType (label, ty) = fsep [pp label, indent coloncolon (pp ty)]
 
 ppCollapseForalls :: Endo [(TyVar, Kind)] -> Type -> PM Doc
 ppCollapseForalls front t =
@@ -384,6 +394,10 @@ instance Pretty a => Pretty (UnificationFailure TypeUnificationError a) where
          <+> pp t1 <+> indent "≟" (pp t2)
         , "under constraints"
         , pp constraintMap]
+  pp (Unsimplifiable (RowLabelsDifferFail r1 r2)) =
+    cat ["failed to simplify unification problem "
+         <+> pp r1 <+> indent "≟" (pp r2)
+         <+> " because the rows have different labels"]
     
 
 -- onUnicode' :: String -> String -> PM Doc

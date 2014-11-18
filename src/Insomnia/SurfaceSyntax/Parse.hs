@@ -46,7 +46,7 @@ insomniaLang = LanguageDef {
                      "⋆", "∷",
                      "infix", "infixr", "infixl",
                      "assume",
-                     "data", "type", "enum", "record",
+                     "data", "type", "enum",
                      "val", "fun", "sig",
                      "let", "in", "case", "of",
                      "λ", "_"
@@ -417,8 +417,18 @@ typeAtom =
   (TV <$> tvarId)
   <|> (TC <$> try (conId <|> infixConId))
   <|> (TEnclosed <$> tforall <*> pure Nothing)
+  <|> (TRecord <$> recordRow)
   <|> parens (TEnclosed <$> typeExpr
               <*> optional (classify *> kindExpr))
+
+recordRow :: Parser Row
+recordRow =
+  Row <$> (braces (semiSep labeledType))
+  where
+    labeledType = (,) <$> label <* classify <*> typeExpr
+
+label :: Parser Label
+label = Label <$> variableIdentifier
 
 typeExpr :: Parser Type
 typeExpr =

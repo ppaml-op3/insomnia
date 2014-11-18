@@ -4,11 +4,13 @@
 module Insomnia.Typecheck.Type where
 
 import Control.Lens
-import Control.Monad (zipWithM_, when)
+import Control.Monad (zipWithM_, when, forM)
 import Control.Monad.Reader.Class (MonadReader(..))
 
-import Data.List (intersperse)
+import Data.List (intersperse, sortBy)
 import Data.Monoid (Monoid(..),(<>))
+import Data.Ord (comparing)
+import qualified Data.Set as S
 
 import qualified Unbound.Generics.LocallyNameless as U
 
@@ -74,6 +76,28 @@ inferType t =
         checkKind kdom
         tcod' <- extendTyVarCtx v kdom $ checkType tcod KType
         return (TForall (U.bind (v, kdom) tcod'), KType)        
+    TRecord row -> do
+      row' <- checkRow row
+      return (TRecord row', KType)
+
+checkRow :: Row -> TC Row
+checkRow r@(Row ts) = do
+  checkUniqueLabels r
+  forM ts $ \(lbl, ty) -> checkType ty KType
+  return $ Row $ canonicalOrderRowLabels ts
+
+checkUniqueLabels :: Row -> TC ()
+checkUniqueLabels r@(Row ls0) =
+  case dups S.empty ls0 of
+   Just l ->  typeError ("duplicate label " <> formatErr l
+                         <> " in row type " <> formatErr r)
+   Nothing -> return ()
+  where
+    dups _seen [] = Nothing
+    dups seen ((l,_ty):ls) =
+      if l `S.member` seen
+      then Just l
+      else dups (S.insert l seen) ls
 
 -- | @expandAliasApplication t targs@ recursively unfolds t until a
 -- type alias is exposed which is then expanded with the given
@@ -107,9 +131,12 @@ expandAliasApplication t targs =
     TV v -> do
       k' <- lookupTyVar v
       reconstructApplication (t, k') targs
-    _ -> typeError ("Type " <> formatErr t
-                    <> "cannot be applied to "
-                    <> mconcat (intersperse ", " $ map formatErr targs))
+    _ ->
+      case targs of
+       [] -> inferType t
+       _ -> typeError ("Type " <> formatErr t
+                       <> " cannot be applied to "
+                       <> mconcat (intersperse ", " $ map formatErr targs))
 
 -- | Given a type alias and some number of types to which it is applied,
 -- split up the arguments into the set that's required by the alias,

@@ -103,7 +103,14 @@ data Kind = KType | KArr !Kind !Kind
 data TypeAtom = TC !Con
               | TV !TyVar
               | TEnclosed !Type !(Maybe Kind)  -- '(' Type ')' or '(' Type ':' Kind ')'
+              | TRecord !Row
               deriving (Show)
+
+newtype Label = Label { labelName :: String }
+              deriving (Show)
+
+data Row = Row ![(Label, Type)]
+         deriving (Show)
 
 data Type = TPhrase ![TypeAtom]
           | TForall !TyVar !Kind !Type
