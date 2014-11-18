@@ -17,5 +17,5 @@ newtype Toplevel = Toplevel [ToplevelItem]
 -- the binding of a model type name to a model type expression.
 data ToplevelItem =
   ToplevelModel Identifier ModelExpr
-  | ToplevelModelType Identifier ModelType
+  | ToplevelModelType SigIdentifier ModelType
     deriving Show

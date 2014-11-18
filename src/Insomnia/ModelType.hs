@@ -15,7 +15,7 @@ import Insomnia.TypeDefn
 
 data ModelType =
   SigMT !Signature -- "{ decls ... }"
-  | IdentMT !Identifier -- "X_SIG"
+  | IdentMT !SigIdentifier -- "X_SIG"
   deriving (Show, Typeable, Generic)
 
 data Signature =

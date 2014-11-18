@@ -93,7 +93,7 @@ data TypeAliasClosure = TypeAliasClosure !Env !TypeAlias
 
 -- | Typechecking environment
 data Env = Env {
-  _envSigs :: M.Map Identifier Signature -- ^ signatures
+  _envSigs :: M.Map SigIdentifier Signature -- ^ signatures
   , _envModelSigs :: M.Map Identifier Signature -- ^ models' unselfified signatures (invariant: their selfified contents have been added to DCons and Globals)
   , _envDCons :: M.Map Con TyConDesc -- ^ type constructor descriptors
   , _envCCons :: M.Map Con AlgConstructor -- ^ value constructors
@@ -302,7 +302,7 @@ lookupVar v = lookupLocal v
 
 -- | Checks tht the given identifier is bound in the context to a
 -- signature.
-lookupModelType :: Identifier -> TC Signature
+lookupModelType :: SigIdentifier -> TC Signature
 lookupModelType ident = do
   mmsig <- view (envSigs . at ident)
   case mmsig of
@@ -319,7 +319,7 @@ extendModelSigCtx ident msig =
 
 -- | Extend the type signatures environment by adding the given
 -- signature.
-extendModelTypeCtx :: Identifier -> Signature -> TC a -> TC a
+extendModelTypeCtx :: SigIdentifier -> Signature -> TC a -> TC a
 extendModelTypeCtx ident msig =
   local (envSigs . at ident ?~ msig)
 

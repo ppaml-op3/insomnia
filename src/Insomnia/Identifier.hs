@@ -9,8 +9,10 @@
     #-}
 module Insomnia.Identifier (
   Identifier,
+  SigIdentifier,
   Field,
   Path(..),
+  SigPath(..),
   pathHeadSkelForm,
   headSkelFormToPath,
   lastOfPath
@@ -25,18 +27,31 @@ import Unbound.Generics.LocallyNameless
 
 import Insomnia.Unify (UVar)
 
--- | Identifiers are have a global identity in a freshness monad.
+-- | Identifiers are have a global identity in a freshness monad.  The
+-- identifiers are associated with models, but they stand for model
+-- paths (that is, they are /symbols/ rather than variables).
 type Identifier = Name Path
+
+-- | SigIdentifiers are associated with model types (but the name
+-- SigIdentifier is nicer than "model type identifier").  Unlike models, model types are in a flat
+-- namespace, so SigPaths are simpler.
+type SigIdentifier = Name SigPath
 
 type Field = String
 
--- | A path selects a component of a module.
+-- | A path selects a model sub-component of a parent model.
 data Path =
-  IdP Identifier 
-  | ProjP Path Field
+  IdP !Identifier 
+  | ProjP !Path !Field
+  deriving (Show, Typeable, Generic)
+
+-- | A signature path identifies a model type.  The namespace for
+-- model types is flat, so this is a particularly degenerate representation.
+newtype SigPath = SigIdP SigIdentifier
   deriving (Show, Typeable, Generic)
 
 instance Alpha Path
+instance Alpha SigPath
 
 instance Eq Path where
   (==) = aeq
@@ -46,6 +61,13 @@ instance Ord Path where
   -- shorter name preceeds the longer one.
   -- so A.B.C is GT than A.B is GT than A
   compare = compare `on` pathHeadSkelForm
+
+
+instance Eq SigPath where
+  (==) = aeq
+
+instance Ord SigPath where
+  (SigIdP sid1) `compare` (SigIdP sid2) = sid1 `compare` sid2
 
 type HeadSkelForm = (Identifier, [Field])
 

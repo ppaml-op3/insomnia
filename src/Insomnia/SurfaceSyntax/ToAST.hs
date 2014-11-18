@@ -171,17 +171,20 @@ toplevelItem (ToplevelModel ident mmt me) = do
      return $ I.ToplevelModel ident' (I.ModelAscribe me' mt')
    Nothing -> return $ I.ToplevelModel ident' me'
 toplevelItem (ToplevelModelType ident mt) =
-  I.ToplevelModelType <$> identifier ident <*> modelType mt
+  I.ToplevelModelType <$> sigIdentifier ident <*> modelType mt
 
 identifier :: Ident -> TA I.Identifier
 identifier s = return $ U.s2n s
+
+sigIdentifier :: Ident -> TA I.SigIdentifier
+sigIdentifier s = return $ U.s2n s
 
 field :: Ident -> TA (I.Field, I.Identifier)
 field ident = return (ident, U.s2n ident)
 
 modelType :: ModelType -> TA I.ModelType
 modelType (SigMT sig) = I.SigMT <$> signature sig
-modelType (IdentMT ident) = I.IdentMT <$> identifier ident
+modelType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
 modelExpr :: ModelExpr -> TA I.ModelExpr
 modelExpr (ModelStruct mdl) = I.ModelStruct <$> model mdl
