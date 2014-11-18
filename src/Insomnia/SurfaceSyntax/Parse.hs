@@ -452,13 +452,17 @@ expr =
   <|> (letExpr <?> "let expression")
   <|> (Phrase <$> some exprAtom)
 
+exprNotationIdentifier :: Parser (Notation Identifier)
+exprNotationIdentifier =
+  (PrefixN . V <$> varId)
+  <|> ((InfixN . V . Var) <$> infixIdent)
+  <|> ((InfixN . Q . QVar) <$> try qualifiedInfixIdent)
+  <|> (PrefixN . Q <$> try qvarId)
+  <|> (PrefixN . C <$> try conId)
+
 exprAtom :: Parser ExprAtom
 exprAtom =
-  (V <$> varId)
-  <|> ((V . Var) <$> infixIdent)
-  <|> ((Q . QVar) <$> try qualifiedInfixIdent)
-  <|> (Q <$> try qvarId)
-  <|> (C <$> try conId)
+  (I <$> exprNotationIdentifier)
   <|> (L <$> literal)
   <|> parens (Enclosed <$> expr
               <*> optional (classify *> typeExpr))
@@ -494,7 +498,8 @@ clause = (Clause
 patternAtom :: Parser PatternAtom
 patternAtom =
   ((pure WildcardP <* reserved "_") <?> "wildcard pattern")
-  <|> ((ConP <$> (conId <|> (Con <$> qualifiedInfixIdent)))
+  <|> ((ConP <$> ((PrefixN <$> conId)
+                  <|> (InfixN . Con <$> qualifiedInfixIdent)))
        <?> "constructor pattern")
   <|> (VarP <$> varId <?> "variable pattern")
   <|> parens (EnclosedP <$> pattern)

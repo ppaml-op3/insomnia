@@ -380,10 +380,18 @@ unqualifiedVar (Var ident) = do
    Just (ValConII _) ->
      error ("expected a variable, but found a value constructor " ++ show ident)
 
+exprNotationIdentifier :: Notation Identifier -> TA I.Expr
+exprNotationIdentifier n =
+  case dropNotation n of
+   V v  -> I.V <$> unqualifiedVar v
+   Q qv -> I.Q <$> qualifiedVar qv
+   C c  -> I.C <$> qualifiedCon c
+  where
+    dropNotation (PrefixN x) = x
+    dropNotation (InfixN x) = x
+
 exprAtom :: ExprAtom -> TA I.Expr
-exprAtom (V v) = I.V <$> unqualifiedVar v
-exprAtom (Q qv) = I.Q <$> qualifiedVar qv
-exprAtom (C c) = I.C <$> qualifiedCon c
+exprAtom (I ni) = exprNotationIdentifier ni
 exprAtom (Enclosed e mt) = do
   e' <- expr e
   mt' <- traverse type' mt
@@ -418,13 +426,17 @@ completePP (PartialPP patf) = patf []
 
 patternAtom :: PatternAtom -> CTA PartialPattern
 patternAtom (VarP v) = (CompletePP . I.VarP) <$> liftCTA (unqualifiedVar v)
-patternAtom (ConP con) = do
-  let qid = unCon con
+patternAtom (ConP ncon) = do
+  let con = dropNotation ncon
+      qid = unCon con
   mii <- use (valIdInfo . at qid)
   case mii of
    Just (ValConII _fix) -> (PartialPP . I.ConP . U.embed) <$> liftCTA (qualifiedCon con)
    _ -> error ("in pattern expected a constructor, but got variable "
                ++ show con)
+  where
+    dropNotation (InfixN x) = x
+    dropNotation (PrefixN x) = x
 patternAtom WildcardP = return $ CompletePP $ I.WildcardP
 patternAtom (EnclosedP p) = CompletePP <$> pattern p
 
@@ -517,25 +529,17 @@ instance FixityParseable ExprAtom QualifiedIdent TA I.Expr where
     where
       notInfix ctx e =
         case e of
-         V v -> let qid = QId [] (unVar v)
-                in notInfixQid ctx qid e
-         Q (QVar qid) -> notInfixQid ctx qid e
-         C (Con qid) -> notInfixQid ctx qid e
-         _ -> Just e
-      notInfixQid ctx qid e =
-        case ctx ^. valIdInfo . at qid of
-         (Just (ValVarII (Just _fixity))) -> Nothing
-         (Just (ValConII (Just _fixity))) -> Nothing
+         I (InfixN _) -> Nothing
          _ -> Just e
   juxt = pure I.App
   infx qid = do
     let
-      match (Q qv)  | unQVar qv == qid          = Just (I.Q
-                                                        <$> qualifiedVar qv)
-      match (V v)   | (QId [] $ unVar v) == qid = Just (I.V
-                                                        <$> unqualifiedVar v)
-      match (C con) | unCon con == qid          = Just (I.C
-                                                        <$> qualifiedCon con)
+      match (I (InfixN (Q qv)))
+        | unQVar qv == qid          = Just (I.Q <$> qualifiedVar qv)
+      match (I (InfixN (V v)))
+        | (QId [] $ unVar v) == qid = Just (I.V <$> unqualifiedVar v)
+      match (I (InfixN (C con)))
+        | unCon con == qid          = Just (I.C <$> qualifiedCon con)
       match _                                   = Nothing
     m <- P.tokenPrim show (\pos _tok _toks -> pos) match
     v <- lift $ m
@@ -549,13 +553,8 @@ instance FixityParseable PatternAtom Con CTA PartialPattern where
      where
        notInfix ctx pa =
          case pa of
-          WildcardP -> Just pa
-          EnclosedP _ -> Just pa
-          VarP _ -> Just pa
-          ConP con ->
-            case ctx ^. valIdInfo . at (unCon con) of
-             (Just (ValConII (Just _fixity))) -> Nothing
-             _ -> Just pa
+          ConP (InfixN _con) -> Nothing
+          _ -> Just pa
    juxt = pure $ \pp1 pp2 ->
      case pp1 of
       CompletePP pat1 -> error ("badly formed pattern " ++ show pat1
@@ -563,8 +562,8 @@ instance FixityParseable PatternAtom Con CTA PartialPattern where
       PartialPP patf -> PartialPP $ \rest -> patf (completePP pp2 : rest)
    infx con = do
      let
-       match pa@(ConP con2) | con == con2 = Just pa
-       match _                            = Nothing
+       match pa@(ConP (InfixN con2)) | con == con2 = Just pa
+       match _                                     = Nothing
      _ <- P.tokenPrim show (\pos _tok _toks -> pos) match
      con' <- lift $ liftCTA $ qualifiedCon con
      let pat = I.ConP (U.embed con')

@@ -113,9 +113,16 @@ data Literal = IntL !Integer
              | RealL !Double
              deriving (Show)
 
-data ExprAtom = V !Var
+data Notation a = PrefixN !a
+                | InfixN !a
+                deriving (Show)
+                         
+data Identifier = V !Var
               | Q !QVar
               | C !Con
+              deriving (Show)
+
+data ExprAtom = I !(Notation Identifier)
               | L !Literal
               | Enclosed !Expr !(Maybe Type) -- '(' Expr ')' or '(' Expr ':' Type ')'
               deriving (Show)
@@ -131,7 +138,7 @@ data Clause = Clause !Pattern !Expr
 
 data PatternAtom = WildcardP
                  | VarP !Var
-                 | ConP !Con
+                 | ConP !(Notation Con)
                  | EnclosedP !Pattern
                   deriving (Show)
 
