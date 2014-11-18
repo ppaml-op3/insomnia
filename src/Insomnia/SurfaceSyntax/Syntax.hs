@@ -39,7 +39,7 @@ data ToplevelItem =
 
 data ModelExpr =
   ModelStruct !Model
-  | ModelAscribe !ModelExpr !ModelType
+  | ModelSeal !ModelExpr !ModelType
   | ModelAssume !ModelType
   | ModelId !QualifiedIdent
     deriving (Show)

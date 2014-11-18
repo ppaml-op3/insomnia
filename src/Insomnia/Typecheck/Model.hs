@@ -43,14 +43,14 @@ inferModelExpr pmod (ModelStruct model) kont = do
             <??@ "while checking model " <> formatErr pmod
   msig <- naturalSignature model
   kont (ModelStruct model') msig
-inferModelExpr pmod (ModelAscribe model mtypeAscribed) kont = do
+inferModelExpr pmod (ModelSeal model mtypeSealed) kont = do
   inferModelExpr pmod model $ \model' msigInferred -> do
-    (mtypeAscribed', msigAscribed) <- checkModelType mtypeAscribed
-                                      <??@ ("while checking ascribed signature of " <> formatErr pmod)
-    msigAscribed' <- mayAscribe msigInferred msigAscribed
-                     <??@ ("while checking validity of signature ascription to "
+    (mtypeSealed', msigSealed) <- checkModelType mtypeSealed
+                                      <??@ ("while checking sealing signature of " <> formatErr pmod)
+    msigSealed' <- mayAscribe msigInferred msigSealed
+                     <??@ ("while checking validity of signature sealing to "
                            <> formatErr pmod)
-    kont (ModelAscribe model' mtypeAscribed') msigAscribed'
+    kont (ModelSeal model' mtypeSealed') msigSealed'
 inferModelExpr pmod (ModelAssume modelType) kont = do
   (modelType', msig) <- checkModelType modelType
                         <??@ ("while checking postulated signature of "
@@ -134,7 +134,7 @@ naturalSignature = go . modelDecls
             
 naturalSignatureModelExpr :: ModelExpr -> TC Signature
 naturalSignatureModelExpr (ModelStruct model) = naturalSignature model
-naturalSignatureModelExpr (ModelAscribe _ mt) = signatureOfModelType mt
+naturalSignatureModelExpr (ModelSeal _ mt) = signatureOfModelType mt
 naturalSignatureModelExpr (ModelAssume mt) = signatureOfModelType mt
 naturalSignatureModelExpr (ModelId path) = lookupModelSigPath path
 

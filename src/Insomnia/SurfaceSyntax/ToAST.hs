@@ -168,7 +168,7 @@ toplevelItem (ToplevelModel ident mmt me) = do
   case mmt of
    Just mt -> do
      mt' <- modelType mt
-     return $ I.ToplevelModel ident' (I.ModelAscribe me' mt')
+     return $ I.ToplevelModel ident' (I.ModelSeal me' mt')
    Nothing -> return $ I.ToplevelModel ident' me'
 toplevelItem (ToplevelModelType ident mt) =
   I.ToplevelModelType <$> sigIdentifier ident <*> modelType mt
@@ -188,8 +188,8 @@ modelType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
 modelExpr :: ModelExpr -> TA I.ModelExpr
 modelExpr (ModelStruct mdl) = I.ModelStruct <$> model mdl
-modelExpr (ModelAscribe me mt) =
-  I.ModelAscribe <$> modelExpr me <*> modelType mt
+modelExpr (ModelSeal me mt) =
+  I.ModelSeal <$> modelExpr me <*> modelType mt
 modelExpr (ModelAssume mt) =
   I.ModelAssume <$> modelType mt
 modelExpr (ModelId qid) = return $ I.ModelId (qualifiedIdPath qid)

@@ -267,7 +267,7 @@ modelExpr :: Parser ModelExpr
 modelExpr =
   (modelLiteral <?> "braced model definition")
   <|> (modelAssume <?> "model postulate (\"assume\")")
-  <|> (nestedModel <?> "model signature ascription")
+  <|> (nestedModel <?> "model sealed with a signature")
   <|> (modelPath <?> "qualified model name")
   where
     modelLiteral = (ModelStruct . Model) <$> braces (many decl)
@@ -279,7 +279,7 @@ modelExpr =
     modelPath = ModelId <$> modelId
 
     mkNestedModelExpr modExpr Nothing = modExpr
-    mkNestedModelExpr modExpr (Just modTy) = ModelAscribe modExpr modTy
+    mkNestedModelExpr modExpr (Just modTy) = ModelSeal modExpr modTy
 
 
 decl :: Parser Decl
@@ -329,7 +329,7 @@ modelDefn =
       let
         m = case maybeSigId of
           Nothing -> content
-          Just msigId -> ModelAscribe content (IdentMT msigId)
+          Just msigId -> ModelSeal content (IdentMT msigId)
       in SubmodelDefn modIdent m
 
 funDecl :: Parser (Ident, ValueDecl)

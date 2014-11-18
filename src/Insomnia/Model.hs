@@ -19,7 +19,7 @@ import Insomnia.Expr (Expr)
 
 data ModelExpr =
   ModelStruct !Model -- model specified here
-  | ModelAscribe !ModelExpr !ModelType -- transluscent ascription
+  | ModelSeal !ModelExpr !ModelType -- generative sealing
   | ModelAssume !ModelType    -- model assumed to exist.
   | ModelId !Path       -- previously named model
   deriving (Show, Typeable, Generic)
