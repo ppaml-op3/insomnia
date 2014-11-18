@@ -212,12 +212,28 @@ type TC = UnificationT Type TCSimple
 
 -- instance MonadUnificationExcept Type TCSimple
 instance MonadUnificationExcept TypeUnificationError Type (ReaderT Env (LFreshMT (Except TCError))) where
-  throwUnificationFailure = throwError . TCError . formatErr
+  throwUnificationFailure err = do
+    env <- ask
+    throwError $ TCError (formatErr err
+                          <> "\nEnvironment:\n"
+                          <> formatErr env)
 
 -- | Run a typechecking computation
 runTC :: TC a -> Either TCError (a, M.Map (UVar Type) Type)
 runTC comp =
   runExcept $ runLFreshMT $ runReaderT (runUnificationT comp) baseEnv
+
+-- instance MonadTypeAlias TC
+instance MonadTypeAlias (UnificationT Type TCSimple) where
+  expandTypeAlias c = do
+    md <- view (envDCons . at c)
+    case md of
+     Just (AliasTyCon _ (TypeAliasClosure _env (TypeAlias bnd))) ->
+           U.lunbind bnd $ \(tvks, ty) ->
+           case tvks of
+            [] -> return (Just ty)
+            _ -> unimplemented "Env.expandTypeAlias for aliases with arguments"
+     _ -> return Nothing
 
 -- | Given a value constructor c, return its type as a polymorphic function
 --   (that is, ∀ αs . T1(αs) → ⋯ → TN(αs) → D αs)

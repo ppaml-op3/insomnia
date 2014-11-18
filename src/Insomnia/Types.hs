@@ -158,8 +158,12 @@ groundUnificationVar = \ k -> do
 data TypeUnificationError =
   SimplificationFail (M.Map (UVar Type) Type) !Type !Type -- the two given types could not be simplified under the given constraints
 
+class MonadTypeAlias m where
+  expandTypeAlias :: Con -> m (Maybe Type)
+
 instance (MonadUnify TypeUnificationError Type m,
           MonadUnificationExcept TypeUnificationError Type m,
+          MonadTypeAlias m,
           LFresh m)
          => Unifiable Type TypeUnificationError m Type where
   t1 =?= t2 =
@@ -186,14 +190,32 @@ instance (MonadUnify TypeUnificationError Type m,
       (TAnn t1' _, _)                 -> t1' =?= t2
       (_, TAnn t2' _)                 -> t1 =?= t2'
       (TV v1, TV v2) | v1 == v2       -> return ()
-      (TC c1, TC c2) | c1 == c2       -> return ()
+      (TC c1, TC c2)                  ->
+        if c1 == c2
+        then return ()
+        else do
+          mexp1 <- expandTypeAlias c1
+          mexp2 <- expandTypeAlias c2
+          case (mexp1, mexp2) of
+           (Just t1', Just t2') -> t1' =?= t2'
+           (Just t1', Nothing) -> t1' =?= t2
+           (Nothing, Just t2') -> t1 =?= t2'
+           (Nothing, Nothing) -> failedToUnify
+      (TC c1, _) -> do
+        mexp <- expandTypeAlias c1
+        case mexp of
+         Nothing -> failedToUnify
+         Just t1' -> t1' =?= t2
+      (_, TC _c2) -> t2 =?= t1
       (TApp t11 t12, TApp t21 t22) -> do
         t11 =?= t21
         t12 =?= t22
-      _ -> do
+      _ -> failedToUnify
+    where
+      failedToUnify = do
         constraintMap <- reflectCollectedConstraints
         throwUnificationFailure
-           $ Unsimplifiable (SimplificationFail constraintMap t1 t2)
+          $ Unsimplifiable (SimplificationFail constraintMap t1 t2)
 
 -- | note that this 'Traversal'' does not descend under binders.  The passed
 -- function should explore TForall on its own.
