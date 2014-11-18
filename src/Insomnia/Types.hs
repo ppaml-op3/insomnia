@@ -32,11 +32,6 @@ import Insomnia.Unify (UVar, Unifiable(..),
 -- At the type level, type constructor names.
 newtype Con = Con { unCon :: Path }
               deriving (Show, Eq, Ord, Typeable, Generic)
-                       
--- | A short type constructor name.  The parser makes these when it
--- sees unqualified Uppercase identifiers in positions where it
--- expects a type.
-type ShortCon = Con
 
 type TyVar = Name Type
 type KindedTVar = (TyVar, Kind)
@@ -52,9 +47,28 @@ data Kind = KType -- ^ the kind of types
             deriving (Show, Typeable, Generic)
 infixr 6 `KArr`
 
+-- | A local type constructor name.  These are similar to type variables, except they
+-- are substituted by global type paths instead of by arbitrary paths.
+type TyConName = Name TypeConstructor
+
+type TypePath = Path
+
+data TypeConstructor =
+  TCLocal TyConName
+  | TCGlobal TypePath
+  deriving (Show, Eq, Typeable, Generic)
+
+instance Ord TypeConstructor where
+  compare tc1 tc2 =
+    case (tc1, tc2) of
+     (TCLocal n1, TCLocal n2) -> compare n1 n2
+     (TCLocal {}, TCGlobal {}) -> LT
+     (TCGlobal {}, TCLocal {}) -> GT
+     (TCGlobal p1, TCGlobal p2) -> compare p1 p2
+
 data Type = TV TyVar
           | TUVar (UVar Type) -- invariant: unification variables should be fully applied
-          | TC !Con
+          | TC !TypeConstructor
           | TAnn Type !Kind
           | TApp Type Type
           | TForall (Bind (TyVar, Kind) Type)
@@ -82,6 +96,7 @@ instance Format Type
 -- Alpha equivalence
 
 instance Alpha Con
+instance Alpha TypeConstructor
 instance Alpha Type
 instance Alpha Kind
 
@@ -93,6 +108,9 @@ instance Subst Type Type where
   isvar _ = Nothing
 
 instance Subst Type Path where
+  subst _ _ = id
+  substs _ = id
+instance Subst Type TypeConstructor where
   subst _ _ = id
   substs _ = id
 instance Subst Type Kind where
@@ -110,7 +128,27 @@ instance Subst Path Kind where
   substs _ = id
 
 instance Subst Path Con
+instance Subst Path TypeConstructor
 instance Subst Path Type
+
+instance Subst TypeConstructor TypeConstructor where
+  isvar (TCLocal c) = Just (SubstName c)
+  isvar _ = Nothing
+
+instance Subst TypeConstructor Path where
+  subst _ _ = id
+  substs _ = id
+instance Subst TypeConstructor (UVar a) where
+  subst _ _ = id
+  substs _ = id
+instance Subst TypeConstructor Con where
+  subst _ _ = id
+  substs _ = id
+instance Subst TypeConstructor Kind where
+  subst _ _ = id
+  substs _ = id
+
+instance Subst TypeConstructor Type
 
 -- Unification
 
@@ -159,7 +197,7 @@ data TypeUnificationError =
   SimplificationFail (M.Map (UVar Type) Type) !Type !Type -- the two given types could not be simplified under the given constraints
 
 class MonadTypeAlias m where
-  expandTypeAlias :: Con -> m (Maybe Type)
+  expandTypeAlias :: TypeConstructor -> m (Maybe Type)
 
 instance (MonadUnify TypeUnificationError Type m,
           MonadUnificationExcept TypeUnificationError Type m,

@@ -5,7 +5,7 @@ module Insomnia.Typecheck.ModelType where
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier (Field, Path(..))
-import Insomnia.Types (Con(..), Kind(..))
+import Insomnia.Types (TypeConstructor(..), Kind(..))
 import Insomnia.ModelType
 
 import Insomnia.Typecheck.Env
@@ -41,13 +41,13 @@ checkSignature mpath_ = flip (checkSignature' mpath_) ensureNoDuplicateFields
         checkSignature' mpath sig $ \(sig', flds) ->
           kont (ValueSig fld ty' sig', fld:flds)
     checkSignature' mpath (TypeSig fld bnd) kont =
-      U.lunbind bnd $ \((tyident, U.unembed -> tsd), sig) -> do
-        let dcon = Con (IdP tyident)
+      U.lunbind bnd $ \((tycon, U.unembed -> tsd), sig) -> do
+        let dcon = TCLocal tycon
         -- guardDuplicateDConDecl dcon -- can't happen
         tsd' <- checkTypeSigDecl dcon tsd
         extendTypeSigDeclCtx dcon tsd
           $ checkSignature' mpath sig $ \(sig', flds) ->
-           kont (TypeSig fld $ U.bind (tyident, U.embed tsd') sig', fld:flds)
+           kont (TypeSig fld $ U.bind (tycon, U.embed tsd') sig', fld:flds)
     checkSignature' mpath (SubmodelSig fld bnd) kont =
       U.lunbind bnd $ \((modIdent, U.unembed -> modTy), sig) -> do
         let modPath = mpathAppend mpath fld
@@ -64,7 +64,7 @@ mpathAppend :: Maybe Path -> Field -> Path
 mpathAppend Nothing fld = IdP (U.s2n fld)
 mpathAppend (Just p) fld = ProjP p fld
 
-checkTypeSigDecl :: Con -> TypeSigDecl -> TC TypeSigDecl
+checkTypeSigDecl :: TypeConstructor -> TypeSigDecl -> TC TypeSigDecl
 checkTypeSigDecl dcon tsd =
   case tsd of
     ManifestTypeSigDecl defn -> do

@@ -6,14 +6,14 @@ module Insomnia.Typecheck.ExtendModelCtx (
 import Control.Lens
 import Control.Monad.Reader.Class (MonadReader(..))
 
-import Insomnia.Types (Con)
+import Insomnia.Types (Con(..), TypeConstructor(..))
 import Insomnia.ModelType (TypeSigDecl(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
 import Insomnia.Typecheck.TypeDefn (extendTypeDefnCtx, extendTypeAliasCtx)
 
-extendTypeSigDeclCtx :: Con -> TypeSigDecl -> TC a -> TC a
+extendTypeSigDeclCtx :: TypeConstructor -> TypeSigDecl -> TC a -> TC a
 extendTypeSigDeclCtx dcon tsd = do
   case tsd of
     ManifestTypeSigDecl defn -> extendTypeDefnCtx dcon defn
@@ -31,8 +31,8 @@ extendModelCtx (ValueSelfSig qvar ty msig) =
   -- sense to talk about value components of other models?
   local (envGlobals . at qvar ?~ ty)
   . extendModelCtx msig
-extendModelCtx (TypeSelfSig dcon tsd msig) =
-  extendTypeSigDeclCtx dcon tsd
+extendModelCtx (TypeSelfSig (Con p) tsd msig) =
+  extendTypeSigDeclCtx (TCGlobal p) tsd
   . extendModelCtx msig
 extendModelCtx (SubmodelSelfSig _path subModSig msig) =
   extendModelCtx subModSig

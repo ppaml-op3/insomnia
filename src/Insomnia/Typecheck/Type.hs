@@ -115,7 +115,7 @@ expandAliasApplication t targs =
 -- split up the arguments into the set that's required by the alias,
 -- and the rest to which the RHS of the alias will be applied.
 -- Also check that the mandatory args are of the correct kind.
-checkAliasInfoArgs :: Con -> TypeAliasInfo -> [Type] -> TC ([Type], [Type])
+checkAliasInfoArgs :: TypeConstructor -> TypeAliasInfo -> [Type] -> TC ([Type], [Type])
 checkAliasInfoArgs dcon (TypeAliasInfo kargs _kRHS) targs = do
   let
     n = length kargs

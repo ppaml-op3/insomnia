@@ -21,7 +21,7 @@ data ModelType =
 data Signature =
   UnitSig
   | ValueSig Field Type Signature
-  | TypeSig Field (Bind (Identifier, Embed TypeSigDecl) Signature)
+  | TypeSig Field (Bind (TyConName, Embed TypeSigDecl) Signature)
   | SubmodelSig Field (Bind (Identifier, Embed ModelType) Signature)
     deriving (Show, Typeable, Generic)
 
@@ -42,6 +42,10 @@ instance Alpha TypeSigDecl
 instance Subst Path Signature
 instance Subst Path TypeSigDecl
 instance Subst Path ModelType
+
+instance Subst TypeConstructor ModelType
+instance Subst TypeConstructor Signature
+instance Subst TypeConstructor TypeSigDecl
 
 -- model types do not have expressions in them.
 instance Subst Expr ModelType where

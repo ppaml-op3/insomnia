@@ -137,6 +137,16 @@ instance Subst Path Pattern
 instance Subst Path TabulatedFun
 instance Subst Path TabSample
 
+instance Subst TypeConstructor Expr
+instance Subst TypeConstructor Pattern
+instance Subst TypeConstructor Annot
+instance Subst TypeConstructor Bindings
+instance Subst TypeConstructor Binding
+instance Subst TypeConstructor TabulatedFun
+instance Subst TypeConstructor TabSample
+instance Subst TypeConstructor Clause
+
+
 -- leaf instances
 instance Subst Expr Path where
   subst _ _ = id
@@ -180,6 +190,18 @@ instance Subst Path Literal where
   subst _ _ = id
   substs _ = id
 instance Subst Path TabSelector where
+  subst _ _ = id
+  substs _ = id
+
+instance Subst TypeConstructor QVar where
+  subst _ _ = id
+  substs _ = id
+
+instance Subst TypeConstructor Literal where
+  subst _ _ = id
+  substs _ = id
+
+instance Subst TypeConstructor TabSelector where
   subst _ _ = id
   substs _ = id
 

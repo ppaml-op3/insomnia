@@ -8,7 +8,7 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier (Identifier, Path(..), Field)
-import Insomnia.Types (Con(..), Type, Kind(..))
+import Insomnia.Types (TypeConstructor(..), TyConName, Type, Kind(..))
 import Insomnia.TypeDefn
 import Insomnia.ModelType (ModelType, Signature(..), TypeSigDecl(..))
 
@@ -124,11 +124,11 @@ checkValueFieldTail pmod fld ty msig1 =
         extendModelCtx subSelf $
           checkValueFieldTail pmod fld ty mrest1
     TypeSig fld' bnd ->
-      U.lunbind bnd $ \((ident1, U.unembed -> tsd_), mrest1_) -> do
+      U.lunbind bnd $ \((tycon1, U.unembed -> tsd_), mrest1_) -> do
         let pdefn = ProjP pmod fld'
-            dcon = Con pdefn
-            tsd = U.subst ident1 pdefn tsd_
-            mrest1 = U.subst ident1 pdefn mrest1_
+            dcon = TCGlobal pdefn
+            tsd = U.subst tycon1 dcon tsd_
+            mrest1 = U.subst tycon1 dcon mrest1_
         -- when matching in the rest of the signature, make use of
         -- provided type declaration.
         extendTypeSigDeclCtx dcon tsd $
@@ -136,7 +136,7 @@ checkValueFieldTail pmod fld ty msig1 =
 
 checkTypeField :: Path
                   -> Field
-                  -> U.Bind (Identifier, U.Embed TypeSigDecl) Signature
+                  -> U.Bind (TyConName, U.Embed TypeSigDecl) Signature
                   -> PrefixedSignature
                   -> (PrefixedSignature -> Signature -> TC a)
                   -> TC a
@@ -153,19 +153,19 @@ checkTypeField pmod fld bnd msig1 kont =
         checkTypeField pmod fld bnd mrest1 $ \mrest1' ->
         kont (TypePreSig fld' tsd1 mrest1')
       else
-        U.lunbind bnd $ \((ident2, U.unembed -> tsd2_), mrest2_) -> do
+        U.lunbind bnd $ \((tycon2, U.unembed -> tsd2_), mrest2_) -> do
           let
             -- substitute ident1 for ident2 in tsd2_ and in mrest2_
             -- such that tsd1 and tsd2 agree about the in scope type
             -- declaration.
-            tsd2 = U.subst ident2 (ProjP pmod fld) tsd2_
-            mrest2 = U.subst ident2 (ProjP pmod fld) mrest2_
+            tsd2 = U.subst tycon2 (TCGlobal $ ProjP pmod fld) tsd2_
+            mrest2 = U.subst tycon2 (TCGlobal $ ProjP pmod fld) mrest2_
           checkTypeSigDecl fld tsd1 tsd2
           kont (TypePreSig fld tsd1 mrest1) mrest2
 
 checkTypeFieldTail :: Path
                       -> Field
-                      -> U.Bind (Identifier, U.Embed TypeSigDecl) Signature
+                      -> U.Bind (TyConName, U.Embed TypeSigDecl) Signature
                       -> Signature
                       -> (PrefixedSignature -> Signature -> TC a)
                       -> TC a
@@ -190,11 +190,11 @@ checkTypeFieldTail pmod fld bnd msig1 kont =
     TypeSig fld' bnd' ->
       if fld /= fld'
       then 
-        U.lunbind bnd' $ \((ident1, U.unembed -> tsd_), mrest1_) -> do
+        U.lunbind bnd' $ \((tycon1, U.unembed -> tsd_), mrest1_) -> do
           let pdefn = ProjP pmod fld'
-              dcon = Con pdefn
-              tsd = U.subst ident1 pdefn tsd_
-              mrest1 = U.subst ident1 pdefn mrest1_
+              dcon = TCGlobal pdefn
+              tsd = U.subst tycon1 dcon tsd_
+              mrest1 = U.subst tycon1 dcon mrest1_
           extendTypeSigDeclCtx dcon tsd $
             checkTypeFieldTail pmod fld bnd mrest1 $ \mrest1' ->
             kont (TypePreSig fld' tsd mrest1')
@@ -206,14 +206,14 @@ checkTypeFieldTail pmod fld bnd msig1 kont =
         case res of
           Nothing -> fail ("checkTypeField internal error. "
                            <> " Did not expect lunbind2 to return Nothing")
-          Just ((ident2, U.unembed -> tsd2_), mrest2_,
-                (ident1, U.unembed -> tsd1_), mrest1_) -> do
+          Just ((tycon2, U.unembed -> tsd2_), mrest2_,
+                (tycon1, U.unembed -> tsd1_), mrest1_) -> do
             let pdefn = ProjP pmod fld'
-                dcon = Con pdefn
-                tsd1 = U.subst ident1 pdefn tsd1_
-                tsd2 = U.subst ident2 pdefn tsd2_
-                mrest1 = U.subst ident1 pdefn mrest1_
-                mrest2 = U.subst ident2 pdefn mrest2_
+                dcon = TCGlobal pdefn
+                tsd1 = U.subst tycon1 dcon tsd1_
+                tsd2 = U.subst tycon2 dcon tsd2_
+                mrest1 = U.subst tycon1 dcon mrest1_
+                mrest2 = U.subst tycon2 dcon mrest2_
             checkTypeSigDecl fld tsd1 tsd2
             extendTypeSigDeclCtx dcon tsd1 $
               kont (TypePreSig fld' tsd1 (TailPreSig mrest1)) mrest2
@@ -262,7 +262,7 @@ checkManifestTypeDecl :: Field -> TypeDefn -> TypeSigDecl -> TC ()
 checkManifestTypeDecl fld defn1 tsd2 =
   case tsd2 of
     AbstractTypeSigDecl k2 -> do
-      (_, k1) <- checkTypeDefn (Con $ IdP $ U.s2n fld) defn1
+      (_, k1) <- checkTypeDefn (TCLocal $ U.s2n fld) defn1
       unless (k1 `U.aeq` k2) $
         typeError ("type declaration " <> formatErr (PrettyField fld defn1)
                    <> " has kind " <> formatErr k1
@@ -342,11 +342,11 @@ checkSubmodelFieldTail pmod fld bnd msig1 kont =
     ValueSig fld' ty' mrest1 ->
       checkSubmodelFieldTail pmod fld bnd mrest1 (kont . ValuePreSig fld' ty')
     TypeSig fld' bnd' ->
-      U.lunbind bnd' $ \((ident1, U.unembed -> tsd_), mrest1_) -> do
+      U.lunbind bnd' $ \((tycon, U.unembed -> tsd_), mrest1_) -> do
         let pdefn = ProjP pmod fld'
-            dcon = Con pdefn
-            tsd = U.subst ident1 pdefn tsd_
-            mrest1 = U.subst ident1 pdefn mrest1_
+            dcon = TCGlobal pdefn
+            tsd = U.subst tycon dcon tsd_
+            mrest1 = U.subst tycon dcon mrest1_
         extendTypeSigDeclCtx dcon tsd $
           checkSubmodelFieldTail pmod fld bnd mrest1 $ \mrest1' ->
           kont (TypePreSig fld' tsd mrest1')

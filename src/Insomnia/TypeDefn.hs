@@ -65,3 +65,7 @@ instance Subst Path TypeAlias
 -- Capture avoid substitution of types for type variables in the following.
 instance Subst Type ConstructorDef
 instance Subst Type TypeAlias
+
+instance Subst TypeConstructor ConstructorDef
+instance Subst TypeConstructor TypeAlias
+instance Subst TypeConstructor TypeDefn

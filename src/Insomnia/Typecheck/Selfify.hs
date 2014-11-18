@@ -11,7 +11,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Identifier (Path(..), Identifier, lastOfPath)
-import Insomnia.Types (Con(..))
+import Insomnia.Types (Con(..), TypeConstructor(..))
 import Insomnia.Expr (QVar(..))
 import Insomnia.TypeDefn (TypeDefn(..), ConstructorDef(..))
 import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
@@ -39,10 +39,10 @@ selfifyModelType pmod msig_ =
           -- this definition in the rest of the signature by
           -- the full projection from the model path.  Also replace the
           -- type constructors
-          substitution_ = selfifyTypeSigDecl pmod tsd
-          substitution = (tyId, p) : substitution_
-          tsd' = U.substs substitution tsd
-          msig' = U.substs substitution msig
+          substVCons = selfifyTypeSigDecl pmod tsd
+          substTyCon = [(tyId, TCGlobal p)]
+          tsd' = U.substs substTyCon $ U.substs substVCons tsd
+          msig' = U.substs substTyCon $ U.substs substVCons msig
       selfSig <- selfifyModelType pmod msig'
       return $ TypeSelfSig (Con p) tsd' selfSig
     SubmodelSig fld bnd ->

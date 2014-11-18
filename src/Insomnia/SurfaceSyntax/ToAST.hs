@@ -179,8 +179,15 @@ identifier s = return $ U.s2n s
 sigIdentifier :: Ident -> TA I.SigIdentifier
 sigIdentifier s = return $ U.s2n s
 
-field :: Ident -> TA (I.Field, I.Identifier)
-field ident = return (ident, U.s2n ident)
+valueField :: Ident -> TA I.Field
+valueField ident = return ident
+
+modelField :: Ident -> TA (I.Field, I.Identifier)
+modelField ident = return (ident, U.s2n ident)
+
+typeField :: Ident -> TA (I.Field, I.TyConName)
+typeField ident = return (ident, U.s2n ident)
+
 
 modelType :: ModelType -> TA I.ModelType
 modelType (SigMT sig) = I.SigMT <$> signature sig
@@ -200,20 +207,20 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
     go decl kont =
       case decl of
        ValueSig ident ty -> do
-         (f, _) <- field ident
+         f <- valueField ident
          ty' <- type' ty
          rest <- kont
          return $ I.ValueSig f ty' rest
        FixitySig ident fixity ->
          updateWithFixity ident fixity kont
        TypeSig ident tsd -> do
-         (f, ident') <- field ident
+         (f, tycon) <- typeField ident
          let con = Con $ QId [] ident
          tsd' <- withTyCon con Nothing $ typeSigDecl tsd
          rest <- withTyCon con Nothing $ kont
-         return $ I.TypeSig f (U.bind (ident', U.embed tsd') rest)
+         return $ I.TypeSig f (U.bind (tycon, U.embed tsd') rest)
        SubmodelSig ident mt -> do
-         (f, ident') <- field ident
+         (f, ident') <- modelField ident
          mt' <- modelType mt
          rest <- kont
          return $ I.SubmodelSig f (U.bind (ident', U.embed mt') rest)
@@ -224,18 +231,18 @@ model (Model decls) = I.Model <$> foldr go (return []) decls
     go decl kont =
       case decl of
        ValueDecl ident vd -> do
-         (f, _) <- field ident
+         f <- valueField ident
          vd' <- valueDecl vd
          rest <- withValVar ident $ kont
          return (I.ValueDecl f vd' : rest)
        TypeDefn ident td -> do
-         (f, _) <- field ident
+         (f, _) <- typeField ident
          let con = Con $ QId [] ident
          (td', idents) <- withTyCon con Nothing $ typeDefn td
          rest <- withValCons idents $ withTyCon con Nothing $ kont
          return (I.TypeDefn f td' : rest)
        TypeAliasDefn ident alias -> do
-         (f, _) <- field ident
+         (f, _) <- typeField ident
          alias' <- typeAlias alias
          let con = Con $ QId [] ident
          rest <- withTyCon con Nothing $ kont
@@ -243,7 +250,7 @@ model (Model decls) = I.Model <$> foldr go (return []) decls
        FixityDecl ident fixity ->
          updateWithFixity ident fixity $ kont
        SubmodelDefn ident me -> do
-         (f, _) <- field ident
+         (f, _) <- modelField ident
          me' <- modelExpr me
          rest <- kont
          return (I.SubmodelDefn f me' : rest)
@@ -301,8 +308,14 @@ type' (TPhrase atms) = do
   tyOps <- askTypeOperators
   disfix atms tyOps
 
+typeConstructor :: Con -> TA I.TypeConstructor
+typeConstructor (Con (QId [] f)) = return $ I.TCLocal $ U.s2n f
+typeConstructor (Con (QId (h:ps) f)) = return $ I.TCGlobal (I.ProjP path f)
+  where
+    path = I.headSkelFormToPath (U.s2n h,ps)
+
 typeAtom :: TypeAtom -> TA I.Type
-typeAtom (TC c) = I.TC <$> qualifiedTyCon c
+typeAtom (TC c) = I.TC <$> typeConstructor c
 typeAtom (TV tv) = I.TV <$> tyvar tv
 typeAtom (TEnclosed ty mk) = do
   ty' <- type' ty
@@ -493,7 +506,7 @@ instance FixityParseable TypeAtom Con TA I.Type where
     let match t@(TC con2) | con == con2 = Just t
         match _                         = Nothing
     _ <- P.tokenPrim show (\pos _tok _toks -> pos) match
-    tOp <- lift (I.TC <$> qualifiedTyCon con)
+    tOp <- lift (I.TC <$> typeConstructor con)
     return $ \t1 t2 -> I.tApps tOp [t1, t2]
 
 instance FixityParseable ExprAtom QualifiedIdent TA I.Expr where

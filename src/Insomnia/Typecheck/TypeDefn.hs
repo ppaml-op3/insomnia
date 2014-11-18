@@ -14,19 +14,19 @@ import Data.Monoid ((<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
-import Insomnia.Types (Nat, Con, Kind(..), TyVar)
+import Insomnia.Types (Nat, Con, TypeConstructor, Kind(..), TyVar)
 import Insomnia.TypeDefn
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType, inferType)
 
-checkTypeDefn :: Con -> TypeDefn -> TC (TypeDefn, Kind)
+checkTypeDefn :: TypeConstructor -> TypeDefn -> TC (TypeDefn, Kind)
 checkTypeDefn dcon td =
   case td of
     DataDefn constrs -> checkDataDefn dcon constrs
     EnumDefn n -> checkEnumDefn dcon n
 
-checkDataDefn :: Con -> DataDefn -> TC (TypeDefn, Kind)
+checkDataDefn :: TypeConstructor -> DataDefn -> TC (TypeDefn, Kind)
 checkDataDefn dcon bnd = do
   U.lunbind bnd $ \ (vks, constrs) -> do
     -- k1 -> k2 -> ... -> *
@@ -39,7 +39,7 @@ checkDataDefn dcon bnd = do
     return (DataDefn $ U.bind vks constrs',
             foldr KArr KType (map snd vks))
 
-checkEnumDefn :: Con -> Nat -> TC (TypeDefn, Kind)
+checkEnumDefn :: TypeConstructor -> Nat -> TC (TypeDefn, Kind)
 checkEnumDefn dcon n = do
   unless (n > 0) $ do
     typeError ("when checking declaration of enumeration type "
@@ -56,13 +56,13 @@ checkConstructor (ConstructorDef ccon args) = do
   return (ConstructorDef ccon args')
 
 -- | Extend the typing context by adding the given type defintion.
-extendTypeDefnCtx :: Con -> TypeDefn -> TC a -> TC a
+extendTypeDefnCtx :: TypeConstructor -> TypeDefn -> TC a -> TC a
 extendTypeDefnCtx dcon td =
   case td of
     DataDefn constrs -> extendDataDefnCtx dcon constrs
     EnumDefn n -> extendEnumDefnCtx dcon n
 
-extendTypeAliasCtx :: Con -> TypeAlias -> TC a -> TC a
+extendTypeAliasCtx :: TypeConstructor -> TypeAlias -> TC a -> TC a
 extendTypeAliasCtx dcon alias comp = do
   (alias', aliasInfo) <- checkTypeAlias alias
   env <- ask
@@ -70,7 +70,7 @@ extendTypeAliasCtx dcon alias comp = do
     $ comp
 
 -- | Extend the typing context by adding the given type and value constructors
-extendDataDefnCtx :: Con -> DataDefn -> TC a -> TC a
+extendDataDefnCtx :: TypeConstructor -> DataDefn -> TC a -> TC a
 extendDataDefnCtx dcon bnd comp = do
   U.lunbind bnd $ \ (vks, constrs) -> do
     let kparams = map snd vks
@@ -81,14 +81,14 @@ extendDataDefnCtx dcon bnd comp = do
       extendConstructorsCtx constructors comp
 
 -- | Extend the typing context by adding the given enumeration type
-extendEnumDefnCtx :: Con -> Nat -> TC a -> TC a
+extendEnumDefnCtx :: TypeConstructor -> Nat -> TC a -> TC a
 extendEnumDefnCtx dcon n =
   extendDConCtx dcon (GenerativeTyCon $ EnumerationType n)
 
 -- | @mkConstructor d vks (ConstructorDef c params)@ returns @(c,
 -- ccon)@ where @ccon@ is a 'Constructor' for the type @d@ with the
 -- given type and value parameters.
-mkConstructor :: Con -> [(TyVar, Kind)] -> ConstructorDef -> (Con, AlgConstructor)
+mkConstructor :: TypeConstructor -> [(TyVar, Kind)] -> ConstructorDef -> (Con, AlgConstructor)
 mkConstructor dcon vks (ConstructorDef ccon args) =
   (ccon, AlgConstructor (U.bind vks args) dcon)
 

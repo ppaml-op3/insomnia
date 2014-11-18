@@ -56,7 +56,7 @@ type ConstructorArgs = (U.Bind [KindedTVar] [Type])
 data AlgConstructor =
   AlgConstructor {
     _algConstructorArgs :: ConstructorArgs
-    , _algConstructorDCon :: Con
+    , _algConstructorDCon :: TypeConstructor
     }
   deriving (Show)
            
@@ -95,7 +95,7 @@ data TypeAliasClosure = TypeAliasClosure !Env !TypeAlias
 data Env = Env {
   _envSigs :: M.Map SigIdentifier Signature -- ^ signatures
   , _envModelSigs :: M.Map Identifier Signature -- ^ models' unselfified signatures (invariant: their selfified contents have been added to DCons and Globals)
-  , _envDCons :: M.Map Con TyConDesc -- ^ type constructor descriptors
+  , _envDCons :: M.Map TypeConstructor TyConDesc -- ^ type constructor descriptors
   , _envCCons :: M.Map Con AlgConstructor -- ^ value constructors
   , _envGlobals :: M.Map QVar Type      -- ^ declared global vars
   , _envGlobalDefns :: M.Map QVar ()    -- ^ defined global vars
@@ -158,20 +158,20 @@ baseEnv = emptyEnv
           & (envDCons . at conInt) ?~ GenerativeTyCon (AlgebraicType algInt)
           & (envDCons . at conReal) ?~ GenerativeTyCon (AlgebraicType algReal)
 
-builtinCon :: String -> Con
-builtinCon = Con . IdP . U.s2n
+builtinCon :: String -> TypeConstructor
+builtinCon = TCLocal . U.s2n
 
 -- | Base data constructors
-conArrow :: Con
+conArrow :: TypeConstructor
 conArrow = builtinCon "->"
 
-conDist :: Con
+conDist :: TypeConstructor
 conDist = builtinCon "Dist"
 
-conInt :: Con
+conInt :: TypeConstructor
 conInt = builtinCon "Int"
 
-conReal :: Con
+conReal :: TypeConstructor
 conReal = builtinCon "Real"
 
 algArrow :: AlgType
@@ -262,7 +262,7 @@ lookupModelSig ident = do
     Nothing -> typeError $ "no module " <> formatErr ident
 
 -- | Look up info about a datatype
-lookupDCon :: Con -> TC TyConDesc
+lookupDCon :: TypeConstructor -> TC TyConDesc
 lookupDCon d = do
   m <- view (envDCons . at d)
   case m of
@@ -326,7 +326,7 @@ extendModelTypeCtx ident msig =
 
 -- | Extend the data type environment by adding the declaration
 -- of the given data type with the given kind
-extendDConCtx :: Con -> TyConDesc -> TC a -> TC a
+extendDConCtx :: TypeConstructor -> TyConDesc -> TC a -> TC a
 extendDConCtx dcon k = local (envDCons . at dcon ?~ k)
 
 extendConstructorsCtx :: [(Con, AlgConstructor)] -> TC a -> TC a
@@ -368,7 +368,7 @@ settingVisibleSelectors vs =
   where
     vsMap = M.fromList (map (\k -> (k, ())) vs)
 
-guardDuplicateDConDecl :: Con -> TC ()
+guardDuplicateDConDecl :: TypeConstructor -> TC ()
 guardDuplicateDConDecl dcon = do
   mdata <- view (envDCons . at dcon)
   case mdata of

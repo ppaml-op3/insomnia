@@ -185,12 +185,16 @@ instance Pretty Kind where
   pp KType = onUnicode "⋆" "*"
   pp (KArr k1 k2) = infixOp 1 "→" "->" AssocRight (pp k1) (pp k2)
 
+instance Pretty TypeConstructor where
+  pp (TCLocal n) = pp n
+  pp (TCGlobal p) = pp p
+
 instance Pretty Type where
   pp (TV v) = pp v
   pp (TUVar u) = pp u
   pp (TApp
       (TApp
-       (TC (Con (IdP (U.name2String -> "->"))))
+       (TC (TCLocal (U.name2String -> "->")))
        t1)
       t2) =
     -- hack

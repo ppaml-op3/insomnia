@@ -12,7 +12,7 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier (Path(..), Field)
-import Insomnia.Types (Kind(..), Con(..), Type(..), freshUVarT)
+import Insomnia.Types (Kind(..), TypeConstructor(..), Type(..), freshUVarT)
 import Insomnia.Expr (Var, QVar(..), Expr(Q))
 import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
 import Insomnia.Model
@@ -78,13 +78,13 @@ projectModelField pmod fieldName = go
                             <> formatErr fieldName)
     go (ValueSig _ _ mrest) = go mrest
     go (TypeSig fld' bnd) =
-      U.lunbind bnd $ \((ident', _), mrest_) ->
-      -- slightly tricky - we have to replace the ident' in the rest
+      U.lunbind bnd $ \((tycon', _), mrest_) ->
+      -- slightly tricky - we have to replace the tycon' in the rest
       -- of the module by the selfified name of the component so that
       -- once we finally find the signature that we need, it will
       -- refer to earlier components of its parent model by the
       -- correct name.
-      let mrest = U.subst ident' (ProjP pmod fld') mrest_
+      let mrest = U.subst tycon' (TCGlobal $ ProjP pmod fld') mrest_
       in go mrest
     go (SubmodelSig fld' bnd) =
       if fieldName /= fld'
@@ -160,12 +160,12 @@ checkDecl' :: Path -> Decl -> TC Decl
 checkDecl' pmod d =
   case d of
     TypeDefn fld td -> do
-      let dcon = Con (ProjP pmod fld)
+      let dcon = TCGlobal (ProjP pmod fld)
       guardDuplicateDConDecl dcon
-      (td', _) <- checkTypeDefn (Con $ IdP $ U.s2n fld) td
+      (td', _) <- checkTypeDefn (TCLocal $ U.s2n fld) td
       return $ TypeDefn fld td'
     TypeAliasDefn fld alias -> do
-      let dcon = Con (ProjP pmod fld)
+      let dcon = TCGlobal (ProjP pmod fld)
       guardDuplicateDConDecl dcon
       (alias', _) <- checkTypeAlias alias
       return $ TypeAliasDefn fld alias'
@@ -277,20 +277,20 @@ extendDCtx pmod d =
     TypeDefn fld td -> \rest kont -> do
       let p = ProjP pmod fld
           shortIdent = U.s2n fld
-          substitution_ = selfifyTypeDefn pmod td
-          substitution = (shortIdent, p) : substitution_
+          substVCons = selfifyTypeDefn pmod td
+          substTyCon = [(shortIdent, TCGlobal p)]
           -- replace short name occurrences by the qualified name
-          td' = U.substs substitution td
-          rest' = U.substs substitution rest
-      extendTypeDefnCtx (Con p) td' (kont rest')
+          td' = U.substs substTyCon $ U.substs substVCons td
+          rest' = U.substs substTyCon $ U.substs substVCons rest
+      extendTypeDefnCtx (TCGlobal p) td' (kont rest')
     TypeAliasDefn fld alias -> \rest kont -> do
       let p = ProjP pmod fld
           shortIdent = U.s2n fld
-          substitution = [(shortIdent, p)]
+          substitution = [(shortIdent, TCGlobal p)]
           -- don't need to substitute into 'alias' because type
           -- aliases are not allowed to be recursive.
           rest' = U.substs substitution rest
-      extendTypeAliasCtx (Con p) alias (kont rest')
+      extendTypeAliasCtx (TCGlobal p) alias (kont rest')
     SubmodelDefn fld modelExpr -> \rest kont -> do
       let pSubMod = ProjP pmod fld
           shortIdent = U.s2n fld

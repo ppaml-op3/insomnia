@@ -53,6 +53,12 @@ instance Subst Path Model
 instance Subst Path Decl
 instance Subst Path ValueDecl
 
+instance Subst TypeConstructor ModelExpr
+instance Subst TypeConstructor Model
+instance Subst TypeConstructor Decl
+instance Subst TypeConstructor ValueDecl
+
+
 instance Subst Expr ModelExpr
 instance Subst Expr Model
 instance Subst Expr Decl

@@ -5,7 +5,9 @@ import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Identifier (Path(..), Identifier, Field)
-import Insomnia.Types (Kind(..), Type(..), Con(..), KindedTVar, kArrs)
+import Insomnia.Types (Kind(..), Type(..),
+                       TyConName, TypeConstructor(..),
+                       KindedTVar, kArrs)
 import Insomnia.TypeDefn (TypeAlias(..), TypeDefn(..))
 import Insomnia.ModelType (Signature(..), ModelType(..), TypeSigDecl(..))
 
@@ -38,35 +40,35 @@ clarifySignature pmod (ValueSig f ty rest) = do
   rest' <- clarifySignature pmod rest
   return $ ValueSig f ty rest'
 clarifySignature pmod (TypeSig f bnd) =
-  U.lunbind bnd $ \((ident, U.unembed -> tsd), rest) ->
-  clarifyTypeSigDecl pmod f ident tsd rest
+  U.lunbind bnd $ \((tycon, U.unembed -> tsd), rest) ->
+  clarifyTypeSigDecl pmod f tycon tsd rest
 clarifySignature pmod (SubmodelSig f bnd) =
   U.lunbind bnd $ \((ident, U.unembed -> modTy), rest) ->
   clarifySubmodel pmod f ident modTy rest
 
 clarifyTypeSigDecl :: Path
                       -> Field
-                      -> Identifier
+                      -> TyConName
                       -> TypeSigDecl
                       -> Signature
                       -> TC Signature
-clarifyTypeSigDecl pmod f ident tsd rest =
+clarifyTypeSigDecl pmod f tycon tsd rest =
   case tsd of
    AliasTypeSigDecl {} -> do
      rest' <- clarifySignature pmod rest
-     return $ TypeSig f $ U.bind (ident, U.embed tsd) rest'
+     return $ TypeSig f $ U.bind (tycon, U.embed tsd) rest'
    AbstractTypeSigDecl k -> do
-     let c = Con (ProjP pmod f)
+     let c = TCGlobal (ProjP pmod f)
          a = mkTypeAlias k c
      rest' <- clarifySignature pmod rest
-     return $ TypeSig f $ U.bind (ident, U.embed $ AliasTypeSigDecl a) rest'
+     return $ TypeSig f $ U.bind (tycon, U.embed $ AliasTypeSigDecl a) rest'
    ManifestTypeSigDecl defn -> do
-     let c = Con (ProjP pmod f)
+     let c = TCGlobal (ProjP pmod f)
          a = mkTypeAlias (defnKind defn) c
      -- TODO: also need to alias the value constructors.  Will need a
      -- new AST node...
      rest' <- clarifySignature pmod rest
-     return $ TypeSig f $ U.bind (ident, U.embed $ AliasTypeSigDecl a) rest'
+     return $ TypeSig f $ U.bind (tycon, U.embed $ AliasTypeSigDecl a) rest'
   where
     defnKind (DataDefn bnd) =
       let (tvks, _) = UU.unsafeUnbind bnd
@@ -77,11 +79,11 @@ clarifyTypeSigDecl pmod f ident tsd rest =
     -- | given type X.Y.T of kind k1 -> ... -> kN -> KType
     -- construct the type alias
     --    type Alias a0 .... aN = X.Y.T a0 ... aN
-    mkTypeAlias :: Kind -> Con -> TypeAlias
+    mkTypeAlias :: Kind -> TypeConstructor -> TypeAlias
     mkTypeAlias k c =
       let (tvks, ty) = mkTypeAlias' k 0 c
       in TypeAlias $ U.bind tvks ty
-    mkTypeAlias' :: Kind -> Integer -> Con -> ([KindedTVar], Type)
+    mkTypeAlias' :: Kind -> Integer -> TypeConstructor -> ([KindedTVar], Type)
     mkTypeAlias' KType _ c = ([], TC c)
     mkTypeAlias' (KArr kdom kcod) n c =
       let tv = U.makeName "a" n
