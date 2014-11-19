@@ -34,10 +34,8 @@ model Prelude :: PRELUDE {
    sig cond :: forall (c :: *) . Bool -> c -> c -> c
    fun cond b t f =
        case b of
-       {
          True -> t
-       ; False -> f
-       }
+         False -> f
 
    data Proxy (a :: *) = Proxy
 
@@ -65,10 +63,10 @@ sig thinksRain :: T -> Prelude.Bool
 -- Ryan observes that the version above creates a new table every time
 -- that 'thinksRain' is called.  Instead what we want is to create the
 -- table once.
-val thinksRain = let {
+val thinksRain = let
   forall (x :: T) in
     g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
-  } in g
+  in g
 
 
 }

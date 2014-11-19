@@ -34,9 +34,7 @@ model Prelude :: PRELUDE {
   data List (a :: *) = Nil | Cons a (List a)
 
   sig map :: ∀ (a :: *) (b :: *) . (a -> b) -> List a -> List b
-  fun map f xs =
-    case xs of
-    { (Cons y ys) -> Cons (f y) (map f ys)
-    ; Nil -> Nil
-    }
+  fun map f xs = case xs of
+   (Cons y ys) -> Cons (f y) (map f ys)
+   Nil -> Nil
 }

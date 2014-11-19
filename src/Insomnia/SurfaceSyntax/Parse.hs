@@ -10,14 +10,20 @@ import Data.Text (Text)
 import qualified Data.Text.IO as T
 import Data.Ratio ((%), Rational)
 
-import Text.Parsec.Text
+import qualified Text.Parsec.Text as TPT
 import Text.Parsec.Char (char, letter, alphaNum, oneOf)
-import Text.Parsec.Combinator (eof, sepBy1)
+import Text.Parsec.Combinator (eof, sepBy1, between)
 import Text.Parsec.Error (ParseError)
-import qualified Text.Parsec.Token as Tok
+import qualified Text.Parsec.Token as Tok hiding (makeTokenParser)
+import qualified Text.Parsec.Indentation.Token as Tok
 import Text.Parsec.Token (GenLanguageDef(..))
-import Text.Parsec.Prim ((<?>), try, parse, parseTest)
+import Text.Parsec.Prim (Parsec, (<?>), try, parse, parseTest)
 import Text.Parsec.Expr
+import Text.Parsec.Indentation (IndentStream, mkIndentStream,
+                                IndentationRel(..), localTokenMode, absoluteIndentation,
+                                localIndentation,
+                                infIndentation)
+import Text.Parsec.Indentation.Char (CharIndentStream, mkCharIndentStream)
 
 import Data.Format (Format(..), WrapShow(..))
 
@@ -29,10 +35,16 @@ newtype FormatParseError = FormatParseError ParseError
 instance Format FormatParseError where
   format (FormatParseError pe) = format (WrapShow pe)
 
+--
+
+type InsomniaStream = IndentStream (CharIndentStream Text)
+
+type Parser = Parsec InsomniaStream () 
+
 ----------------------------------------
 
-insomniaLang :: GenLanguageDef Text () Identity
-insomniaLang = LanguageDef {
+insomniaLang :: GenLanguageDef InsomniaStream () Identity
+insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   commentStart = "{-"
   , commentEnd = "-}"
   , commentLine = "--"
@@ -55,7 +67,16 @@ insomniaLang = LanguageDef {
   , caseSensitive = True
   }
 
-Tok.TokenParser {..} = Tok.makeTokenParser insomniaLang
+Tok.TokenParser {braces = _, ..} = Tok.makeTokenParser insomniaLang
+
+-- For braces, the leading brace opens a scope where the next production can be in any column, and
+-- the closing brace likewise.
+-- For example:
+--     foo = {
+--  stuff
+--     }
+-- 
+braces = between (localIndentation Any $ symbol "{") (localIndentation Any $ symbol "}") . localIndentation Any
 
 exactly :: (Show a, Eq a) => Parser a -> a -> Parser ()
 exactly p x = (p >>= \x' -> guard (x == x')) <?> show x
@@ -153,12 +174,15 @@ modelId = mkQId <$> qualifiedName modelIdentifier
 parseFile :: FilePath -> IO (Either FormatParseError Toplevel)
 parseFile fp = do
   txt <- T.readFile fp
-  return (either (Left . FormatParseError) Right $ parse toplevel fp txt)
+  let s = mkIndentStream 0 infIndentation True Gt $ mkCharIndentStream txt
+  return (either (Left . FormatParseError) Right $ parse toplevel fp s)
 
 ----------------------------------------
 
 toplevel :: Parser Toplevel
-toplevel = Toplevel <$> (whiteSpace *> many toplevelItem <* eof)
+toplevel = Toplevel <$> (whiteSpace *> (localIndentation Any $ many (absoluteIndentation toplevelItem)) <* finish)
+  where
+    finish = localTokenMode (const Any) eof
 
 toplevelItem :: Parser ToplevelItem
 toplevelItem =
@@ -173,7 +197,7 @@ toplevelModel =
   <*> ((reservedOp "=" *> modelExpr)
        <|> literalModelShorthand)
   where
-    literalModelShorthand = (ModelStruct . Model) <$> braces (many decl)
+    literalModelShorthand = modelLiteral
 
 toplevelModelType :: Parser ToplevelItem
 toplevelModelType =
@@ -183,7 +207,7 @@ toplevelModelType =
 
 signature :: Parser Signature
 signature =
-  Sig <$> (many sigDecl)
+  Sig <$> localIndentation Ge (many $ absoluteIndentation sigDecl)
 
 sigDecl :: Parser SigDecl
 sigDecl =
@@ -263,6 +287,10 @@ modelTypeExpr =
   <|> (SigMT <$> braces signature <?> "model signature in braces")
 
 
+modelLiteral :: Parser ModelExpr
+modelLiteral =
+  (ModelStruct . Model) <$> braces (localIndentation Ge $ many $ absoluteIndentation decl)
+
 modelExpr :: Parser ModelExpr
 modelExpr =
   (modelLiteral <?> "braced model definition")
@@ -270,7 +298,6 @@ modelExpr =
   <|> (nestedModel <?> "model sealed with a signature")
   <|> (modelPath <?> "qualified model name")
   where
-    modelLiteral = (ModelStruct . Model) <$> braces (many decl)
     modelAssume =  (ModelAssume . IdentMT)
                    <$> (reserved "assume" *> modelTypeIdentifier)
     nestedModel = parens (mkNestedModelExpr
@@ -335,9 +362,9 @@ modelDefn =
 funDecl :: Parser (Ident, ValueDecl)
 funDecl =
   mkFunDecl
-   <$> (reserved "fun" *> variableOrPrefixInfixIdentifier)
-   <*> (some annVar)
-   <*> (reservedOp "=" *> expr)
+  <$> (reserved "fun" *> variableOrPrefixInfixIdentifier)
+  <*> (some annVar)
+  <*> (reservedOp "=" *> expr)
   where
     mkFunDecl f xs e =(f, FunDecl (mkLams xs e))
 
@@ -495,14 +522,22 @@ lamExpr = fail "unimplemented lamExpr"
 caseExpr :: Parser Expr
 caseExpr = Case
            <$> (reserved "case" *> expr)
-           <*> (reserved "of" *> braces (semiSep clause))
+           <*> (reserved "of" *> (eClauses <|> iClauses))
+  where
+    -- explicit braces
+    eClauses = braces (semiSep clause)
+    -- implicit indentation
+    iClauses = localIndentation Gt $ many $ absoluteIndentation clause
   
 letExpr :: Parser Expr
 letExpr = Let
-          <$> (reserved "let" *> braces (semiSep binding))
+          <$> (reserved "let" *> (eBindings <|> iBindings))
           <*> (reserved "in"  *> expr)
           <?> "let expression"
-
+  where
+    eBindings = braces (semiSep binding)
+    iBindings = localIndentation Gt (many $ absoluteIndentation binding)
+    
 clause :: Parser Clause
 clause = (Clause
           <$> simplePattern

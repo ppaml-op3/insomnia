@@ -28,16 +28,16 @@ data Either (a :: ⋆) (b :: ⋆) = Left a | Right b
 sig withEither :: forall (a :: ⋆) (b :: ⋆) (c ∷ ⋆)
                  . (a -> c) -> (b -> c) -> Either a b -> c
 fun withEither l r t = case t of
-  { Left x -> l x
-  ; Right y -> r y
+  { (Left x) -> l x
+  ; (Right y) -> r y
   }
 
 sig compose :: forall (a ∷ ⋆) (b ∷ ⋆) (c ∷ ⋆)
-               . (b -> c) → (a → b) → a → c
+               . (b -> c) -> (a -> b) -> a -> c
 fun compose g f x = g (f x)
 
 sig fmapEither :: forall (a ∷ ⋆) (b ∷ ⋆) (c :: ⋆).
-                  (b → c) → Either a b → Either a c
+                  (b -> c) -> Either a b -> Either a c
 fun fmapEither f = withEither Left (compose Right f)
 
 sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
@@ -48,11 +48,10 @@ sig flip :: Real -> Dist Bool -- TODO effect system?
 
 fun h i = -- bindings are of the form v or (v :: ty)
   let
-    { (fair :: Real) = 0.5      {- value assignment -}
-    ; (biased :: Real) = 0.9
-    ; x ~ flip fair   {- sampling from a distribution -}
-    ; y ~ flip biased
-    }
+    (fair :: Real) = 0.5      {- value assignment -}
+    (biased :: Real) = 0.9
+    x ~ flip fair   {- sampling from a distribution -}
+    y ~ flip biased
   in or x y
 
 ----- enumeration types
