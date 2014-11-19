@@ -11,7 +11,7 @@ import Data.Monoid (Monoid(..), (<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
-import Insomnia.Types (Kind(..), Type(..), freshUVarT)
+import Insomnia.Types (Kind(..), Type(..), Row(..), canonicalOrderRowLabels, freshUVarT)
 import Insomnia.Expr
 
 import Insomnia.Unify (applyCurrentSubstitution,
@@ -76,6 +76,14 @@ checkExpr e_ t_ = case e_ of
                       <> " when applying " <> formatErr e1_
                       <> " to " <> formatErr e2_)
     return $ App e1' e2'
+  Record les -> do
+    (les', lts) <- fmap unzip $ forM les $ \(lbl,e) -> do
+      tu <- freshUVarT
+      e' <- checkExpr e tu
+      return ((lbl, e'), (lbl, tu))
+    let row = Row $ canonicalOrderRowLabels lts
+    (TRecord row) =?= t_
+    return (Record les')
   Let bnd ->
     U.lunbind bnd $ \(binds, body) ->
     checkBindings binds $ \ binds' -> do
@@ -112,6 +120,15 @@ checkPattern tscrut p =
   case p of
     WildcardP -> return (p, [])
     VarP v -> return (p, [(v, tscrut)])
+    RecordP lps -> do
+      (mss, lps', lts) <- fmap unzip3 $ forM lps $ \(U.unembed -> lbl, pat) -> do
+        tp <- freshUVarT
+        (pat', ms) <- checkPattern tp pat
+        return (ms, (U.embed lbl, pat'), (lbl, tp))
+      let ms = mconcat mss
+          row = Row $ canonicalOrderRowLabels lts
+      tscrut =?= TRecord row
+      return (RecordP lps', ms)
     ConP (U.unembed -> c) ps -> do
       alg <- lookupCCon c
       instantiateConstructorArgs (alg^.algConstructorArgs) $ \ tparams targs -> do
@@ -197,6 +214,10 @@ inferTabSelector (TabIndex v) = do
     Just ty -> return ty
   return (TabIndex v, ty)
 
+inferLiteral :: Literal -> TC Type
+inferLiteral (IntL {}) = return intT
+inferLiteral (RealL {}) = return realT
+
 inferExpr :: Expr -> TC (Type, Expr)
 inferExpr e_ = case e_ of
   V v -> do
@@ -219,6 +240,9 @@ inferExpr e_ = case e_ of
            <??@ ("when checking argument " <> formatErr e2_
                  <> " of " <> formatErr e1_)
     return (tcod, App e1' e2')
+  L lit -> do
+    t <- inferLiteral lit
+    return (t, e_)
   C c -> do
     constr <- lookupCCon c
     ty <- mkConstructorType constr
@@ -231,6 +255,14 @@ inferExpr e_ = case e_ of
                  <> "against type annotation " <> formatErr t_)
     tannot <- applyCurrentSubstitution t
     return (t, Ann e1' tannot)
+  Record les -> do
+    ltes <- forM les $ \(lbl, e) -> do
+      (t, e') <- inferExpr e
+      return (lbl, t, e')
+    let les' = map (\(lbl, _t, e) -> (lbl, e)) ltes
+        lts_ = map (\(lbl, t, _e) -> (lbl, t)) ltes
+        row = Row $ canonicalOrderRowLabels lts_
+    return (TRecord row, Record les')
   Case {} -> typeError ("cannot infer the type of a case expression "
                         <> formatErr e_
                         <> " try adding a type annotation"

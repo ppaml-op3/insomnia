@@ -405,6 +405,12 @@ exprAtom (Enclosed e mt) = do
   case mt' of
    Nothing -> return e'
    Just ty' -> return (I.Ann e' ty')
+exprAtom (Record les) = do
+  les' <- forM les $ \(lbl, e) -> do
+    let lbl' = I.Label (labelName lbl)
+    e' <- expr e
+    return (lbl', e')
+  return (I.Record les')
 exprAtom (L lit) = I.L <$> literal lit
 
 literal :: Literal -> TA I.Literal
@@ -445,6 +451,12 @@ patternAtom (ConP ncon) = do
     dropNotation (InfixN x) = x
     dropNotation (PrefixN x) = x
 patternAtom WildcardP = return $ CompletePP $ I.WildcardP
+patternAtom (RecordP lps) = do
+  lps' <- forM lps $ \(lbl, p) -> do
+    let lbl' = I.Label (labelName lbl)
+    p' <- pattern p
+    return (U.embed lbl', p')
+  return (CompletePP $ I.RecordP lps')
 patternAtom (EnclosedP p) = CompletePP <$> pattern p
 
 pattern :: Pattern -> CTA I.Pattern

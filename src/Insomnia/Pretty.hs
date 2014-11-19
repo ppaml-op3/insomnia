@@ -91,6 +91,7 @@ instance Pretty Pattern where
   pp (VarP v) = pp v
   pp (ConP c []) = pp (U.unembed c)
   pp (ConP c ps) = parens $ pp (U.unembed c) <+> (nesting $ fsep $ map pp ps)
+  pp (RecordP lps) = braces $ fsep $ punctuate "," $ map ppLabeledAssign $ map (_1 %~ U.unembed) lps
 
 instance Pretty Clause where
   pp (Clause bnd) =
@@ -136,6 +137,7 @@ instance Pretty Expr where
        $ withPrec 0 AssocNone
        $ Left $ ppCollapseLam (onUnicode "λ" "\\") (Endo (av:)) "." e
   pp (Ann e t) = parens $ withPrec 1 AssocNone (Left $ pp e <+> indent coloncolon (pp t))
+  pp (Record les) = braces $ fsep $ punctuate "," (map ppLabeledAssign les)
   pp (Case e clauses) =
     precParens 1
     $ withPrec 0 AssocNone
@@ -163,6 +165,9 @@ ppAnnVar (v, U.unembed -> (Annot mt)) =
   case mt of
     Nothing -> pp v
     Just t -> parens (pp v <+> indent coloncolon (pp t))
+
+ppLabeledAssign :: Pretty a => (Label, a) -> PM Doc
+ppLabeledAssign (lbl, x) = pp lbl <+> indent "=" (pp x)
 
 instance Pretty String where
   pp = text

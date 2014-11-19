@@ -35,6 +35,7 @@ data Expr = V Var
           | C !Con
           | L !Literal
           | Lam (Bind AnnVar Expr)
+          | Record [(Label, Expr)]
           | App Expr Expr
           | Case Expr [Clause]
           | Let (Bind Bindings Expr)
@@ -88,6 +89,7 @@ data TabSelector =
 data Pattern = WildcardP
              | VarP Var
              | ConP !(Embed Con) [Pattern]
+             | RecordP ![(Embed Label, Pattern)]
                deriving (Show, Typeable, Generic)
 
 -- All these types have notions of alpha equivalence upto bound
@@ -164,6 +166,9 @@ instance Subst Expr Annot where
   subst _ _ = id
   substs _ = id
 instance Subst Expr TabSelector where
+  subst _ _ = id
+  substs _ = id
+instance Subst Expr Label where
   subst _ _ = id
   substs _ = id
 instance Subst Expr Type where

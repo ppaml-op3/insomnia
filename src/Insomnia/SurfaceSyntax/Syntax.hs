@@ -131,6 +131,7 @@ data Identifier = V !Var
 
 data ExprAtom = I !(Notation Identifier)
               | L !Literal
+              | Record ![(Label, Expr)]
               | Enclosed !Expr !(Maybe Type) -- '(' Expr ')' or '(' Expr ':' Type ')'
               deriving (Show)
 
@@ -146,6 +147,7 @@ data Clause = Clause !Pattern !Expr
 data PatternAtom = WildcardP
                  | VarP !Var
                  | ConP !(Notation Con)
+                 | RecordP ![(Label, Pattern)]
                  | EnclosedP !Pattern
                   deriving (Show)
 

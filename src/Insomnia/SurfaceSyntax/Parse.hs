@@ -474,8 +474,15 @@ exprAtom :: Parser ExprAtom
 exprAtom =
   (I <$> exprNotationIdentifier)
   <|> (L <$> literal)
+  <|> recordExpression
   <|> parens (Enclosed <$> expr
               <*> optional (classify *> typeExpr))
+
+recordExpression :: Parser ExprAtom
+recordExpression =
+  Record <$> braces (commaSep labeledAssignExpr)
+  where
+    labeledAssignExpr = (,) <$> label <* reservedOp "=" <*> expr
 
 literal :: Parser Literal
 literal = RealL <$> try float
@@ -512,7 +519,14 @@ patternAtom =
                   <|> (InfixN . Con <$> qualifiedInfixIdent)))
        <?> "constructor pattern")
   <|> (VarP <$> varId <?> "variable pattern")
+  <|> recordPattern
   <|> parens (EnclosedP <$> pattern)
+
+recordPattern :: Parser PatternAtom
+recordPattern =
+  RecordP <$> braces (commaSep labeledPattern)
+  where
+    labeledPattern = (,) <$> label <* reservedOp "=" <*> pattern
 
 pattern :: Parser Pattern
 pattern = PhraseP <$> some patternAtom

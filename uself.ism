@@ -1,0 +1,25 @@
+model type T {
+  type T :: *
+  sig x :: T
+  sig f :: T -> Real
+}
+
+model M1 :: T {
+  data T = T
+
+  sig x :: T
+  val x = T
+
+  sig f :: T -> Real
+  fun f t =
+    case t of
+    { T -> 1.0
+    }
+}
+
+model M2 = M1
+
+model H {
+  sig r :: Real
+  val r = M2.f M1.x
+}  
