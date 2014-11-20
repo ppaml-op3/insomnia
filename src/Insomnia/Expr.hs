@@ -228,6 +228,8 @@ instance Plated Expr where
     Case <$> f e <*> traverse (traverseExprs f) clauses
   plate f (Ann e t) =
     Ann <$> f e <*> pure t
+  plate f (Record les) =
+    Record <$> traverseOf (traverse . _2) f les
   plate f (Let bnd) =
     let (bindings, e) = UU.unsafeUnbind bnd
     in Let <$> (bind <$> traverseExprs f bindings <*> f e)
@@ -273,6 +275,7 @@ instance TraverseTypes Expr Expr where
     in Lam <$> (bind <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e)
   traverseTypes _ (e@App {}) = pure e
   traverseTypes _ (e@Case {}) = pure e
+  traverseTypes _ (e@Record {}) = pure e
   traverseTypes f (Let bnd) =
     let (bindings, e) = UU.unsafeUnbind bnd
     in Let <$> (bind <$> traverseTypes f bindings <*> pure e)

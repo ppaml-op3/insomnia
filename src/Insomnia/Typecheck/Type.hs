@@ -7,9 +7,8 @@ import Control.Lens
 import Control.Monad (zipWithM_, when, forM)
 import Control.Monad.Reader.Class (MonadReader(..))
 
-import Data.List (intersperse, sortBy)
+import Data.List (intersperse)
 import Data.Monoid (Monoid(..),(<>))
-import Data.Ord (comparing)
 import qualified Data.Set as S
 
 import qualified Unbound.Generics.LocallyNameless as U
@@ -83,8 +82,10 @@ inferType t =
 checkRow :: Row -> TC Row
 checkRow r@(Row ts) = do
   checkUniqueLabels r
-  forM ts $ \(lbl, ty) -> checkType ty KType
-  return $ Row $ canonicalOrderRowLabels ts
+  ts' <- forM ts $ \(lbl, ty) -> do
+    ty' <- checkType ty KType
+    return (lbl, ty')
+  return $ Row $ canonicalOrderRowLabels ts'
 
 checkUniqueLabels :: Row -> TC ()
 checkUniqueLabels r@(Row ls0) =
