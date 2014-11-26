@@ -25,6 +25,7 @@ import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
 
+import Insomnia.Common.Literal
 import Insomnia.Unify (UVar)
 
 -- | Identifiers are have a global identity in a freshness monad.  The
@@ -101,5 +102,9 @@ instance Subst Path Path where
   isvar _ = Nothing
 
 instance Subst Path (UVar a) where
+  subst _ _ = id
+  substs _ = id
+
+instance Subst Path Literal where
   subst _ _ = id
   substs _ = id

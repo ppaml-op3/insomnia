@@ -22,6 +22,7 @@ import Unbound.Generics.LocallyNameless
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Identifier
+import Insomnia.Common.Literal
 
 import Insomnia.Unify (UVar, Unifiable(..),
                     HasUVars(..),
@@ -130,6 +131,9 @@ instance Subst Type Row
 instance Subst Type Label where
   subst _ _ = id
   substs _ = id
+instance Subst Type Literal where
+  subst _ _ = id
+  substs _ = id
 instance Subst Type Path where
   subst _ _ = id
   substs _ = id
@@ -163,6 +167,9 @@ instance Subst TypeConstructor TypeConstructor where
   isvar _ = Nothing
 
 instance Subst TypeConstructor Path where
+  subst _ _ = id
+  substs _ = id
+instance Subst TypeConstructor Literal where
   subst _ _ = id
   substs _ = id
 instance Subst TypeConstructor (UVar a) where

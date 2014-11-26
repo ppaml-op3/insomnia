@@ -25,6 +25,8 @@ library
                        Insomnia.SurfaceSyntax.Parse
                        Insomnia.SurfaceSyntax.ToAST
                        --
+                       Insomnia.Common.Literal
+                       --
                        Insomnia.Identifier
                        --
                        Insomnia.Types

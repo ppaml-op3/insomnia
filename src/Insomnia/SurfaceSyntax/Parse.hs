@@ -1,4 +1,5 @@
-{-# LANGUAGE RecordWildCards, OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards, OverloadedStrings, NamedFieldPuns #-}
+{-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 module Insomnia.SurfaceSyntax.Parse (parseFile) where
 
 import Control.Applicative
@@ -16,7 +17,7 @@ import Text.Parsec.Error (ParseError)
 import qualified Text.Parsec.Token as Tok hiding (makeTokenParser)
 import qualified Text.Parsec.Indentation.Token as Tok
 import Text.Parsec.Token (GenLanguageDef(..))
-import Text.Parsec.Prim (Parsec, (<?>), try, parse, parseTest)
+import Text.Parsec.Prim (Parsec, (<?>), try, parse)
 import Text.Parsec.Expr (Operator(..), buildExpressionParser)
 import Text.Parsec.Indentation (IndentStream, mkIndentStream,
                                 IndentationRel(..), localTokenMode, absoluteIndentation,
@@ -26,6 +27,7 @@ import Text.Parsec.Indentation.Char (CharIndentStream, mkCharIndentStream)
 
 import Data.Format (Format(..), WrapShow(..))
 
+import Insomnia.Common.Literal
 import Insomnia.SurfaceSyntax.Syntax
 import Insomnia.SurfaceSyntax.FixityParser (Fixity(..), Assoc(..))
 
@@ -66,7 +68,14 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   , caseSensitive = True
   }
 
-Tok.TokenParser {braces = _, ..} = Tok.makeTokenParser insomniaLang
+Tok.TokenParser {braces = _
+                , symbol, reserved, identifier
+                , operator, reservedOp
+                , lexeme
+                , parens, whiteSpace
+                , integer, natural, float
+                , commaSep, semiSep
+                } = Tok.makeTokenParser insomniaLang
 
 -- For braces, the leading brace opens a scope where the next production can be in any column, and
 -- the closing brace likewise.

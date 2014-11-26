@@ -11,6 +11,7 @@ import Data.Monoid (Monoid(..), (<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
+import Insomnia.Common.Literal
 import Insomnia.Types (Kind(..), Type(..), Row(..), canonicalOrderRowLabels, freshUVarT)
 import Insomnia.Expr
 

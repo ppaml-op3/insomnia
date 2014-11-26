@@ -16,6 +16,7 @@ import Text.PrettyPrint (Doc)
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
+import Insomnia.Common.Literal
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr

@@ -17,6 +17,7 @@ import qualified Text.Parsec.Prim as P
 import qualified Unbound.Generics.LocallyNameless as U
 
 
+import Insomnia.Common.Literal
 import qualified Insomnia.Identifier  as I
 import qualified Insomnia.Expr        as I
 import qualified Insomnia.Types       as I
@@ -418,9 +419,8 @@ exprAtom (Record les) = do
   return (I.Record les')
 exprAtom (L lit) = I.L <$> literal lit
 
-literal :: Literal -> TA I.Literal
-literal (IntL i) = return (I.IntL i)
-literal (RealL r) = return (I.RealL r)
+literal :: Literal -> TA Literal
+literal = return
 
 clause :: Clause -> TA I.Clause
 clause (Clause pat e) = 

@@ -16,6 +16,7 @@ import GHC.Generics (Generic)
 import Unbound.Generics.LocallyNameless
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
+import Insomnia.Common.Literal
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn (TypeDefn, TypeAlias)
@@ -26,10 +27,6 @@ type Var = Name Expr
 data QVar = QVar !Path !Field
              deriving (Show, Eq, Ord, Typeable, Generic)
 
-data Literal = IntL !Integer
-             | RealL !Double
-             deriving (Show, Typeable, Generic)
-                      
 data Expr = V !Var
           | Q !QVar -- qualified variable: Foo.Bar.t
           | C !Con
@@ -98,7 +95,6 @@ instance Alpha Expr
 instance Alpha QVar
 instance Alpha Pattern
 instance Alpha Clause
-instance Alpha Literal
 instance Alpha Bindings
 instance Alpha Binding
 instance Alpha Annot
@@ -181,9 +177,6 @@ instance Subst Expr TypeAlias where
   subst _ _ = id
   substs _ = id
 
-instance Subst Type Literal where
-  subst _ _ = id
-  substs _ = id
 instance Subst Type TabSelector where
   subst _ _ = id
   substs _ = id
@@ -191,18 +184,11 @@ instance Subst Type QVar where
   subst _ _ = id
   substs _ = id
 
-instance Subst Path Literal where
-  subst _ _ = id
-  substs _ = id
 instance Subst Path TabSelector where
   subst _ _ = id
   substs _ = id
 
 instance Subst TypeConstructor QVar where
-  subst _ _ = id
-  substs _ = id
-
-instance Subst TypeConstructor Literal where
   subst _ _ = id
   substs _ = id
 

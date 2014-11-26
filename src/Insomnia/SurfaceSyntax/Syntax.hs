@@ -2,6 +2,7 @@ module Insomnia.SurfaceSyntax.Syntax where
 
 import Data.Monoid ((<>))
 
+import Insomnia.Common.Literal
 import Insomnia.SurfaceSyntax.FixityParser (Fixity)
 
 type Ident = String
@@ -115,10 +116,6 @@ data Row = Row ![(Label, Type)]
 data Type = TPhrase ![TypeAtom]
           | TForall !TyVar !Kind !Type
           deriving (Show)
-
-data Literal = IntL !Integer
-             | RealL !Double
-             deriving (Show)
 
 data Notation a = PrefixN !a
                 | InfixN !a
