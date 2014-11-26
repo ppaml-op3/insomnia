@@ -23,23 +23,23 @@ import Insomnia.TypeDefn (TypeDefn, TypeAlias)
 type Var = Name Expr
 
 -- | Qualified variables - references to other modules.
-newtype QVar = QVar { unQVar :: Path }
+data QVar = QVar !Path !Field
              deriving (Show, Eq, Ord, Typeable, Generic)
 
-data Literal = IntL Integer
-             | RealL Double
+data Literal = IntL !Integer
+             | RealL !Double
              deriving (Show, Typeable, Generic)
                       
-data Expr = V Var
-          | Q QVar -- qualified variable: Foo.Bar.t
+data Expr = V !Var
+          | Q !QVar -- qualified variable: Foo.Bar.t
           | C !Con
           | L !Literal
-          | Lam (Bind AnnVar Expr)
-          | Record [(Label, Expr)]
-          | App Expr Expr
-          | Case Expr [Clause]
-          | Let (Bind Bindings Expr)
-          | Ann Expr Type
+          | Lam !(Bind AnnVar Expr)
+          | Record ![(Label, Expr)]
+          | App !Expr !Expr
+          | Case !Expr ![Clause]
+          | Let !(Bind Bindings Expr)
+          | Ann !Expr !Type
             deriving (Show, Typeable, Generic)
 
 type AnnVar = (Var, Embed Annot)

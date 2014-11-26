@@ -173,7 +173,7 @@ instance Pretty String where
   pp = text
 
 instance Pretty QVar where
-  pp (QVar qid) = pp qid
+  pp (QVar m f) = pp m <> "." <> pp f
 
 instance Pretty Con where
   pp (Con qid) = pp qid

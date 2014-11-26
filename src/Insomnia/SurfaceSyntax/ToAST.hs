@@ -95,14 +95,19 @@ hasNoQualification :: QualifiedIdent -> Maybe Ident
 hasNoQualification (QId [] ident) = Just ident
 hasNoQualification _ = Nothing
 
-qualifiedIdPath :: QualifiedIdent -> I.Path
-qualifiedIdPath (QId pfx fld) = go (pfx ++ [fld])
+submoduleIdentPath :: [Ident] -> I.Path
+submoduleIdentPath [] = error "can't happen"
+submoduleIdentPath (m:ms) = go (I.IdP $ U.s2n m) ms
   where
-    go [] = error "can't happen"
-    go (x:fs) = go' (I.IdP $ U.s2n x) fs
-    go' :: I.Path -> [I.Field] -> I.Path
-    go' p [] = p
-    go' p (f:fs) = go' (I.ProjP p f) fs
+    go :: I.Path -> [I.Field] -> I.Path
+    go p [] = p
+    go p (f:fs) = go (I.ProjP p f) fs
+
+qualifiedIdPath :: QualifiedIdent -> I.Path
+qualifiedIdPath (QId pfx fld) = submoduleIdentPath (pfx ++ [fld])
+
+qualifiedIdQVar :: QualifiedIdent -> I.QVar
+qualifiedIdQVar (QId pfx fld) = I.QVar (submoduleIdentPath pfx) fld
 
 withValVar :: Ident -> TA a -> TA a
 withValVar ident =
@@ -375,7 +380,7 @@ qualifiedVar (QVar qid) = do
   case mii of
    Just (ValConII _) ->
      error ("expected a variable, but found a value constructor " ++ show qid)
-   _ -> return $ I.QVar $ qualifiedIdPath qid
+   _ -> return $ qualifiedIdQVar qid
    
 unqualifiedVar :: Var -> TA I.Var
 unqualifiedVar (Var ident) = do
@@ -546,7 +551,7 @@ instance FixityParseable ExprAtom QualifiedIdent TA I.Expr where
     t <- P.tokenPrim show (\pos _tok _toks -> pos) (notInfix ctx)
     lift $ exprAtom t
     where
-      notInfix ctx e =
+      notInfix _ctx e =
         case e of
          I (InfixN _) -> Nothing
          _ -> Just e
@@ -570,7 +575,7 @@ instance FixityParseable PatternAtom Con CTA PartialPattern where
      t <- P.tokenPrim show (\pos _tok _toks -> pos) (notInfix ctx)
      lift $ patternAtom t
      where
-       notInfix ctx pa =
+       notInfix _ctx pa =
          case pa of
           ConP (InfixN _con) -> Nothing
           _ -> Just pa

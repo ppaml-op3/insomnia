@@ -170,7 +170,7 @@ checkDecl' pmod d =
       (alias', _) <- checkTypeAlias alias
       return $ TypeAliasDefn fld alias'
     ValueDecl fld vd ->
-      let qfld = QVar (ProjP pmod fld)
+      let qfld = QVar pmod fld
       in ValueDecl fld <$> checkValueDecl fld qfld vd
     SubmodelDefn fld modelExpr -> do
       modelExpr' <- inferModelExpr (ProjP pmod fld) modelExpr
@@ -302,7 +302,7 @@ extendDCtx pmod d =
 
 extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC [Decl]) -> TC [Decl]
 extendValueDeclCtx pmod fld vd =
-  let qvar = QVar (ProjP pmod fld)
+  let qvar = QVar pmod fld
   in case vd of
     SigDecl t -> extendSigDeclCtx fld qvar t
     FunDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)

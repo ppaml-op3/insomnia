@@ -8,9 +8,8 @@ import Data.Char (isUpper, isLower)
 import Data.Functor.Identity (Identity(..))
 import Data.Text (Text)
 import qualified Data.Text.IO as T
-import Data.Ratio ((%), Rational)
+import Data.Ratio ((%))
 
-import qualified Text.Parsec.Text as TPT
 import Text.Parsec.Char (char, letter, alphaNum, oneOf)
 import Text.Parsec.Combinator (eof, sepBy1, between)
 import Text.Parsec.Error (ParseError)
@@ -18,7 +17,7 @@ import qualified Text.Parsec.Token as Tok hiding (makeTokenParser)
 import qualified Text.Parsec.Indentation.Token as Tok
 import Text.Parsec.Token (GenLanguageDef(..))
 import Text.Parsec.Prim (Parsec, (<?>), try, parse, parseTest)
-import Text.Parsec.Expr
+import Text.Parsec.Expr (Operator(..), buildExpressionParser)
 import Text.Parsec.Indentation (IndentStream, mkIndentStream,
                                 IndentationRel(..), localTokenMode, absoluteIndentation,
                                 localIndentation,

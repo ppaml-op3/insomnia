@@ -20,7 +20,7 @@ newtype TyVar = TyVar { unTyVar :: Ident }
 newtype Var = Var { unVar :: Ident }
             deriving (Show)
 
-newtype QVar = QVar { unQVar :: QualifiedIdent }
+newtype QVar  = QVar { unQVar :: QualifiedIdent }
              deriving (Show)
 
 instance Ord QualifiedIdent where
