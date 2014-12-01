@@ -64,6 +64,9 @@ library
                        Insomnia.Typecheck.Model
                        Insomnia.Typecheck
                        --
+                       Insomnia.Interp.Lam
+                       Insomnia.Interp.Eval
+                       --
                        Insomnia.Pretty
                        -- utils
                        Insomnia.Except
