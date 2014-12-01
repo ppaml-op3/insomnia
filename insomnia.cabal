@@ -66,6 +66,7 @@ library
                        --
                        Insomnia.Interp.Lam
                        Insomnia.Interp.Eval
+                       Insomnia.Interp.PMonad
                        --
                        Insomnia.Pretty
                        -- utils
@@ -77,6 +78,7 @@ library
                        text < 1.2,
                        containers  >= 0.4,
                        transformers >= 0.3,
+                       random >= 1.0.1.2,
                        mtl,
                        lens,
                        unbound-generics >= 0.0.1,

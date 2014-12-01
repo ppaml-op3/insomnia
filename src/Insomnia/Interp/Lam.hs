@@ -13,6 +13,8 @@ import Unbound.Generics.LocallyNameless
 import Insomnia.Common.Literal
 
 
+type ConId = String
+
 type Var = Name Value
 
 data Expr =
@@ -21,6 +23,8 @@ data Expr =
   | AppE !Expr !Expr
   | LamE !(Bind Var Expr)
   | CaseE !Expr ![Clause]
+  | ConE !ConId ![Expr] -- saturated constructor application
+  | ChooseE !Expr !Expr !Expr -- non-deterministic choice with given probability
   deriving (Show, Typeable, Generic)
 
 data Program =
@@ -34,13 +38,21 @@ data Definition =
   deriving (Show, Typeable, Generic)
 
 data Value =
-  CloV (Bind (Env, Var) Expr)
-  | LitV Literal
+  CloV !(Bind (Env, Var) Expr)
+  | LitV !Literal
+  | ConV !ConId ![Value] -- saturated constructor application
   deriving (Show, Typeable, Generic)
 
-data Clause = Clause
+newtype Clause =
+  Clause (Bind Pattern Expr)
             deriving (Show, Typeable, Generic)
     
+data Pattern =
+  WildP
+  | VarP !Var
+  | ConP !(Embed ConId) ![Pattern]
+  deriving (Show, Typeable, Generic)
+
 newtype Env = Env { envMapping :: M.Map Var (Embed Value) }
             deriving (Show, Typeable)
 
@@ -48,6 +60,7 @@ newtype Env = Env { envMapping :: M.Map Var (Embed Value) }
 instance Alpha Expr
 instance Alpha Value
 instance Alpha Clause
+instance Alpha Pattern
 instance Alpha Definition
 instance Alpha Program
 
