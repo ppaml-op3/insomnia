@@ -10,6 +10,7 @@ import qualified Insomnia.SurfaceSyntax.Parse as P
 import qualified Insomnia.SurfaceSyntax.ToAST as ToAST
 import Insomnia.Typecheck
 import Insomnia.Pretty
+import qualified Insomnia.Interp.ToLam as ToLam
 
 
 main :: IO ()
@@ -58,6 +59,11 @@ parseAndCheck fp = do
   F.putStrDoc (F.format $ ppDefault m)
   putStrLn ""
   putStrLn "--------------------✂✄--------------------"
+  let
+    lam = ToLam.translateToplevel elab
+  print lam
+  putStrLn "--------------------✂✄--------------------"
+
 
 showErrorAndDie :: (Format err) => String -> err -> IO a
 showErrorAndDie phase msg = do
