@@ -17,16 +17,6 @@ type ConId = String
 
 type Var = Name Value
 
-data Expr =
-  VarE !Var
-  | ValE !Value
-  | AppE !Expr !Expr
-  | LamE !(Bind Var Expr)
-  | CaseE !Expr ![Clause]
-  | ConE !ConId ![Expr] -- saturated constructor application
-  | ChooseE !Expr !Expr !Expr -- non-deterministic choice with given probability
-  deriving (Show, Typeable, Generic)
-
 data Program =
   EvalP !Expr
   | DefineP !(Bind Definition Program)
@@ -37,10 +27,17 @@ data Definition =
   | FunDefn !Var !(Embed Expr) -- recursive defn, assuming expr is a lambda
   deriving (Show, Typeable, Generic)
 
-data Value =
-  CloV !(Bind (Env, Var) Expr)
-  | LitV !Literal
-  | ConV !ConId ![Value] -- saturated constructor application
+-- ----
+
+data Expr =
+  VarE !Var
+  | ValE !Value
+  | AppE !Expr !Expr
+  | LamE !(Bind Var Expr)
+  | CaseE !Expr ![Clause]
+  | ConE !ConId ![Expr] -- saturated constructor application
+  | ChooseE !Expr !Expr !Expr -- non-deterministic choice with given probability
+  | LetE !(Bind Bindings Expr)
   deriving (Show, Typeable, Generic)
 
 newtype Clause =
@@ -53,6 +50,24 @@ data Pattern =
   | ConP !(Embed ConId) ![Pattern]
   deriving (Show, Typeable, Generic)
 
+data Bindings =
+  NilBs
+  | ConsBs (Rebind Binding Bindings)
+  deriving (Show, Typeable, Generic)
+           
+data Binding =
+  ValB !Var !(Embed Expr)
+  deriving (Show, Typeable, Generic)
+
+-- ----
+
+data Value =
+  CloV !(Bind (Env, Var) Expr)
+  | LitV !Literal
+  | ConV !ConId ![Value] -- saturated constructor application
+  deriving (Show, Typeable, Generic)
+
+
 newtype Env = Env { envMapping :: M.Map Var (Embed Value) }
             deriving (Show, Typeable)
 
@@ -61,6 +76,8 @@ instance Alpha Expr
 instance Alpha Value
 instance Alpha Clause
 instance Alpha Pattern
+instance Alpha Bindings
+instance Alpha Binding
 instance Alpha Definition
 instance Alpha Program
 

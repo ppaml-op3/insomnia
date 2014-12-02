@@ -130,7 +130,28 @@ eval e =
      case vprob of
       LitV (RealL p) -> PM.choose p (eval etrue) (eval efalse)
       _ -> runtimeError $ ExpectedRealRE vprob
+   LetE bnd -> do
+     (bdgs, body) <- U.unbind bnd
+     evalBindings bdgs (eval body)
    -- _ -> runtimeError $ InternalErrorRE ("eval unimplemented for " ++ show e)
+
+evalBindings :: MonadEval m
+                => Bindings
+                -> m a
+                -> m a
+evalBindings NilBs kont = kont
+evalBindings (ConsBs bnd) kont =
+  let (bdg, bdgs) = U.unrebind bnd
+  in evalBinding bdg (evalBindings bdgs kont)
+
+evalBinding :: MonadEval m
+               => Binding
+               -> m a
+               -> m a
+evalBinding (ValB x e_) kont = do
+  let e = U.unembed e_
+  v <- eval e
+  localEnv (extendEnv x v) kont
 
 matchClauses :: MonadEval m => Value -> [Clause] -> m Value -> m Value
 matchClauses _value [] fk = fk
