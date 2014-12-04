@@ -14,8 +14,8 @@ import Data.Monoid ((<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
-import Insomnia.Identifier(Path(..))
-import Insomnia.Types (Nat, TypeConstructor(..), Kind(..), TyVar)
+import Insomnia.Types (Nat, TypePath(..), TypeConstructor(..),
+                       Kind(..), TyVar)
 import Insomnia.TypeDefn
 
 import Insomnia.Typecheck.Env
@@ -91,9 +91,8 @@ valueConstructorMakerForTypeConstructor :: TypeConstructor
                                            -> ValConName -> ValueConstructor
 valueConstructorMakerForTypeConstructor tc =
   case tc of
-   (TCGlobal (ProjP pmod _)) ->
+   (TCGlobal (TypePath pmod _)) ->
      VCGlobal . ValConPath pmod . U.name2String
-   (TCGlobal (IdP {})) -> error "valueConstructorMakerForTypeConstructor: can't happen"
    (TCLocal _) -> VCLocal
 
 -- | @mkConstructor d vks (ConstructorDef c params)@ returns @(c,

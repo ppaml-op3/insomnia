@@ -318,7 +318,7 @@ type' (TPhrase atms) = do
 
 typeConstructor :: Con -> TA I.TypeConstructor
 typeConstructor (Con (QId [] f)) = return $ I.TCLocal $ U.s2n f
-typeConstructor (Con (QId (h:ps) f)) = return $ I.TCGlobal (I.ProjP path f)
+typeConstructor (Con (QId (h:ps) f)) = return $ I.TCGlobal (I.TypePath path f)
   where
     path = I.headSkelFormToPath (U.s2n h,ps)
 

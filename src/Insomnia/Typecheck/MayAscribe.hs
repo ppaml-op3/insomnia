@@ -8,7 +8,8 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier (Identifier, Path(..), Field)
-import Insomnia.Types (TypeConstructor(..), TyConName, Type, Kind(..))
+import Insomnia.Types (TypeConstructor(..), TypePath(..), TyConName,
+                       Type, Kind(..))
 import Insomnia.TypeDefn
 import Insomnia.ModelType (ModelType, Signature(..), TypeSigDecl(..))
 
@@ -125,7 +126,7 @@ checkValueFieldTail pmod fld ty msig1 =
           checkValueFieldTail pmod fld ty mrest1
     TypeSig fld' bnd ->
       U.lunbind bnd $ \((tycon1, U.unembed -> tsd_), mrest1_) -> do
-        let pdefn = ProjP pmod fld'
+        let pdefn = TypePath pmod fld'
             dcon = TCGlobal pdefn
             tsd = U.subst tycon1 dcon tsd_
             mrest1 = U.subst tycon1 dcon mrest1_
@@ -158,8 +159,8 @@ checkTypeField pmod fld bnd msig1 kont =
             -- substitute ident1 for ident2 in tsd2_ and in mrest2_
             -- such that tsd1 and tsd2 agree about the in scope type
             -- declaration.
-            tsd2 = U.subst tycon2 (TCGlobal $ ProjP pmod fld) tsd2_
-            mrest2 = U.subst tycon2 (TCGlobal $ ProjP pmod fld) mrest2_
+            tsd2 = U.subst tycon2 (TCGlobal $ TypePath pmod fld) tsd2_
+            mrest2 = U.subst tycon2 (TCGlobal $ TypePath pmod fld) mrest2_
           checkTypeSigDecl fld tsd1 tsd2
           kont (TypePreSig fld tsd1 mrest1) mrest2
 
@@ -191,7 +192,7 @@ checkTypeFieldTail pmod fld bnd msig1 kont =
       if fld /= fld'
       then 
         U.lunbind bnd' $ \((tycon1, U.unembed -> tsd_), mrest1_) -> do
-          let pdefn = ProjP pmod fld'
+          let pdefn = TypePath pmod fld'
               dcon = TCGlobal pdefn
               tsd = U.subst tycon1 dcon tsd_
               mrest1 = U.subst tycon1 dcon mrest1_
@@ -208,7 +209,7 @@ checkTypeFieldTail pmod fld bnd msig1 kont =
                            <> " Did not expect lunbind2 to return Nothing")
           Just ((tycon2, U.unembed -> tsd2_), mrest2_,
                 (tycon1, U.unembed -> tsd1_), mrest1_) -> do
-            let pdefn = ProjP pmod fld'
+            let pdefn = TypePath pmod fld'
                 dcon = TCGlobal pdefn
                 tsd1 = U.subst tycon1 dcon tsd1_
                 tsd2 = U.subst tycon2 dcon tsd2_
@@ -343,7 +344,7 @@ checkSubmodelFieldTail pmod fld bnd msig1 kont =
       checkSubmodelFieldTail pmod fld bnd mrest1 (kont . ValuePreSig fld' ty')
     TypeSig fld' bnd' ->
       U.lunbind bnd' $ \((tycon, U.unembed -> tsd_), mrest1_) -> do
-        let pdefn = ProjP pmod fld'
+        let pdefn = TypePath pmod fld'
             dcon = TCGlobal pdefn
             tsd = U.subst tycon dcon tsd_
             mrest1 = U.subst tycon dcon mrest1_

@@ -10,7 +10,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Identifier (Path(..), lastOfPath)
-import Insomnia.Types (TypeConstructor(..))
+import Insomnia.Types (TypeConstructor(..), TypePath(..))
 import Insomnia.Expr (QVar(..))
 import Insomnia.TypeDefn (TypeDefn(..), ValConName,
                           ValConPath(..), ValueConstructor(..),
@@ -35,7 +35,7 @@ selfifyModelType pmod msig_ =
       return $ ValueSelfSig qvar ty selfSig
     TypeSig fld bnd ->
       U.lunbind bnd $ \((tyId, U.unembed -> tsd), msig) -> do
-      let p = ProjP pmod fld
+      let p = TypePath pmod fld
           -- replace the local Con (IdP tyId) way of refering to
           -- this definition in the rest of the signature by
           -- the full projection from the model path.  Also replace the
@@ -61,7 +61,7 @@ selfSigToSignature (ValueSelfSig (QVar _modulePath fieldName) ty selfSig) = do
   sig <- selfSigToSignature selfSig
   return $ ValueSig fieldName ty sig
 selfSigToSignature (TypeSelfSig typePath tsd selfSig) = do
-  let fieldName = lastOfPath typePath
+  let (TypePath _ fieldName) = typePath
   freshId <- U.lfresh (U.s2n fieldName)
   sig <- selfSigToSignature selfSig
   return $ TypeSig fieldName (U.bind (freshId, U.embed tsd) sig)

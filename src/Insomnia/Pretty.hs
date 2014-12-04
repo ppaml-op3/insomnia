@@ -195,6 +195,9 @@ instance Pretty ValueConstructor where
   pp (VCLocal n) = pp n
   pp (VCGlobal p) = pp p
 
+instance Pretty TypePath where
+  pp (TypePath pmod f) = pp pmod <> "." <> pp f
+
 instance Pretty TypeConstructor where
   pp (TCLocal n) = pp n
   pp (TCGlobal p) = pp p

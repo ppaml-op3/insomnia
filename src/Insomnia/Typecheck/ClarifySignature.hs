@@ -7,6 +7,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 import Insomnia.Identifier (Path(..), Identifier, Field)
 import Insomnia.Types (Kind(..), Type(..),
                        TyConName, TypeConstructor(..),
+                       TypePath(..),
                        KindedTVar, kArrs)
 import Insomnia.TypeDefn (TypeAlias(..), TypeDefn(..))
 import Insomnia.ModelType (Signature(..), ModelType(..), TypeSigDecl(..))
@@ -58,12 +59,12 @@ clarifyTypeSigDecl pmod f tycon tsd rest =
      rest' <- clarifySignature pmod rest
      return $ TypeSig f $ U.bind (tycon, U.embed tsd) rest'
    AbstractTypeSigDecl k -> do
-     let c = TCGlobal (ProjP pmod f)
+     let c = TCGlobal (TypePath pmod f)
          a = mkTypeAlias k c
      rest' <- clarifySignature pmod rest
      return $ TypeSig f $ U.bind (tycon, U.embed $ AliasTypeSigDecl a) rest'
    ManifestTypeSigDecl defn -> do
-     let c = TCGlobal (ProjP pmod f)
+     let c = TCGlobal (TypePath pmod f)
          a = mkTypeAlias (defnKind defn) c
      -- TODO: also need to alias the value constructors.  Will need a
      -- new AST node...

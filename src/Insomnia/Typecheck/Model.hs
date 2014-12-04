@@ -12,7 +12,8 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier (Path(..), Field)
-import Insomnia.Types (Kind(..), TypeConstructor(..), Type(..), freshUVarT)
+import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
+                       Type(..), freshUVarT)
 import Insomnia.Expr (Var, QVar(..), Expr(Q))
 import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
 import Insomnia.Model
@@ -84,7 +85,7 @@ projectModelField pmod fieldName = go
       -- once we finally find the signature that we need, it will
       -- refer to earlier components of its parent model by the
       -- correct name.
-      let mrest = U.subst tycon' (TCGlobal $ ProjP pmod fld') mrest_
+      let mrest = U.subst tycon' (TCGlobal $ TypePath pmod fld') mrest_
       in go mrest
     go (SubmodelSig fld' bnd) =
       if fieldName /= fld'
@@ -160,12 +161,12 @@ checkDecl' :: Path -> Decl -> TC Decl
 checkDecl' pmod d =
   case d of
     TypeDefn fld td -> do
-      let dcon = TCGlobal (ProjP pmod fld)
+      let dcon = TCGlobal (TypePath pmod fld)
       guardDuplicateDConDecl dcon
       (td', _) <- checkTypeDefn (TCLocal $ U.s2n fld) td
       return $ TypeDefn fld td'
     TypeAliasDefn fld alias -> do
-      let dcon = TCGlobal (ProjP pmod fld)
+      let dcon = TCGlobal (TypePath pmod fld)
       guardDuplicateDConDecl dcon
       (alias', _) <- checkTypeAlias alias
       return $ TypeAliasDefn fld alias'
@@ -275,7 +276,7 @@ extendDCtx pmod d =
   case d of
     ValueDecl fld vd -> extendValueDeclCtx pmod fld vd
     TypeDefn fld td -> \rest kont -> do
-      let p = ProjP pmod fld
+      let p = TypePath pmod fld
           shortIdent = U.s2n fld
           substVCons = selfifyTypeDefn pmod td
           substTyCon = [(shortIdent, TCGlobal p)]
@@ -284,7 +285,7 @@ extendDCtx pmod d =
           rest' = U.substs substTyCon $ U.substs substVCons rest
       extendTypeDefnCtx (TCGlobal p) td' (kont rest')
     TypeAliasDefn fld alias -> \rest kont -> do
-      let p = ProjP pmod fld
+      let p = TypePath pmod fld
           shortIdent = U.s2n fld
           substitution = [(shortIdent, TCGlobal p)]
           -- don't need to substitute into 'alias' because type

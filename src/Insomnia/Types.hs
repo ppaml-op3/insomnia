@@ -49,7 +49,8 @@ infixr 6 `KArr`
 -- are substituted by global type paths instead of by arbitrary paths.
 type TyConName = Name TypeConstructor
 
-type TypePath = Path
+data TypePath = TypePath Path Field
+              deriving (Show, Eq, Ord, Typeable, Generic)
 
 data TypeConstructor =
   TCLocal TyConName
@@ -107,6 +108,7 @@ instance Format Type
 -- Alpha equivalence
 
 instance Alpha Label
+instance Alpha TypePath
 instance Alpha TypeConstructor
 instance Alpha Type
 instance Alpha Kind
@@ -121,6 +123,9 @@ instance Subst Type Type where
 instance Subst Type Row
 
 instance Subst Type Label where
+  subst _ _ = id
+  substs _ = id
+instance Subst Type TypePath where
   subst _ _ = id
   substs _ = id
 instance Subst Type Literal where
@@ -146,6 +151,7 @@ instance Subst Path Label where
   subst _ _ = id
   substs _ = id
 
+instance Subst Path TypePath
 instance Subst Path TypeConstructor
 instance Subst Path Type
 instance Subst Path Row
@@ -154,6 +160,9 @@ instance Subst TypeConstructor TypeConstructor where
   isvar (TCLocal c) = Just (SubstName c)
   isvar _ = Nothing
 
+instance Subst TypeConstructor TypePath where
+  subst _ _ = id
+  substs _ = id
 instance Subst TypeConstructor Path where
   subst _ _ = id
   substs _ = id
