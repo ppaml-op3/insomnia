@@ -19,7 +19,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 import Insomnia.Common.Literal
 import Insomnia.Identifier
 import Insomnia.Types
-import Insomnia.TypeDefn (TypeDefn, TypeAlias)
+import Insomnia.TypeDefn (TypeDefn, TypeAlias, ValueConstructor)
 
 type Var = Name Expr
 
@@ -29,7 +29,7 @@ data QVar = QVar !Path !Field
 
 data Expr = V !Var
           | Q !QVar -- qualified variable: Foo.Bar.t
-          | C !Con
+          | C !ValueConstructor
           | L !Literal
           | Lam !(Bind AnnVar Expr)
           | Record ![(Label, Expr)]
@@ -85,7 +85,7 @@ data TabSelector =
 -- | A pattern in a case expression
 data Pattern = WildcardP
              | VarP Var
-             | ConP !(Embed Con) [Pattern]
+             | ConP !(Embed ValueConstructor) [Pattern]
              | RecordP ![(Embed Label, Pattern)]
                deriving (Show, Typeable, Generic)
 
@@ -135,6 +135,15 @@ instance Subst Path Pattern
 instance Subst Path TabulatedFun
 instance Subst Path TabSample
 
+instance Subst ValueConstructor Expr
+instance Subst ValueConstructor Pattern
+instance Subst ValueConstructor Bindings
+instance Subst ValueConstructor Binding
+instance Subst ValueConstructor TabulatedFun
+instance Subst ValueConstructor TabSample
+instance Subst ValueConstructor Clause
+instance Subst ValueConstructor TabSelector
+
 instance Subst TypeConstructor Expr
 instance Subst TypeConstructor Pattern
 instance Subst TypeConstructor Annot
@@ -147,9 +156,6 @@ instance Subst TypeConstructor Clause
 
 -- leaf instances
 instance Subst Expr Path where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr Con where
   subst _ _ = id
   substs _ = id
 instance Subst Expr QVar where
@@ -176,6 +182,9 @@ instance Subst Expr TypeDefn where
 instance Subst Expr TypeAlias where
   subst _ _ = id
   substs _ = id
+instance Subst Expr ValueConstructor where
+  subst _ _ = id
+  substs _ = id
 
 instance Subst Type TabSelector where
   subst _ _ = id
@@ -185,6 +194,13 @@ instance Subst Type QVar where
   substs _ = id
 
 instance Subst Path TabSelector where
+  subst _ _ = id
+  substs _ = id
+
+instance Subst ValueConstructor QVar where
+  subst _ _ = id
+  substs _ = id
+instance Subst ValueConstructor Annot where
   subst _ _ = id
   substs _ = id
 

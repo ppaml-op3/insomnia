@@ -43,6 +43,10 @@ instance Subst Path Signature
 instance Subst Path TypeSigDecl
 instance Subst Path ModelType
 
+instance Subst ValueConstructor ModelType
+instance Subst ValueConstructor Signature
+instance Subst ValueConstructor TypeSigDecl
+
 instance Subst TypeConstructor ModelType
 instance Subst TypeConstructor Signature
 instance Subst TypeConstructor TypeSigDecl

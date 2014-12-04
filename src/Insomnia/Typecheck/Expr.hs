@@ -59,7 +59,7 @@ checkExpr e_ t_ = case e_ of
   V v -> checkVariable lookupLocal V v t_
   Q q -> checkVariable lookupGlobal Q q t_
   C c -> do
-    constr <- lookupCCon c
+    constr <- lookupValueConstructor c
     ty <- mkConstructorType constr
     instantiate ty $ \ty' -> do
       ty' =?= t_
@@ -131,7 +131,7 @@ checkPattern tscrut p =
       tscrut =?= TRecord row
       return (RecordP lps', ms)
     ConP (U.unembed -> c) ps -> do
-      alg <- lookupCCon c
+      alg <- lookupValueConstructor c
       instantiateConstructorArgs (alg^.algConstructorArgs) $ \ tparams targs -> do
         unless (length ps == length targs) $
           typeError ("constructor " <> formatErr c
@@ -245,7 +245,7 @@ inferExpr e_ = case e_ of
     t <- inferLiteral lit
     return (t, e_)
   C c -> do
-    constr <- lookupCCon c
+    constr <- lookupValueConstructor c
     ty <- mkConstructorType constr
     return (ty, C c)
   Ann e1_ t_ -> do

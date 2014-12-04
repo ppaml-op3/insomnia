@@ -14,7 +14,8 @@ import Data.Monoid ((<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
-import Insomnia.Types (Nat, Con, TypeConstructor, Kind(..), TyVar)
+import Insomnia.Identifier(Path(..))
+import Insomnia.Types (Nat, TypeConstructor(..), Kind(..), TyVar)
 import Insomnia.TypeDefn
 
 import Insomnia.Typecheck.Env
@@ -31,7 +32,7 @@ checkDataDefn dcon bnd = do
   U.lunbind bnd $ \ (vks, constrs) -> do
     -- k1 -> k2 -> ... -> *
     let kparams = map snd vks
-        cs = map (\(ConstructorDef c _) -> c) constrs
+        cs = map (\(ConstructorDef c _) -> VCLocal c) constrs
         algty = AlgType kparams cs
     mapM_ checkKind kparams
     constrs' <- extendDConCtx dcon (GenerativeTyCon $ AlgebraicType algty)
@@ -51,7 +52,7 @@ checkEnumDefn dcon n = do
 
 checkConstructor :: ConstructorDef -> TC ConstructorDef
 checkConstructor (ConstructorDef ccon args) = do
-  guardDuplicateCConDecl ccon
+  guardDuplicateCConDecl (VCLocal ccon)
   args' <- forM args $ \arg -> checkType arg KType
   return (ConstructorDef ccon args')
 
@@ -74,7 +75,8 @@ extendDataDefnCtx :: TypeConstructor -> DataDefn -> TC a -> TC a
 extendDataDefnCtx dcon bnd comp = do
   U.lunbind bnd $ \ (vks, constrs) -> do
     let kparams = map snd vks
-        cs = map (\(ConstructorDef c _) -> c) constrs
+        makeVC = valueConstructorMakerForTypeConstructor dcon
+        cs = map (\(ConstructorDef c _) -> makeVC c) constrs
         algty = AlgType kparams cs
     extendDConCtx dcon (GenerativeTyCon $ AlgebraicType algty) $ do
       let constructors = map (mkConstructor dcon vks) constrs
@@ -85,12 +87,22 @@ extendEnumDefnCtx :: TypeConstructor -> Nat -> TC a -> TC a
 extendEnumDefnCtx dcon n =
   extendDConCtx dcon (GenerativeTyCon $ EnumerationType n)
 
+valueConstructorMakerForTypeConstructor :: TypeConstructor
+                                           -> ValConName -> ValueConstructor
+valueConstructorMakerForTypeConstructor tc =
+  case tc of
+   (TCGlobal (ProjP pmod _)) ->
+     VCGlobal . ValConPath pmod . U.name2String
+   (TCGlobal (IdP {})) -> error "valueConstructorMakerForTypeConstructor: can't happen"
+   (TCLocal _) -> VCLocal
+
 -- | @mkConstructor d vks (ConstructorDef c params)@ returns @(c,
 -- ccon)@ where @ccon@ is a 'Constructor' for the type @d@ with the
 -- given type and value parameters.
-mkConstructor :: TypeConstructor -> [(TyVar, Kind)] -> ConstructorDef -> (Con, AlgConstructor)
+mkConstructor :: TypeConstructor -> [(TyVar, Kind)] -> ConstructorDef -> (ValueConstructor, AlgConstructor)
 mkConstructor dcon vks (ConstructorDef ccon args) =
-  (ccon, AlgConstructor (U.bind vks args) dcon)
+  let makeVC = valueConstructorMakerForTypeConstructor dcon
+  in (makeVC ccon, AlgConstructor (U.bind vks args) dcon)
 
 -- | Check that the given type alias is well-formed.  Returns the
 -- number of mandatory arguments to the type alias, and the kind of

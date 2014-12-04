@@ -58,6 +58,10 @@ instance Subst TypeConstructor Model
 instance Subst TypeConstructor Decl
 instance Subst TypeConstructor ValueDecl
 
+instance Subst ValueConstructor ModelExpr
+instance Subst ValueConstructor Model
+instance Subst ValueConstructor Decl
+instance Subst ValueConstructor ValueDecl
 
 instance Subst Expr ModelExpr
 instance Subst Expr Model

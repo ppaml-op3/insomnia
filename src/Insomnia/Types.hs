@@ -31,12 +31,6 @@ import Insomnia.Unify (UVar, Unifiable(..),
                     MonadUnificationExcept(..),
                     UnificationFailure(..))
 
--- | A qualified name.
--- At the term level, value constructor names.
--- At the type level, type constructor names.
-newtype Con = Con { unCon :: Path }
-              deriving (Show, Eq, Ord, Typeable, Generic)
-
 type TyVar = Name Type
 type KindedTVar = (TyVar, Kind)
 
@@ -107,14 +101,12 @@ canonicalOrderRowLabels :: [(Label, a)] -> [(Label, a)]
 canonicalOrderRowLabels = sortBy (comparing fst)
 
 -- Formatted output
-instance Format Con
 instance Format Kind
 instance Format Type
 
 -- Alpha equivalence
 
 instance Alpha Label
-instance Alpha Con
 instance Alpha TypeConstructor
 instance Alpha Type
 instance Alpha Kind
@@ -143,9 +135,6 @@ instance Subst Type TypeConstructor where
 instance Subst Type Kind where
   subst _ _ = id
   substs _ = id
-instance Subst Type Con where
-  subst _ _ = id
-  substs _ = id
 -- unification variables are opaque boxes that can't be substituted into.
 instance Subst Type (UVar a) where
   subst _ _ = id
@@ -157,7 +146,6 @@ instance Subst Path Label where
   subst _ _ = id
   substs _ = id
 
-instance Subst Path Con
 instance Subst Path TypeConstructor
 instance Subst Path Type
 instance Subst Path Row
@@ -176,9 +164,6 @@ instance Subst TypeConstructor (UVar a) where
   subst _ _ = id
   substs _ = id
 instance Subst TypeConstructor Label where
-  subst _ _ = id
-  substs _ = id
-instance Subst TypeConstructor Con where
   subst _ _ = id
   substs _ = id
 instance Subst TypeConstructor Kind where

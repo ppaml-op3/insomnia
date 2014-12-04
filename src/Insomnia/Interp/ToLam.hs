@@ -7,6 +7,7 @@ import Prelude hiding (foldr)
 
 import Control.Lens
 import Control.Monad.State
+import Control.Monad.Reader
 import qualified Data.Map as M
 import Data.Monoid (Monoid(..), (<>), Endo(..))
 import Data.List (intercalate)
@@ -19,7 +20,6 @@ import qualified Insomnia.Toplevel as I
 import qualified Insomnia.Identifier as I
 import qualified Insomnia.Model as I
 import qualified Insomnia.TypeDefn as I
-import qualified Insomnia.Types as I
 import qualified Insomnia.Expr as I
 
 -- "O"output language
@@ -50,7 +50,7 @@ data TranslationState = TranslationState {
   _tstModels :: M.Map I.Path (Either I.Path I.Model) -- either an alias or a definition
   , _tstQVarNames :: M.Map I.QVar O.Var
   , _tstLocalNames :: M.Map I.Var O.Var
-  , _tstConInfo :: M.Map I.Con (O.ConId, Int)
+  , _tstConInfo :: M.Map I.ValConPath (O.ConId, Int)
   }
 
 $(makeLenses ''TranslationState)
@@ -67,8 +67,11 @@ class (U.Fresh m) => Translate m where
   nameLocal :: I.Var -> m O.Var
   -- return the translated name of the given value constructor, along
   -- with its arity.
-  recallConInfo :: I.Con -> m (O.ConId,  Int)
-  rememberConInfo :: I.Con -> (O.ConId, Int) -> m ()
+  recallConPathInfo :: I.ValConPath -> m (O.ConId,  Int)
+  rememberConInfo :: I.ValConPath -> (O.ConId, Int) -> m ()
+
+class LocalTranslate m where
+  currentModulePath :: m I.Path
 
 type TranslationMonad = StateT TranslationState U.FreshM
 
@@ -103,7 +106,7 @@ instance Translate (StateT TranslationState U.FreshM) where
         x <- U.fresh xstale
         (tstLocalNames . at v) ?= x
         return x
-  recallConInfo c = do
+  recallConPathInfo c = do
     mci <- use (tstConInfo . at c)
     case mci of
      Just ans -> return ans
@@ -115,6 +118,35 @@ instance Translate (StateT TranslationState U.FreshM) where
   rememberConInfo c info =
     tstConInfo . at c ?= info
 
+instance Translate m => Translate (ReaderT r m) where
+  recallModel = lift . recallModel
+  rememberModel p m c = do
+    r <- ask
+    lift (rememberModel p m (runReaderT c r))
+  named q c = do
+    r <- ask
+    lift (named q (\q' -> runReaderT (c q') r))
+  reexposeNamed o q = lift (reexposeNamed o q)
+  nameLocal = lift . nameLocal
+  recallConPathInfo = lift . recallConPathInfo
+  rememberConInfo p info = lift (rememberConInfo p info)
+
+instance Monad m => LocalTranslate (ReaderT I.Path m) where
+  currentModulePath = ask
+
+recallConInfo :: (Translate m, LocalTranslate m)
+                 => I.ValueConstructor
+                 -> m (O.ConId, Int)
+recallConInfo vc = do
+  vcp <- case vc of
+   I.VCLocal vcName -> do
+     modPath <- currentModulePath
+     let shortName = U.name2String vcName
+         vcp = I.ValConPath modPath shortName
+     return vcp
+   I.VCGlobal vcp -> return vcp
+  recallConPathInfo vcp 
+
 inventFreshQVarName :: U.Fresh m => I.QVar -> m O.Var
 inventFreshQVarName (I.QVar modPath f) =
   -- M.N.P.f becomes M_N_P_f
@@ -124,11 +156,11 @@ inventFreshQVarName (I.QVar modPath f) =
       v_ = U.string2Name s
   in U.fresh v_
   
-toConId :: I.Con -> O.ConId
-toConId (I.Con p) =
+toConId :: I.ValConPath -> O.ConId
+toConId (I.ValConPath p vc) =
   let (h, ps) = I.pathHeadSkelForm p
       p0 = U.name2String h
-  in intercalate "_" (p0:ps)
+  in intercalate "_" (p0:ps ++ [vc])
 
 runTranslation :: TranslationMonad a -> a
 runTranslation comp = U.runFreshM (evalStateT comp initialState)
@@ -296,13 +328,13 @@ constructorDef :: Translate m
                   -> I.ConstructorDef
                   -> (DProgram -> m DProgram)
                   -> m DProgram
-constructorDef modPath (I.ConstructorDef longName args) kont =
+constructorDef modPath (I.ConstructorDef valConName args) kont =
   let arity = length args
-      shortName = I.lastOfPath (I.unCon longName)
-      c = I.Con (I.ProjP modPath shortName)
-      conId = toConId c
+      shortName = U.name2String valConName
+      vcp = I.ValConPath modPath shortName
+      conId = toConId vcp
   in do
-    rememberConInfo c (conId, arity)
+    rememberConInfo vcp (conId, arity)
     kont mempty
   
   
@@ -316,18 +348,18 @@ valueDecl :: Translate m
 valueDecl modPath valField vd_ kont =
   case vd_ of
    I.ValDecl e -> do
-     e' <- expr e
+     e' <- runReaderT (expr e) modPath
      named (I.QVar modPath valField) $ \x ->
        kont (emitVarDefn x e')
    I.FunDecl e -> do
-     e' <- expr e
+     e' <- runReaderT (expr e) modPath
      named (I.QVar modPath valField) $ \f ->
        kont (emitFunDefn f e')
    I.SigDecl {} ->
      named (I.QVar modPath valField) $ \_ -> kont mempty
    I.SampleDecl {} -> error "unimplemented translation form SampleDecl"
 
-expr :: Translate m
+expr :: (Translate m, LocalTranslate m)
         => I.Expr
         -> m O.Expr
 expr e_ =
@@ -361,7 +393,7 @@ expr e_ =
        body' <- expr body
        return $ O.LetE $ U.bind bdgs' body'
 
-bindings :: Translate m
+bindings :: (Translate m, LocalTranslate m)
             => I.Bindings
             -> (O.Bindings -> m a)
             -> m a
@@ -375,7 +407,7 @@ bindings bdgs_ kont =
       bindings bdgs $ \bdgs' ->
       kont (O.ConsBs $ U.rebind bdg' bdgs')
 
-binding :: Translate m
+binding :: (Translate m, LocalTranslate m)
            => I.Binding
            -> (O.Binding -> m a)
            -> m a
@@ -392,7 +424,7 @@ binding b_ kont =
      kont (O.ValB x' $ U.embed $ error "unimplemented translation for TabB")
 
 
-clause :: Translate m
+clause :: (Translate m, LocalTranslate m)
           => I.Clause
           -> m O.Clause
 clause (I.Clause bnd) = do
@@ -401,7 +433,7 @@ clause (I.Clause bnd) = do
     body' <- expr body
     return (O.Clause $ U.bind pat' body')
 
-pattern :: Translate m
+pattern :: (Translate m, LocalTranslate m)
            => I.Pattern
            -> (O.Pattern -> m a)
            -> m a
@@ -418,7 +450,7 @@ pattern p_ kont =
        kont (O.ConP (U.embed c') pats')
    I.RecordP {} -> error "unimplemented translation for RecordP"
 
-patterns :: Translate m
+patterns :: (Translate m, LocalTranslate m)
             => [I.Pattern]
             -> ([O.Pattern] -> m a)
             -> m a

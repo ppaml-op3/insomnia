@@ -4,16 +4,17 @@ module Insomnia.Typecheck.Selfify
        , selfifyTypeDefn
        ) where
 
-import Data.Maybe (mapMaybe)
 import Data.Monoid (Monoid(..))
 
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
-import Insomnia.Identifier (Path(..), Identifier, lastOfPath)
-import Insomnia.Types (Con(..), TypeConstructor(..))
+import Insomnia.Identifier (Path(..), lastOfPath)
+import Insomnia.Types (TypeConstructor(..))
 import Insomnia.Expr (QVar(..))
-import Insomnia.TypeDefn (TypeDefn(..), ConstructorDef(..))
+import Insomnia.TypeDefn (TypeDefn(..), ValConName,
+                          ValConPath(..), ValueConstructor(..),
+                          ConstructorDef(..))
 import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
 
 import Insomnia.Typecheck.Env
@@ -44,7 +45,7 @@ selfifyModelType pmod msig_ =
           tsd' = U.substs substTyCon $ U.substs substVCons tsd
           msig' = U.substs substTyCon $ U.substs substVCons msig
       selfSig <- selfifyModelType pmod msig'
-      return $ TypeSelfSig (Con p) tsd' selfSig
+      return $ TypeSelfSig p tsd' selfSig
     SubmodelSig fld bnd ->
       U.lunbind bnd $ \((modId, U.unembed -> modTy), msig) -> do
         let p = ProjP pmod fld
@@ -59,7 +60,7 @@ selfSigToSignature UnitSelfSig = return UnitSig
 selfSigToSignature (ValueSelfSig (QVar _modulePath fieldName) ty selfSig) = do
   sig <- selfSigToSignature selfSig
   return $ ValueSig fieldName ty sig
-selfSigToSignature (TypeSelfSig (Con typePath) tsd selfSig) = do
+selfSigToSignature (TypeSelfSig typePath tsd selfSig) = do
   let fieldName = lastOfPath typePath
   freshId <- U.lfresh (U.s2n fieldName)
   sig <- selfSigToSignature selfSig
@@ -72,7 +73,7 @@ selfSigToSignature (SubmodelSelfSig path subSelfSig selfSig) = do
   let subModTy = SigMT subSig
   return $ SubmodelSig fieldName (U.bind (freshId, U.embed subModTy) sig)
 
-selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(Identifier, Path)]
+selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(ValConName, ValueConstructor)]
 selfifyTypeSigDecl pmod tsd =
   case tsd of
     AbstractTypeSigDecl _k -> mempty
@@ -83,15 +84,15 @@ selfifyTypeSigDecl pmod tsd =
 -- a substitution that replaces unqualified references to the components of
 -- the definition (for example the value constructors of an algebraic datatype)
 -- by their qualified names with respect to the given path.
-selfifyTypeDefn :: Path -> TypeDefn -> [(Identifier, Path)]
+selfifyTypeDefn :: Path -> TypeDefn -> [(ValConName, ValueConstructor)]
 selfifyTypeDefn _pmod (EnumDefn _) = []
 selfifyTypeDefn pmod (DataDefn bnd) = let
   (_, constrDefs) = UU.unsafeUnbind bnd
   cs = map (\(ConstructorDef c _) -> c) constrDefs
-  in mapMaybe (mkSubst pmod) cs
+  in map (mkSubst pmod) cs
   where
-    mkSubst :: Path -> Con -> Maybe (Identifier, Path)
-    mkSubst p (Con (IdP short)) = let fld = U.name2String short
-                                      long = ProjP p fld
-                                  in Just (short, long)
-    mkSubst _ _                 = Nothing
+    mkSubst :: Path -> ValConName -> (ValConName, ValueConstructor)
+    mkSubst p short =
+      let fld = U.name2String short
+          long = ValConPath p fld
+      in (short, VCGlobal long)

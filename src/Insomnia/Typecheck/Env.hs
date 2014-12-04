@@ -26,7 +26,7 @@ import Insomnia.Except (Except, runExcept)
 
 import Insomnia.Identifier
 import Insomnia.Types
-import Insomnia.TypeDefn (TypeAlias(..))
+import Insomnia.TypeDefn (TypeAlias(..), ValueConstructor(..))
 import Insomnia.Expr (Var, QVar)
 import Insomnia.ModelType (Signature)
 
@@ -63,7 +63,7 @@ data AlgConstructor =
 data AlgType =
   AlgType {
     _algTypeParams :: [Kind] -- ^ the ADT is parametric, having kind κ1→⋯→κN→⋆
-    , _algTypeCons :: [Con] -- ^ the names of the constructors in this kind.
+    , _algTypeCons :: [ValueConstructor] -- ^ the names of the constructors in this kind.
     }
 
 -- | Types that arise as a result of checking a declaration.  Each
@@ -96,7 +96,7 @@ data Env = Env {
   _envSigs :: M.Map SigIdentifier Signature -- ^ signatures
   , _envModelSigs :: M.Map Identifier Signature -- ^ models' unselfified signatures (invariant: their selfified contents have been added to DCons and Globals)
   , _envDCons :: M.Map TypeConstructor TyConDesc -- ^ type constructor descriptors
-  , _envCCons :: M.Map Con AlgConstructor -- ^ value constructors
+  , _envCCons :: M.Map ValueConstructor AlgConstructor -- ^ value constructors
   , _envGlobals :: M.Map QVar Type      -- ^ declared global vars
   , _envGlobalDefns :: M.Map QVar ()    -- ^ defined global vars
   , _envTys :: M.Map TyVar Kind        -- ^ local type variables
@@ -269,12 +269,12 @@ lookupDCon d = do
     Just k -> return k
     Nothing -> typeError $ "no data type " <> formatErr d
 
-lookupCCon :: Con -> TC AlgConstructor
-lookupCCon c = do
-  m <- view (envCCons . at c)
+lookupValueConstructor :: ValueConstructor -> TC AlgConstructor
+lookupValueConstructor vc = do
+  m <- view (envCCons . at vc)
   case m of
     Just constr -> return constr
-    Nothing -> typeError $ "no datatype defines a constructor " <> formatErr c
+    Nothing -> typeError $ "no datatype defines a constructor " <> formatErr vc
 
 -- | Lookup the kind of a type variable
 lookupTyVar :: TyVar -> TC Kind
@@ -329,7 +329,7 @@ extendModelTypeCtx ident msig =
 extendDConCtx :: TypeConstructor -> TyConDesc -> TC a -> TC a
 extendDConCtx dcon k = local (envDCons . at dcon ?~ k)
 
-extendConstructorsCtx :: [(Con, AlgConstructor)] -> TC a -> TC a
+extendConstructorsCtx :: [(ValueConstructor, AlgConstructor)] -> TC a -> TC a
 extendConstructorsCtx cconstrs =
   local (envCCons %~ M.union (M.fromList cconstrs))
 
@@ -377,7 +377,7 @@ guardDuplicateDConDecl dcon = do
                          <> formatErr dcon
                          <> " is already defined")
 
-guardDuplicateCConDecl :: Con -> TC ()
+guardDuplicateCConDecl :: ValueConstructor -> TC ()
 guardDuplicateCConDecl ccon = do
   mcon <- view (envCCons . at ccon)
   case mcon of

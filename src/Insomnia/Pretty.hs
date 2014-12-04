@@ -176,9 +176,6 @@ instance Pretty String where
 instance Pretty QVar where
   pp (QVar m f) = pp m <> "." <> pp f
 
-instance Pretty Con where
-  pp (Con qid) = pp qid
-
 instance Pretty (U.Name a) where
   pp n = text (show n)
 
@@ -187,9 +184,16 @@ instance Pretty Path where
   pp (ProjP path field) =
     pp path <> "." <> pp field
 
+instance Pretty ValConPath where
+  pp (ValConPath modPath vc) = pp modPath <> "." <> pp vc
+
 instance Pretty Kind where
   pp KType = onUnicode "⋆" "*"
   pp (KArr k1 k2) = infixOp 1 "→" "->" AssocRight (pp k1) (pp k2)
+
+instance Pretty ValueConstructor where
+  pp (VCLocal n) = pp n
+  pp (VCGlobal p) = pp p
 
 instance Pretty TypeConstructor where
   pp (TCLocal n) = pp n

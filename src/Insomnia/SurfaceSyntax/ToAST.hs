@@ -110,6 +110,12 @@ qualifiedIdPath (QId pfx fld) = submoduleIdentPath (pfx ++ [fld])
 qualifiedIdQVar :: QualifiedIdent -> I.QVar
 qualifiedIdQVar (QId pfx fld) = I.QVar (submoduleIdentPath pfx) fld
 
+qualifiedIdValueConstructor :: QualifiedIdent -> I.ValueConstructor
+qualifiedIdValueConstructor (QId modPath fld) =
+  if null modPath
+  then I.VCLocal $ U.string2Name fld
+  else I.VCGlobal $ I.ValConPath (submoduleIdentPath modPath) fld
+
 withValVar :: Ident -> TA a -> TA a
 withValVar ident =
   let addVar = M.insert (QId [] ident) (ValVarII Nothing)
@@ -289,7 +295,7 @@ dataDefn (DataDefn tvks constrs) = do
 
 constructorDef :: ConstructorDef -> TA I.ConstructorDef
 constructorDef (ConstructorDef ident args) = do
-  let c = I.Con $ qualifiedIdPath (QId [] ident)
+  let c = U.string2Name ident
   args' <- mapM type' args
   return $ I.ConstructorDef c args'
 
@@ -299,10 +305,6 @@ kind (KArr k1 k2) = I.KArr <$> kind k1 <*> kind k2
 
 tyvar :: TyVar -> TA I.TyVar
 tyvar (TyVar ident) = return $ U.s2n ident
-
-qualifiedTyCon :: Con -> TA I.Con
-qualifiedTyCon con = do
-  return $ I.Con $ qualifiedIdPath $ unCon con
 
 type' :: Type -> TA I.Type
 type' (TForall tv k ty) = do
@@ -366,14 +368,14 @@ expr (Phrase atms) = do
   valOps <- askValOperators
   disfix atms valOps
 
-qualifiedCon :: Con -> TA I.Con
-qualifiedCon con = do
+valueConstructor :: Con -> TA I.ValueConstructor
+valueConstructor con = do
   let qid = unCon con
   mii <- view (valIdInfo . at qid )
   case mii of
    Just (ValVarII _) -> error ("expected a value constructor, "
                                ++ " but found a variable " ++ show con)
-   _ -> return $ I.Con $ qualifiedIdPath qid
+   _ -> return $ qualifiedIdValueConstructor qid
 
 qualifiedVar :: QVar -> TA I.QVar
 qualifiedVar (QVar qid) = do
@@ -398,7 +400,7 @@ exprNotationIdentifier n =
   case dropNotation n of
    V v  -> I.V <$> unqualifiedVar v
    Q qv -> I.Q <$> qualifiedVar qv
-   C c  -> I.C <$> qualifiedCon c
+   C c  -> I.C <$> valueConstructor c
   where
     dropNotation (PrefixN x) = x
     dropNotation (InfixN x) = x
@@ -449,7 +451,7 @@ patternAtom (ConP ncon) = do
       qid = unCon con
   mii <- use (valIdInfo . at qid)
   case mii of
-   Just (ValConII _fix) -> (PartialPP . I.ConP . U.embed) <$> liftCTA (qualifiedCon con)
+   Just (ValConII _fix) -> (PartialPP . I.ConP . U.embed) <$> liftCTA (valueConstructor con)
    _ -> error ("in pattern expected a constructor, but got variable "
                ++ show con)
   where
@@ -563,7 +565,7 @@ instance FixityParseable ExprAtom QualifiedIdent TA I.Expr where
       match (I (InfixN (V v)))
         | (QId [] $ unVar v) == qid = Just (I.V <$> unqualifiedVar v)
       match (I (InfixN (C con)))
-        | unCon con == qid          = Just (I.C <$> qualifiedCon con)
+        | unCon con == qid          = Just (I.C <$> valueConstructor con)
       match _                                   = Nothing
     m <- P.tokenPrim show (\pos _tok _toks -> pos) match
     v <- lift $ m
@@ -589,7 +591,7 @@ instance FixityParseable PatternAtom Con CTA PartialPattern where
        match pa@(ConP (InfixN con2)) | con == con2 = Just pa
        match _                                     = Nothing
      _ <- P.tokenPrim show (\pos _tok _toks -> pos) match
-     con' <- lift $ liftCTA $ qualifiedCon con
+     con' <- lift $ liftCTA $ valueConstructor con
      let pat = I.ConP (U.embed con')
      -- we "know" pat is going to be a binary infix constructor
      -- because "infx" is only called by the fixity parser on infix

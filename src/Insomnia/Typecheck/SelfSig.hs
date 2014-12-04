@@ -7,7 +7,7 @@
 module Insomnia.Typecheck.SelfSig where
 
 import Insomnia.Identifier (Path)
-import Insomnia.Types (Con, Type)
+import Insomnia.Types (Type, TypePath)
 import Insomnia.Expr (QVar)
 import Insomnia.ModelType (TypeSigDecl)
 
@@ -17,7 +17,7 @@ import Insomnia.ModelType (TypeSigDecl)
 data SelfSig =
   UnitSelfSig
   | ValueSelfSig QVar Type SelfSig
-  | TypeSelfSig Con TypeSigDecl SelfSig
+  | TypeSelfSig TypePath TypeSigDecl SelfSig
   | SubmodelSelfSig Path SelfSig SelfSig
 
 
