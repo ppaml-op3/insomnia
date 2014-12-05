@@ -46,12 +46,15 @@ data Kind = KType -- ^ the kind of types
 infixr 6 `KArr`
 
 -- | A local type constructor name.  These are similar to type variables, except they
--- are substituted by global type paths instead of by arbitrary paths.
+-- are substituted by global type paths instead of by arbitrary types.
 type TyConName = Name TypeConstructor
 
+-- | A type path selects a type from a model named by field
 data TypePath = TypePath Path Field
               deriving (Show, Eq, Ord, Typeable, Generic)
 
+-- | A type constructor is either local to the current model, or it is
+-- global.
 data TypeConstructor =
   TCLocal TyConName
   | TCGlobal TypePath
@@ -65,6 +68,9 @@ instance Ord TypeConstructor where
      (TCGlobal {}, TCLocal {}) -> GT
      (TCGlobal p1, TCGlobal p2) -> compare p1 p2
 
+-- | The types include type variables (which stand for types), unification
+-- variables, type constructors, annotted kinds, type applications,
+-- universally quantified types and record types.
 data Type = TV TyVar
           | TUVar (UVar Type) -- invariant: unification variables should be fully applied
           | TC !TypeConstructor
@@ -76,6 +82,7 @@ data Type = TV TyVar
 
 infixl 6 `TApp`
 
+-- | A label identifies a component of a row.
 newtype Label = Label {labelName :: String}
               deriving (Show, Eq, Ord, Typeable, Generic)
 

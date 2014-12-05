@@ -39,11 +39,21 @@ data PrettyField a = PrettyField !Field !a
 type PrettyTypeDefn = PrettyField TypeDefn
 type PrettyTypeAlias = PrettyField TypeAlias
 
+-- | A ValConName stands for a value constructor.  Unlike a normal
+-- value-level variable, it may only be substituted for by a path to a
+-- value constructor, rather than an arbitrary expression.
 type ValConName = Name ValueConstructor
 
+-- | A ValConPath picks out a value constructor field in the model
+-- associated with the given path.
 data ValConPath = ValConPath !Path !Field
                 deriving (Show, Typeable, Generic, Eq, Ord)
 
+-- | Value constructors may be either local to the current model, or
+-- specified along a global path.  (This datatype is here, rather
+-- than in Insomnia.Expr because while type definitions don't talk
+-- about value constructors, they do mention ValConName, which is a
+-- mere type alias for a 'Name ValueConstructor'.)
 data ValueConstructor =
   VCLocal !ValConName
   | VCGlobal !ValConPath
