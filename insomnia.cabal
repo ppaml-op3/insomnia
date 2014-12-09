@@ -39,6 +39,8 @@ library
                        --
                        Insomnia.Toplevel
                        --
+                       Insomnia.IReturn
+                       --
                        Insomnia.Unify
                        --
                        Insomnia.Typecheck.Env

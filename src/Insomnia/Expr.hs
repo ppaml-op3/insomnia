@@ -37,6 +37,7 @@ data Expr = V !Var
           | Case !Expr ![Clause]
           | Let !(Bind Bindings Expr)
           | Ann !Expr !Type
+          | Return !Expr
             deriving (Show, Typeable, Generic)
 
 type AnnVar = (Var, Embed Annot)
@@ -88,6 +89,21 @@ data Pattern = WildcardP
              | ConP !(Embed ValueConstructor) [Pattern]
              | RecordP ![(Embed Label, Pattern)]
                deriving (Show, Typeable, Generic)
+
+-- | @anyBindings f bs@ returns 'True' iff @f@ returns @True@ for any of the given @bs@
+anyBindings :: (Binding -> Bool) -> Bindings -> Bool
+anyBindings f = go
+  where
+    go NilBs = False
+    go (ConsBs rbnd) =
+      let (b, bs) = unrebind rbnd
+      in f b || go bs
+
+-- | Return 'True' if the given binding is a SampleB or a TabB
+isStochasticBinding :: Binding -> Bool
+isStochasticBinding (SampleB {}) = True
+isStochasticBinding (TabB {}) = True
+isStochasticBinding (ValB {}) = False
 
 -- All these types have notions of alpha equivalence upto bound
 -- term and type variables.
@@ -235,7 +251,7 @@ instance Plated Expr where
   plate f (Let bnd) =
     let (bindings, e) = UU.unsafeUnbind bnd
     in Let <$> (bind <$> traverseExprs f bindings <*> f e)
-       
+  plate f (Return e) = Return <$> f e
 
 class TraverseExprs s t where
   traverseExprs :: Traversal s t Expr Expr
@@ -272,6 +288,7 @@ instance TraverseTypes Expr Expr where
   traverseTypes _ (e@Q {}) = pure e
   traverseTypes _ (e@C {}) = pure e
   traverseTypes _ (e@L {}) = pure e
+  traverseTypes _ e@(Return {}) = pure e
   traverseTypes f (Lam bnd) =
     let ((v,unembed -> ann), e) = UU.unsafeUnbind bnd
     in Lam <$> (bind <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e)
@@ -283,6 +300,7 @@ instance TraverseTypes Expr Expr where
     in Let <$> (bind <$> traverseTypes f bindings <*> pure e)
   traverseTypes f (Ann e t) =
     Ann e <$> f t
+    
 
 instance TraverseTypes Annot Annot where
   traverseTypes _ (Annot Nothing) = pure (Annot Nothing)

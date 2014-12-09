@@ -51,6 +51,14 @@ model Raining {
 sig raining :: Prelude.Bool2
 val raining ~ (Prelude.uniform Prelude.Proxy)
 
+sig x :: Real
+val x ~ Prelude.uniform Prelude.Proxy
+
+sig double :: Real -> Real
+
+sig y :: Real
+val y = double x 
+
 enum T 10
 
 sig thinksRain :: T -> Prelude.Bool

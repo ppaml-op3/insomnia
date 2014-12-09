@@ -3,6 +3,7 @@ module Data.Format
        (
          Doc
        , Format(..)
+       , newline
        , docToText
        , docToString
        , putStrDoc
@@ -79,6 +80,10 @@ instance Format PP.Doc where
                . PP.punctuate PP.comma
 
 instance Format (U.Name a)
+
+-- | Emit a newline
+newline :: Doc
+newline = Doc $ TB.singleton '\n'
 
 -- | convert the given 'Doc' to a 'T.Text'
 docToText :: Doc -> T.Text

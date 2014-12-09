@@ -130,6 +130,7 @@ data ExprAtom = I !(Notation Identifier)
               | L !Literal
               | Record ![(Label, Expr)]
               | Enclosed !Expr !(Maybe Type) -- '(' Expr ')' or '(' Expr ':' Type ')'
+              | Return !ExprAtom
               deriving (Show)
 
 data Expr = Phrase ![ExprAtom]

@@ -4,7 +4,7 @@ module Insomnia.Typecheck.Expr where
 
 import Control.Lens
 import Control.Applicative ((<$>))
-import Control.Monad (forM, unless, void, zipWithM)
+import Control.Monad (forM, when, unless, void, zipWithM)
 
 import Data.List (foldl')
 import Data.Monoid (Monoid(..), (<>))
@@ -88,6 +88,10 @@ checkExpr e_ t_ = case e_ of
   Let bnd ->
     U.lunbind bnd $ \(binds, body) ->
     checkBindings binds $ \ binds' -> do
+      -- if any of the bindings perform a sampling operation,
+      -- the body had better be a distribution of some sort
+      when (anyBindings isStochasticBinding binds') $ do
+        void $ unifyDistT t_
       body' <- checkExpr body t_
       return $ Let $ U.bind binds' body'
   Case scrut clauses -> do
@@ -102,6 +106,10 @@ checkExpr e_ t_ = case e_ of
                 <> "against type annotation " <> formatErr t_)
     t1 =?= t_
     return (Ann e1 t1)
+  Return e1_ -> do
+    t1 <- unifyDistT t_
+    e1 <- checkExpr e1_ t1
+    return (Return e1)
 
 type PatternMatch = [(Var, Type)]
 
@@ -280,6 +288,9 @@ inferExpr e_ = case e_ of
         e = Lam $ U.bind (v, U.embed $ Annot $ Just tanndom) (Ann e1 tanncod)
         t = functionT tdom tcod
       return (t, e)
+  Return e1 -> do
+    (t1, e1') <- inferExpr e1
+    return (distT t1, Return e1')
   _ -> typeError ("cannot infer type of " <> formatErr e_
                   <> " try adding a type annotation")
 

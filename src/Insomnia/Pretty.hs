@@ -160,6 +160,7 @@ instance Pretty Expr where
        , "in"
        , nesting (pp e)
        ]
+  pp (Return e) = infixOp 10 mempty mempty AssocLeft "return" (pp e)
 
 ppAnnVar :: AnnVar -> PM Doc
 ppAnnVar (v, U.unembed -> (Annot mt)) =

@@ -420,6 +420,7 @@ exprAtom (Record les) = do
     return (lbl', e')
   return (I.Record les')
 exprAtom (L lit) = I.L <$> literal lit
+exprAtom (Return eatm) = I.Return <$> exprAtom eatm
 
 literal :: Literal -> TA Literal
 literal = return
