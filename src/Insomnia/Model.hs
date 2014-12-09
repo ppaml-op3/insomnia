@@ -15,6 +15,7 @@ import Insomnia.Types
 import Insomnia.TypeDefn
 import Insomnia.ModelType
 
+import Insomnia.Common.Stochasticity
 import Insomnia.Expr (Expr)
 
 data ModelExpr =
@@ -38,9 +39,10 @@ data Decl =
 
 data ValueDecl =
   FunDecl !Expr     -- ^ function definition "fun f x = ..."
-  | ValDecl !Expr   -- ^ a value definition "val x = ..."
+  | ParameterDecl !Expr -- ^ parameter definition "parameter x = ... "
+  | ValDecl !Expr   -- ^ a value definition "val x = ..." (sugar for "val x ~ = ireturn ...")
   | SampleDecl !Expr -- ^ a sampled value definition "val x ~ ..."
-  | SigDecl !Type   -- ^ a function signature "sig f :: A -> B"
+  | SigDecl !Stochasticity !Type   -- ^ a function signature "[parameter] sig f :: A -> B"
   deriving (Show, Typeable, Generic)
 
 instance Alpha ModelExpr

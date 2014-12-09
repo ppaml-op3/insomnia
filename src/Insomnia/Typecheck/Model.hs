@@ -3,21 +3,25 @@
 --
 module Insomnia.Typecheck.Model (inferModelExpr, extendDCtx) where
 
+import Prelude hiding (mapM_)
+
 import Control.Applicative ((<$>))
 import Control.Lens
 import Control.Monad.Reader.Class (MonadReader(..))
 
+import Data.Foldable (mapM_)
 import Data.Monoid ((<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
+import Insomnia.Common.Stochasticity
 import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
                        Type(..), freshUVarT)
 import Insomnia.Expr (Var, QVar(..), Expr(Q))
 import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
 import Insomnia.Model
-import Insomnia.Pretty (PrettyShort(..))
+import Insomnia.Pretty (Pretty, PrettyShort(..))
 
 import Insomnia.Unify (Unifiable(..),
                        solveUnification,
@@ -77,7 +81,7 @@ projectModelField pmod fieldName = go
     go UnitSig = typeError ("The module " <> formatErr pmod
                             <> " does not have a submodule named "
                             <> formatErr fieldName)
-    go (ValueSig _ _ mrest) = go mrest
+    go (ValueSig _ _ _ mrest) = go mrest
     go (TypeSig fld' bnd) =
       U.lunbind bnd $ \((tycon', _), mrest_) ->
       -- slightly tricky - we have to replace the tycon' in the rest
@@ -113,9 +117,9 @@ naturalSignature = go . modelDecls
         ValueDecl _fld (FunDecl {}) -> kont
         ValueDecl _fld (ValDecl {}) -> kont
         ValueDecl _fld (SampleDecl {}) -> kont
-        ValueDecl fld (SigDecl ty) -> do
+        ValueDecl fld (SigDecl stoch ty) -> do
           sig' <- kont
-          return (ValueSig fld ty sig')
+          return (ValueSig stoch fld ty sig')
         TypeDefn fld defn -> do
           let ident = U.s2n fld
           sig' <- kont
@@ -181,9 +185,9 @@ checkDecl' pmod d =
 checkValueDecl :: Field -> QVar -> ValueDecl -> TC ValueDecl
 checkValueDecl fld qlf vd =
   case vd of
-    SigDecl t -> do
+    SigDecl stoch t -> do
       guardDuplicateValueDecl qlf
-      checkSigDecl t
+      checkSigDecl stoch t
     FunDecl e -> do
       msig <- lookupGlobal qlf
       ensureNoDefn qlf
@@ -204,17 +208,40 @@ checkValueDecl fld qlf vd =
       let v = (U.s2n fld :: Var)
       U.avoid [U.AnyName v] $ checkSampleDecl fld msig e
 
-checkSigDecl :: Type -> TC ValueDecl
-checkSigDecl t = do
+checkSigDecl :: Stochasticity -> Type -> TC ValueDecl
+checkSigDecl stoch t = do
   t' <- checkType t KType
-  return $ SigDecl t'
+  return $ SigDecl stoch t'
 
-checkFunDecl :: Field -> Maybe Type -> Expr -> TC ValueDecl
+ensureParameter :: Pretty what => what -> Stochasticity -> TC ()
+ensureParameter what stoch =
+  case stoch of
+   DeterministicParam -> return ()
+   RandomVariable ->
+     typeError ("Expected " <> formatErr what
+                <> " to be a parameter, but it is a random variable")
+
+ensureRandomVariable :: Pretty what => what -> Stochasticity -> TC ()
+ensureRandomVariable what stoch =
+  case stoch of
+   RandomVariable -> return ()
+   DeterministicParam ->
+     typeError ("Expected " <> formatErr what
+                <> " to be a random variable, but it is a parameter")
+
+ensureExpStochasticity :: Pretty what => Stochasticity -> what -> Stochasticity -> TC ()
+ensureExpStochasticity want =
+  case want of
+   RandomVariable -> ensureRandomVariable
+   DeterministicParam -> ensureParameter
+
+checkFunDecl :: Field -> Maybe (Type, Stochasticity) -> Expr -> TC ValueDecl
 checkFunDecl fname msig_ e = do
+  mapM_ (ensureParameter fname . snd) msig_
   res <- solveUnification $ do
     tu <- freshUVarT
-    openAbstract msig_ $ \msig -> do
-      case msig of
+    openAbstract (fmap fst msig_) $ \mty -> do
+      case mty of
         Just ty -> tu =?= ty
         Nothing -> return ()
       checkExpr e tu
@@ -223,25 +250,29 @@ checkFunDecl fname msig_ e = do
     UFail err -> typeError ("when checking " <> formatErr fname
                             <> formatErr err)
 
+
 -- Note that for values, unlike functions we don't generalize
-checkValDecl :: Field -> Maybe Type -> Expr -> TC ValueDecl
+checkValDecl :: Field -> Maybe (Type, Stochasticity) -> Expr -> TC ValueDecl
 checkValDecl fld msig e = do
+  mapM_ (ensureRandomVariable fld . snd) msig
   res <- solveUnification $ do
     tu <- freshUVarT
     case msig of
-      Just ty -> tu =?= ty
+      Just (ty,_) -> tu =?= ty
       Nothing -> return ()
     checkExpr e tu
   case res of
     UOkay e' -> return $ ValDecl e'
     UFail err -> typeError ("when checking "<> formatErr fld
                             <> formatErr err)
-checkSampleDecl :: Field -> Maybe Type -> Expr -> TC ValueDecl
+
+checkSampleDecl :: Field -> Maybe (Type, Stochasticity) -> Expr -> TC ValueDecl
 checkSampleDecl fld msig e = do
+  mapM_ (ensureRandomVariable fld . snd) msig
   res <- solveUnification $ do
     tu <- freshUVarT
     case msig of
-      Just ty -> tu =?= ty
+      Just (ty,_) -> tu =?= ty
       Nothing -> return ()
     checkExpr e (distT tu)
   case res of
@@ -305,7 +336,7 @@ extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC [Dec
 extendValueDeclCtx pmod fld vd =
   let qvar = QVar pmod fld
   in case vd of
-    SigDecl t -> extendSigDeclCtx fld qvar t
+    SigDecl stoch t -> extendSigDeclCtx fld stoch qvar t
     FunDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
     ValDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
     SampleDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
@@ -314,10 +345,16 @@ extendValueDeclCtx pmod fld vd =
 -- binding of @qvar@ to type @ty@, and replaces any free appearances
 -- of @fld@ by @qvar@ in @decls@ before checking them using
 -- @checkRest@.
-extendSigDeclCtx :: Field -> QVar -> Type -> [Decl] -> ([Decl] -> TC [Decl]) -> TC [Decl]
-extendSigDeclCtx fld qvar t rest kont =
+extendSigDeclCtx :: Field
+                    -> Stochasticity
+                    -> QVar
+                    -> Type
+                    -> [Decl]
+                    -> ([Decl] -> TC [Decl])
+                    -> TC [Decl]
+extendSigDeclCtx fld stoch qvar t rest kont =
   let v = U.s2n fld :: Var
-  in local (envGlobals . at qvar ?~ t)
+  in local (envGlobals . at qvar ?~ (t,stoch))
      . U.avoid [U.AnyName v]
      . kont
      $ U.subst v (Q qvar) rest

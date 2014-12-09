@@ -37,9 +37,9 @@ import Insomnia.Typecheck.SigOfModelType (signatureOfModelType)
 -- same data type, and Y.Cons and Z.Cons are interchangeable.
 clarifySignature :: Path -> Signature -> TC Signature
 clarifySignature _pmod UnitSig = return UnitSig
-clarifySignature pmod (ValueSig f ty rest) = do
+clarifySignature pmod (ValueSig stoch f ty rest) = do
   rest' <- clarifySignature pmod rest
-  return $ ValueSig f ty rest'
+  return $ ValueSig stoch f ty rest'
 clarifySignature pmod (TypeSig f bnd) =
   U.lunbind bnd $ \((tycon, U.unembed -> tsd), rest) ->
   clarifyTypeSigDecl pmod f tycon tsd rest

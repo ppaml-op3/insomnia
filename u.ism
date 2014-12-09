@@ -11,11 +11,11 @@ model type PRELUDE {
      model S2 :: S_SIG
   }
 
-  sig cond :: forall (c :: *) . Bool -> c -> c -> c
+  parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
 
   data Proxy (a :: *) = Proxy
-  sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
-  sig flip :: Real -> Dist Bool
+  parameter sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
+  parameter sig flip :: Real -> Dist Bool
 }
 
 model Prelude :: PRELUDE {
@@ -31,7 +31,7 @@ model Prelude :: PRELUDE {
 
    type Bool2 = Bool
 
-   sig cond :: forall (c :: *) . Bool -> c -> c -> c
+   parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
    fun cond b t f =
        case b of
          True -> t
@@ -39,10 +39,10 @@ model Prelude :: PRELUDE {
 
    data Proxy (a :: *) = Proxy
 
-   sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
-   sig flip :: Real -> Dist Bool
+   parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
+   parameter sig flip :: Real -> Dist Bool
 
-   sig foo :: S.W -> S.S2.T
+   parameter sig foo :: S.W -> S.S2.T
    fun foo x = x
 }
 
@@ -54,7 +54,7 @@ val raining ~ (Prelude.uniform Prelude.Proxy)
 sig x :: Real
 val x ~ Prelude.uniform Prelude.Proxy
 
-sig double :: Real -> Real
+parameter sig double :: Real -> Real
 
 sig y :: Real
 val y = double x 

@@ -17,6 +17,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Common.Literal
+import Insomnia.Common.Stochasticity
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr
@@ -86,6 +87,10 @@ instance Pretty Double where
 instance Pretty Literal where
   pp (IntL i) = pp i
   pp (RealL d) = pp d
+
+instance Pretty Stochasticity where
+  pp DeterministicParam = "parameter"
+  pp RandomVariable = mempty
 
 instance Pretty Pattern where
   pp WildcardP = "_"
@@ -317,14 +322,16 @@ ppTypeAlias c (TypeAlias bnd) =
 
 
 ppValueDecl :: Field -> ValueDecl -> PM Doc
-ppValueDecl v (SigDecl t) = "sig" <+> pp v <+> indent coloncolon (pp t)
+ppValueDecl v (SigDecl s t) = pp s <+> "sig" <+> pp v <+> indent coloncolon (pp t)
 ppValueDecl v (FunDecl e) = ppFunDecl v e 
+ppValueDecl v (ParameterDecl e) = "parameter" <+> pp v <+> "=" <+> pp e
 ppValueDecl v (ValDecl e) = ppValSampleDecl "=" v e
 ppValueDecl v (SampleDecl e) = ppValSampleDecl "~" v e
 
 ppShortValueDecl :: Field -> ValueDecl -> PM Doc
-ppShortValueDecl v (SigDecl t) = "sig" <+> pp v <+> indent coloncolon (pp t)
+ppShortValueDecl v (SigDecl stoch t) = pp stoch <+> "sig" <+> pp v <+> indent coloncolon (pp t)
 ppShortValueDecl f (FunDecl _e) = "fun" <+> pp f <+> elipsis <+> "=" <+> elipsis
+ppShortValueDecl f (ParameterDecl _e) = "parameter" <+> pp f <+> "=" <+> elipsis
 ppShortValueDecl f (ValDecl _e) = "val" <+> pp f <+> "=" <+> elipsis
 ppShortValueDecl f (SampleDecl _e) = "val" <+> pp f <+> "~" <+> elipsis
 
@@ -379,8 +386,11 @@ instance Pretty ModelType where
 
 instance Pretty Signature where
   pp UnitSig = mempty
-  pp (ValueSig fld ty sig) =
-    fsep ["val", text fld, indent coloncolon (pp ty)]
+  pp (ValueSig stoch fld ty sig) =
+    fsep [case stoch of
+           RandomVariable -> "val"
+           DeterministicParam -> "parameter"
+         , text fld, indent coloncolon (pp ty)]
     $$ pp sig
   pp (TypeSig fld bnd) =
     let ((tv, U.unembed -> tsd), sig) = UU.unsafeUnbind bnd

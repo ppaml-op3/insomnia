@@ -24,6 +24,8 @@ import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 
 import Insomnia.Except (Except, runExcept)
 
+import Insomnia.Common.Stochasticity
+
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn (TypeAlias(..), ValueConstructor(..))
@@ -97,7 +99,7 @@ data Env = Env {
   , _envModelSigs :: M.Map Identifier Signature -- ^ models' unselfified signatures (invariant: their selfified contents have been added to DCons and Globals)
   , _envDCons :: M.Map TypeConstructor TyConDesc -- ^ type constructor descriptors
   , _envCCons :: M.Map ValueConstructor AlgConstructor -- ^ value constructors
-  , _envGlobals :: M.Map QVar Type      -- ^ declared global vars
+  , _envGlobals :: M.Map QVar (Type, Stochasticity)      -- ^ declared global vars and params
   , _envGlobalDefns :: M.Map QVar ()    -- ^ defined global vars
   , _envTys :: M.Map TyVar Kind        -- ^ local type variables
   , _envLocals :: M.Map Var Type       -- ^ local value variables
@@ -138,7 +140,7 @@ instance Pretty Env where
   pp env = vcat [ "sigs", pp (env^.envSigs)
                 , "dcons", pp (env^.envDCons)
                 , "ccons", pp (env^.envCCons)
-                , "globals", pp (env^.envGlobals)
+                , "globals", pp (fmap fst (env^.envGlobals))
                 , "global defns", pp (env^.envGlobalDefns)
                                   -- TODO: the rest of the env
                 ]
@@ -284,7 +286,7 @@ lookupTyVar tv = do
     Just k -> return k
     Nothing -> typeError $ "no type variable " <> formatErr tv
 
-lookupGlobal :: QVar -> TC (Maybe Type)
+lookupGlobal :: QVar -> TC (Maybe (Type, Stochasticity))
 lookupGlobal v = view (envGlobals . at v)
 
 lookupLocal :: Var -> TC (Maybe Type)

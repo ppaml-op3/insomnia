@@ -7,6 +7,7 @@ import Data.Monoid ((<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
+import Insomnia.Common.Stochasticity
 import Insomnia.Identifier (Identifier, Path(..), Field)
 import Insomnia.Types (TypeConstructor(..), TypePath(..), TyConName,
                        Type, Kind(..))
@@ -56,7 +57,7 @@ mayAscribe msig1 msig2 = do
 -- the rest of the signature, while the former doesn't.
 data PrefixedSignature
   = TailPreSig Signature
-  | ValuePreSig Field Type PrefixedSignature
+  | ValuePreSig Stochasticity Field Type PrefixedSignature
   | TypePreSig Field TypeSigDecl PrefixedSignature
   | SubmodelPreSig Field Signature PrefixedSignature
 
@@ -67,8 +68,8 @@ checkSignature :: Path -> PrefixedSignature -> Signature -> TC ()
 checkSignature pmod msig1 msig2 =
   case msig2 of
     UnitSig -> return ()
-    ValueSig fld ty mrest2 -> do
-      checkValueField pmod fld ty msig1
+    ValueSig stoch2 fld ty mrest2 -> do
+      checkValueField pmod stoch2 fld ty msig1
       checkSignature pmod msig1 mrest2
     TypeSig fld bnd ->
       checkTypeField pmod fld bnd msig1 $ \msig1' mrest2 ->
@@ -77,45 +78,45 @@ checkSignature pmod msig1 msig2 =
       checkSubmodelField pmod fld bnd msig1 $ \msig1' mrest2 ->
       checkSignature pmod msig1' mrest2
 
-checkValueField :: Path -> Field -> Type -> PrefixedSignature -> TC ()
-checkValueField pmod fld ty msig1 =
+checkValueField :: Path -> Stochasticity -> Field -> Type -> PrefixedSignature -> TC ()
+checkValueField pmod stoch2 fld ty msig1 =
   case msig1 of
-    TailPreSig mrest1 -> checkValueFieldTail pmod fld ty mrest1
-    ValuePreSig fld' ty' mrest1 ->
-      matchValueField (fld,ty) (fld',ty') $ checkValueField pmod fld ty mrest1
+    TailPreSig mrest1 -> checkValueFieldTail pmod stoch2 fld ty mrest1
+    ValuePreSig stoch1 fld' ty' mrest1 ->
+      matchValueField (stoch2,fld,ty) (stoch1,fld',ty') $ checkValueField pmod stoch2 fld ty mrest1
     SubmodelPreSig _fld' _subSig mrest1 ->
-      checkValueField pmod fld ty mrest1
+      checkValueField pmod stoch2 fld ty mrest1
     TypePreSig _fld' _tsd1 mrest1 ->
-      checkValueField pmod fld ty mrest1
+      checkValueField pmod stoch2 fld ty mrest1
 
--- | @matchValueField (fld2, ty2) (fld1, ty1) kNoMatch@ if the field
+-- | @matchValueField (stoch2, fld2, ty2) (stoch1, fld1, ty1) kNoMatch@ if the field
 -- names match, checks that the types agree, if the fields don't match,
 -- continues using the given continuation.
-matchValueField :: (Field, Type)
-                -> (Field, Type)
+matchValueField :: (Stochasticity, Field, Type)
+                -> (Stochasticity, Field, Type)
                 -> TC ()
                 -> TC ()
-matchValueField (fld, ty) (fld', ty') kNoMatch =
-  if fld == fld'
+matchValueField (stoch, fld, ty) (stoch', fld', ty') kNoMatch =
+  if fld == fld' && stoch == stoch'
   then do
     same <- equivTypes ty ty' KType
     unless same $
       typeError ("value field " <> formatErr fld
-                 <> " has type " <> formatErr ty'
-                 <> " but signature requires " <> formatErr ty)
+                 <> " has " <> formatErr stoch' <> " type " <> formatErr ty'
+                 <> " but signature requires " <> formatErr stoch <> formatErr ty)
   else
     kNoMatch
         
-checkValueFieldTail :: Path -> Field -> Type -> Signature -> TC ()
-checkValueFieldTail pmod fld ty msig1 =
+checkValueFieldTail :: Path -> Stochasticity -> Field -> Type -> Signature -> TC ()
+checkValueFieldTail pmod stoch2 fld ty msig1 =
   case msig1 of
     UnitSig -> typeError ("signature specifies value field "
                           <> formatErr fld
                           <> ": " <> formatErr ty
                           <> "that is not present in the given structure")
-    ValueSig fld' ty' mrest1 ->
-      matchValueField (fld, ty) (fld', ty')
-      $ checkValueFieldTail pmod fld ty mrest1
+    ValueSig stoch1 fld' ty' mrest1 ->
+      matchValueField (stoch2, fld, ty) (stoch1, fld', ty')
+      $ checkValueFieldTail pmod stoch2 fld ty mrest1
     SubmodelSig fld' bnd ->
       U.lunbind bnd $ \((ident1, U.unembed -> modelTy), mrest1_) -> do
         let pdefn = ProjP pmod fld'
@@ -123,7 +124,7 @@ checkValueFieldTail pmod fld ty msig1 =
         subSig <- signatureOfModelType modelTy
         subSelf <- selfifyModelType pdefn subSig
         extendModelCtx subSelf $
-          checkValueFieldTail pmod fld ty mrest1
+          checkValueFieldTail pmod stoch2 fld ty mrest1
     TypeSig fld' bnd ->
       U.lunbind bnd $ \((tycon1, U.unembed -> tsd_), mrest1_) -> do
         let pdefn = TypePath pmod fld'
@@ -133,7 +134,7 @@ checkValueFieldTail pmod fld ty msig1 =
         -- when matching in the rest of the signature, make use of
         -- provided type declaration.
         extendTypeSigDeclCtx dcon tsd $
-          checkValueFieldTail pmod fld ty mrest1
+          checkValueFieldTail pmod stoch2 fld ty mrest1
 
 checkTypeField :: Path
                   -> Field
@@ -144,8 +145,8 @@ checkTypeField :: Path
 checkTypeField pmod fld bnd msig1 kont =
   case msig1 of
     TailPreSig mrest1 -> checkTypeFieldTail pmod fld bnd mrest1 kont
-    ValuePreSig fld' ty' mrest1 ->
-      checkTypeField pmod fld bnd mrest1 (kont . ValuePreSig fld' ty')
+    ValuePreSig stoch1 fld' ty' mrest1 ->
+      checkTypeField pmod fld bnd mrest1 (kont . ValuePreSig stoch1 fld' ty')
     SubmodelPreSig fld' subSig mrest1 ->
       checkTypeField pmod fld bnd mrest1 (kont . SubmodelPreSig fld' subSig)
     TypePreSig fld' tsd1 mrest1 ->
@@ -178,8 +179,8 @@ checkTypeFieldTail pmod fld bnd msig1 kont =
                  <> formatErr fld
                  <> " as " <> formatErr (TypeSig fld bnd)
                  <> " that is not present in the given structure")
-    ValueSig fld' ty' mrest1 ->
-      checkTypeFieldTail pmod fld bnd mrest1 (kont . ValuePreSig fld' ty')
+    ValueSig stoch1 fld' ty' mrest1 ->
+      checkTypeFieldTail pmod fld bnd mrest1 (kont . ValuePreSig stoch1 fld' ty')
     SubmodelSig fld' bnd' ->
       U.lunbind bnd' $ \((ident1, U.unembed -> modelTy), mrest1_) -> do
         subSig <- signatureOfModelType modelTy
@@ -307,8 +308,8 @@ checkSubmodelField :: Path
 checkSubmodelField pmod fld bnd msig1 kont =
   case msig1 of
     TailPreSig mrest1 -> checkSubmodelFieldTail pmod fld bnd mrest1 kont
-    ValuePreSig fld' ty' mrest1 ->
-      checkSubmodelField pmod fld bnd mrest1 (kont . ValuePreSig fld' ty')
+    ValuePreSig stoch1 fld' ty' mrest1 ->
+      checkSubmodelField pmod fld bnd mrest1 (kont . ValuePreSig stoch1 fld' ty')
     TypePreSig fld' tsd1 mrest1 ->
       checkSubmodelField pmod fld bnd mrest1 (kont . TypePreSig fld' tsd1)
     SubmodelPreSig fld' sig1 mrest1 ->
@@ -340,8 +341,8 @@ checkSubmodelFieldTail pmod fld bnd msig1 kont =
       typeError ("signature specified a submodule "
                  <> formatErr fld
                  <> " that isn't present in the structure")
-    ValueSig fld' ty' mrest1 ->
-      checkSubmodelFieldTail pmod fld bnd mrest1 (kont . ValuePreSig fld' ty')
+    ValueSig stoch1 fld' ty' mrest1 ->
+      checkSubmodelFieldTail pmod fld bnd mrest1 (kont . ValuePreSig stoch1 fld' ty')
     TypeSig fld' bnd' ->
       U.lunbind bnd' $ \((tycon, U.unembed -> tsd_), mrest1_) -> do
         let pdefn = TypePath pmod fld'

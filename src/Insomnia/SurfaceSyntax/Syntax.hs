@@ -3,6 +3,7 @@ module Insomnia.SurfaceSyntax.Syntax where
 import Data.Monoid ((<>))
 
 import Insomnia.Common.Literal
+import Insomnia.Common.Stochasticity
 import Insomnia.SurfaceSyntax.FixityParser (Fixity)
 
 type Ident = String
@@ -53,7 +54,7 @@ data ModelType =
 data Signature = Sig ![SigDecl]
                deriving (Show)
 
-data SigDecl = ValueSig !Ident !Type
+data SigDecl = ValueSig !Stochasticity !Ident !Type
              | FixitySig !Ident !Fixity
              | TypeSig !Ident !TypeSigDecl
              | SubmodelSig !Ident !ModelType
@@ -93,9 +94,10 @@ data Decl = ValueDecl !Ident !ValueDecl
 
 data ValueDecl =
   FunDecl !Expr
+  | ParameterDecl !Expr
   | ValDecl !Expr
   | SampleDecl !Expr
-  | SigDecl !Type
+  | SigDecl !Stochasticity !Type
   deriving (Show)
 
 data Kind = KType | KArr !Kind !Kind

@@ -57,7 +57,7 @@ checkExpr e_ t_ = case e_ of
     checkLiteral l t_
     return (L l)
   V v -> checkVariable lookupLocal V v t_
-  Q q -> checkVariable lookupGlobal Q q t_
+  Q q -> checkVariable (fmap (fmap fst) . lookupGlobal) Q q t_
   C c -> do
     constr <- lookupValueConstructor c
     ty <- mkConstructorType constr
@@ -239,7 +239,7 @@ inferExpr e_ = case e_ of
     mt <- lookupGlobal qvar
     case mt of
       Nothing -> typeError ("unbound variable " <> formatErr qvar)
-      Just tv -> instantiate tv $ \t' ->
+      Just (tv, _stoch) -> instantiate tv $ \t' ->
         return (t', Q qvar)
   App e1_ e2_ -> do
     (t1, e1') <- inferExpr e1_

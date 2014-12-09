@@ -36,10 +36,10 @@ checkSignature mpath_ = flip (checkSignature' mpath_) ensureNoDuplicateFields
                        -> Signature -> ((Signature, [Field]) -> TC Signature)
                        -> TC Signature
     checkSignature' _mpath UnitSig kont = kont (UnitSig, [])
-    checkSignature' mpath (ValueSig fld ty sig) kont = do
+    checkSignature' mpath (ValueSig stoch fld ty sig) kont = do
         ty' <- checkType ty KType
         checkSignature' mpath sig $ \(sig', flds) ->
-          kont (ValueSig fld ty' sig', fld:flds)
+          kont (ValueSig stoch fld ty' sig', fld:flds)
     checkSignature' mpath (TypeSig fld bnd) kont =
       U.lunbind bnd $ \((tycon, U.unembed -> tsd), sig) -> do
         let dcon = TCLocal tycon

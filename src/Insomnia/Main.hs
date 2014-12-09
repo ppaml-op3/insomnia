@@ -81,7 +81,8 @@ checking = Stage {
       Right ans -> return ans
     putStrLn "Typechecked OK."
     putStrLn "Unification state:"
-    F.putStrDoc (F.format $ ppDefault m)
+    F.putStrDoc (F.format (ppDefault m)
+                 <> F.newline)
     return elab
   , formatStage = F.format . ppDefault
   }

@@ -26,10 +26,10 @@ extendTypeSigDeclCtx dcon tsd = do
 -- very module.
 extendModelCtx :: SelfSig -> TC a -> TC a
 extendModelCtx UnitSelfSig = id
-extendModelCtx (ValueSelfSig qvar ty msig) =
+extendModelCtx (ValueSelfSig stoch qvar ty msig) =
   -- TODO: if we are modeling joint distributions, does it ever make
   -- sense to talk about value components of other models?
-  local (envGlobals . at qvar ?~ ty)
+  local (envGlobals . at qvar ?~ (ty, stoch))
   . extendModelCtx msig
 extendModelCtx (TypeSelfSig p tsd msig) =
   extendTypeSigDeclCtx (TCGlobal p) tsd

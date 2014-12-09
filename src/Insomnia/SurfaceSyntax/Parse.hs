@@ -28,6 +28,7 @@ import Text.Parsec.Indentation.Char (CharIndentStream, mkCharIndentStream)
 import Data.Format (Format(..), WrapShow(..))
 
 import Insomnia.Common.Literal
+import Insomnia.Common.Stochasticity
 import Insomnia.SurfaceSyntax.Syntax
 import Insomnia.SurfaceSyntax.FixityParser (Fixity(..), Assoc(..))
 
@@ -60,6 +61,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
                      "infix", "infixr", "infixl",
                      "assume",
                      "data", "type", "enum",
+                     "parameter",
                      "val", "fun", "sig",
                      "let", "in", "case", "of",
                      "return",
@@ -235,9 +237,16 @@ submodelSig =
 valueSig :: Parser SigDecl
 valueSig =
   ValueSig
-  <$> (reserved "sig" *> variableOrPrefixInfixIdentifier)
+  <$> stochasticity
+  <*> (reserved "sig" *> variableOrPrefixInfixIdentifier)
   <* classify
   <*> typeExpr
+
+
+stochasticity :: Parser Stochasticity
+stochasticity =
+  (reserved "parameter" *> pure DeterministicParam)
+  <|> pure RandomVariable
 
 typeSig :: Parser SigDecl
 typeSig =
@@ -386,11 +395,12 @@ mkLams ((v, mty):vs) e = Lam v mty (mkLams vs e)
 valueSigDecl :: Parser (Ident, ValueDecl)
 valueSigDecl =
   mkSigDecl
-  <$> (reserved "sig" *> variableOrPrefixInfixIdentifier)
+  <$> stochasticity
+  <*> (reserved "sig" *> variableOrPrefixInfixIdentifier)
   <* classify
   <*> typeExpr
   where
-    mkSigDecl f ty = (f, SigDecl ty)
+    mkSigDecl stoch f ty = (f, SigDecl stoch ty)
 
 valOrSampleDecl :: Parser (Ident, ValueDecl)
 valOrSampleDecl =

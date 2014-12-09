@@ -218,11 +218,11 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
   where
     go decl kont =
       case decl of
-       ValueSig ident ty -> do
+       ValueSig stoch ident ty -> do
          f <- valueField ident
          ty' <- type' ty
          rest <- kont
-         return $ I.ValueSig f ty' rest
+         return $ I.ValueSig stoch f ty' rest
        FixitySig ident fixity ->
          updateWithFixity ident fixity kont
        TypeSig ident tsd -> do
@@ -342,9 +342,10 @@ row (Row lts) = I.Row <$> mapM labeledType lts
 
 valueDecl :: ValueDecl -> TA I.ValueDecl
 valueDecl (FunDecl e) = I.FunDecl <$> expr e
+valueDecl (ParameterDecl e) = I.ParameterDecl <$> expr e
 valueDecl (ValDecl e) = I.ValDecl <$> expr e
 valueDecl (SampleDecl e) = I.SampleDecl <$> expr e
-valueDecl (SigDecl ty) = I.SigDecl <$> type' ty
+valueDecl (SigDecl stoch ty) = I.SigDecl stoch <$> type' ty
 
 annot :: Maybe Type -> TA I.Annot
 annot Nothing = return $ I.Annot Nothing

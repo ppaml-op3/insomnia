@@ -26,6 +26,7 @@ library
                        Insomnia.SurfaceSyntax.ToAST
                        --
                        Insomnia.Common.Literal
+                       Insomnia.Common.Stochasticity
                        --
                        Insomnia.Identifier
                        --

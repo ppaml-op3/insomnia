@@ -13,6 +13,8 @@ import Insomnia.Types
 import Insomnia.Expr (Expr)
 import Insomnia.TypeDefn
 
+import Insomnia.Common.Stochasticity
+
 data ModelType =
   SigMT !Signature -- "{ decls ... }"
   | IdentMT !SigIdentifier -- "X_SIG"
@@ -20,7 +22,7 @@ data ModelType =
 
 data Signature =
   UnitSig
-  | ValueSig Field Type Signature
+  | ValueSig Stochasticity Field Type Signature
   | TypeSig Field (Bind (TyConName, Embed TypeSigDecl) Signature)
   | SubmodelSig Field (Bind (Identifier, Embed ModelType) Signature)
     deriving (Show, Typeable, Generic)

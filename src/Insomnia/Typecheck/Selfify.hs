@@ -29,10 +29,10 @@ selfifyModelType :: Path -> Signature -> TC SelfSig
 selfifyModelType pmod msig_ =
   case msig_ of
     UnitSig -> return UnitSelfSig
-    ValueSig fld ty msig -> do
+    ValueSig stoch fld ty msig -> do
       let qvar = QVar pmod fld
       selfSig <- selfifyModelType pmod msig
-      return $ ValueSelfSig qvar ty selfSig
+      return $ ValueSelfSig stoch qvar ty selfSig
     TypeSig fld bnd ->
       U.lunbind bnd $ \((tyId, U.unembed -> tsd), msig) -> do
       let p = TypePath pmod fld
@@ -57,9 +57,9 @@ selfifyModelType pmod msig_ =
 
 selfSigToSignature :: SelfSig -> TC Signature
 selfSigToSignature UnitSelfSig = return UnitSig
-selfSigToSignature (ValueSelfSig (QVar _modulePath fieldName) ty selfSig) = do
+selfSigToSignature (ValueSelfSig stoch (QVar _modulePath fieldName) ty selfSig) = do
   sig <- selfSigToSignature selfSig
-  return $ ValueSig fieldName ty sig
+  return $ ValueSig stoch fieldName ty sig
 selfSigToSignature (TypeSelfSig typePath tsd selfSig) = do
   let (TypePath _ fieldName) = typePath
   freshId <- U.lfresh (U.s2n fieldName)
