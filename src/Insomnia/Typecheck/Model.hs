@@ -15,11 +15,12 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.Stochasticity
+import Insomnia.Common.ModuleKind
 import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
                        Type(..), freshUVarT)
 import Insomnia.Expr (Var, QVar(..), Expr(Q))
-import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
+import Insomnia.ModuleType (ModuleType(..), Signature(..), TypeSigDecl(..))
 import Insomnia.Model
 import Insomnia.Pretty (Pretty, PrettyShort(..))
 
@@ -34,11 +35,11 @@ import Insomnia.Typecheck.TypeDefn (checkTypeDefn,
                                     checkTypeAlias,
                                     extendTypeDefnCtx,
                                     extendTypeAliasCtx)
-import Insomnia.Typecheck.ModelType (checkModelType)
-import Insomnia.Typecheck.Selfify (selfifyTypeDefn, selfifyModelType)
+import Insomnia.Typecheck.ModuleType (checkModuleType)
+import Insomnia.Typecheck.Selfify (selfifyTypeDefn, selfifyModuleType)
 import Insomnia.Typecheck.ClarifySignature (clarifySignature)
 import Insomnia.Typecheck.ExtendModelCtx (extendModelCtx)
-import Insomnia.Typecheck.SigOfModelType (signatureOfModelType)
+import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
 import Insomnia.Typecheck.MayAscribe (mayAscribe)
 
 -- | Infer the signature of the given model expression
@@ -50,34 +51,34 @@ inferModelExpr pmod (ModelStruct model) kont = do
   kont (ModelStruct model') msig
 inferModelExpr pmod (ModelSeal model mtypeSealed) kont = do
   inferModelExpr pmod model $ \model' msigInferred -> do
-    (mtypeSealed', msigSealed) <- checkModelType mtypeSealed
+    (mtypeSealed', msigSealed, modK) <- checkModuleType mtypeSealed
                                       <??@ ("while checking sealing signature of " <> formatErr pmod)
     msigSealed' <- mayAscribe msigInferred msigSealed
                      <??@ ("while checking validity of signature sealing to "
                            <> formatErr pmod)
     kont (ModelSeal model' mtypeSealed') msigSealed'
 inferModelExpr pmod (ModelAssume modelType) kont = do
-  (modelType', msig) <- checkModelType modelType
+  (modelType', msig, modK) <- checkModuleType modelType
                         <??@ ("while checking postulated signature of "
                               <> formatErr pmod)
   kont (ModelAssume modelType') msig
 inferModelExpr pmod (ModelId modPathRHS) kont = do
-  msig <- lookupModelSigPath modPathRHS
+  (msig, modK) <- lookupModelSigPath modPathRHS
           <??@ ("while checking the definition of " <> formatErr pmod)
   msig' <- clarifySignature modPathRHS msig
   kont (ModelId modPathRHS) msig'
   -- lookup a model's signature (selfified?) and return it.
 
-lookupModelSigPath :: Path -> TC Signature
+lookupModelSigPath :: Path -> TC (Signature, ModuleKind)
 lookupModelSigPath (IdP ident) = lookupModelSig ident
 lookupModelSigPath (ProjP pmod fieldName) = do
-  sig <- lookupModelSigPath pmod
+  (sig, _modK) <- lookupModelSigPath pmod
   projectModelField pmod fieldName sig
 
-projectModelField :: Path -> Field -> Signature -> TC Signature
+projectModelField :: Path -> Field -> Signature -> TC (Signature, ModuleKind)
 projectModelField pmod fieldName = go
   where
-    go :: Signature -> TC Signature
+    go :: Signature -> TC (Signature, ModuleKind)
     go UnitSig = typeError ("The module " <> formatErr pmod
                             <> " does not have a submodule named "
                             <> formatErr fieldName)
@@ -91,7 +92,7 @@ projectModelField pmod fieldName = go
       -- correct name.
       let mrest = U.subst tycon' (TCGlobal $ TypePath pmod fld') mrest_
       in go mrest
-    go (SubmodelSig fld' bnd) =
+    go (SubmoduleSig fld' bnd) =
       if fieldName /= fld'
       then
         U.lunbind bnd $ \((ident', _), mrest_) ->
@@ -99,7 +100,7 @@ projectModelField pmod fieldName = go
         in go mrest
       else
         U.lunbind bnd $ \((_, U.unembed -> modTy), _) ->
-        signatureOfModelType modTy
+        signatureOfModuleType modTy
 
 -- | Returns the "natural" signature of a model.
 -- This is a signature in which all type equations are preserved, all
@@ -132,16 +133,18 @@ naturalSignature = go . modelDecls
           let tsd = AliasTypeSigDecl alias
           return $ TypeSig fld (U.bind (ident, U.embed tsd) sig')
         SubmodelDefn fld modelExpr -> do
-          subSig <- naturalSignatureModelExpr modelExpr
+          (subSig, modK) <- naturalSignatureModelExpr modelExpr
           let ident = U.s2n fld
-              modelTy = SigMT subSig
+              modelTy = SigMT subSig modK
           sig' <- kont 
-          return $ SubmodelSig fld (U.bind (ident, U.embed modelTy) sig')
+          return $ SubmoduleSig fld (U.bind (ident, U.embed modelTy) sig')
             
-naturalSignatureModelExpr :: ModelExpr -> TC Signature
-naturalSignatureModelExpr (ModelStruct model) = naturalSignature model
-naturalSignatureModelExpr (ModelSeal _ mt) = signatureOfModelType mt
-naturalSignatureModelExpr (ModelAssume mt) = signatureOfModelType mt
+naturalSignatureModelExpr :: ModelExpr -> TC (Signature, ModuleKind)
+naturalSignatureModelExpr (ModelStruct model) = do
+  modSig <- naturalSignature model
+  return (modSig, ModelMK)
+naturalSignatureModelExpr (ModelSeal _ mt) = signatureOfModuleType mt
+naturalSignatureModelExpr (ModelAssume mt) = signatureOfModuleType mt
 naturalSignatureModelExpr (ModelId path) = lookupModelSigPath path
 
 -- | Typecheck the contents of a model.
@@ -348,8 +351,8 @@ extendDCtx pmod d =
           shortIdent = U.s2n fld
           substitution = [(shortIdent, pSubMod)]
           rest' = U.substs substitution rest
-      subSig <- naturalSignatureModelExpr modelExpr
-      subSelfSig <- selfifyModelType pSubMod subSig
+      (subSig, modK) <- naturalSignatureModelExpr modelExpr
+      subSelfSig <- selfifyModuleType pSubMod subSig
       extendModelCtx subSelfSig $ kont rest'
 
 extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC [Decl]) -> TC [Decl]

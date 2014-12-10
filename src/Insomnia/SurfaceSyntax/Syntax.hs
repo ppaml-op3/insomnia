@@ -4,6 +4,7 @@ import Data.Monoid ((<>))
 
 import Insomnia.Common.Literal
 import Insomnia.Common.Stochasticity
+import Insomnia.Common.ModuleKind
 import Insomnia.SurfaceSyntax.FixityParser (Fixity)
 
 type Ident = String
@@ -35,21 +36,23 @@ data Toplevel = Toplevel ![ToplevelItem]
               deriving (Show)
 
 data ToplevelItem =
-  ToplevelModel !Ident !(Maybe ModelType) !ModelExpr
-  | ToplevelModelType !Ident ModelType
+  ToplevelModel !Ident !(Maybe ModuleType) !ModelExpr
+  | ToplevelModuleType !Ident !ModuleType
     deriving (Show)
 
 data ModelExpr =
   ModelStruct !Model
-  | ModelSeal !ModelExpr !ModelType
-  | ModelAssume !ModelType
+  | ModelSeal !ModelExpr !ModuleType
+  | ModelAssume !ModuleType
   | ModelId !QualifiedIdent
     deriving (Show)
              
-data ModelType =
-  SigMT !Signature
+data ModuleType =
+  SigMT !Signature !ModuleKind
   | IdentMT !Ident
     deriving (Show)
+
+
 
 data Signature = Sig ![SigDecl]
                deriving (Show)
@@ -57,7 +60,7 @@ data Signature = Sig ![SigDecl]
 data SigDecl = ValueSig !Stochasticity !Ident !Type
              | FixitySig !Ident !Fixity
              | TypeSig !Ident !TypeSigDecl
-             | SubmodelSig !Ident !ModelType
+             | SubmoduleSig !Ident !ModuleType
              deriving (Show)
 
 data TypeSigDecl =

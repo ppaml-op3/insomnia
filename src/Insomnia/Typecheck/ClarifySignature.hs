@@ -10,10 +10,10 @@ import Insomnia.Types (Kind(..), Type(..),
                        TypePath(..),
                        KindedTVar, kArrs)
 import Insomnia.TypeDefn (TypeAlias(..), TypeDefn(..))
-import Insomnia.ModelType (Signature(..), ModelType(..), TypeSigDecl(..))
+import Insomnia.ModuleType (Signature(..), ModuleType(..), TypeSigDecl(..))
 
 import Insomnia.Typecheck.Env
-import Insomnia.Typecheck.SigOfModelType (signatureOfModelType)
+import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
 
 
 -- | Given the signature of the given path (ie, assume that the module
@@ -43,9 +43,9 @@ clarifySignature pmod (ValueSig stoch f ty rest) = do
 clarifySignature pmod (TypeSig f bnd) =
   U.lunbind bnd $ \((tycon, U.unembed -> tsd), rest) ->
   clarifyTypeSigDecl pmod f tycon tsd rest
-clarifySignature pmod (SubmodelSig f bnd) =
+clarifySignature pmod (SubmoduleSig f bnd) =
   U.lunbind bnd $ \((ident, U.unembed -> modTy), rest) ->
-  clarifySubmodel pmod f ident modTy rest
+  clarifySubmodule pmod f ident modTy rest
 
 clarifyTypeSigDecl :: Path
                       -> Field
@@ -93,14 +93,14 @@ clarifyTypeSigDecl pmod f tycon tsd rest =
           ty' = TApp ty (TV tv)
       in (tvks', ty')
     
-clarifySubmodel :: Path
+clarifySubmodule :: Path
                    -> Field
                    -> Identifier
-                   -> ModelType
+                   -> ModuleType
                    -> Signature
                    -> TC Signature
-clarifySubmodel pmod f ident subModTy rest = do
-  subSig <- signatureOfModelType subModTy
+clarifySubmodule pmod f ident subModTy rest = do
+  (subSig, modK) <- signatureOfModuleType subModTy
   clearSubSig <- clarifySignature (ProjP pmod f) subSig
   rest' <- clarifySignature pmod rest
-  return $ SubmodelSig f $ U.bind (ident, U.embed (SigMT clearSubSig)) rest'
+  return $ SubmoduleSig f $ U.bind (ident, U.embed (SigMT clearSubSig modK)) rest'

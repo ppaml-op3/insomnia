@@ -22,7 +22,7 @@ import qualified Insomnia.Identifier  as I
 import qualified Insomnia.Expr        as I
 import qualified Insomnia.Types       as I
 import qualified Insomnia.TypeDefn    as I
-import qualified Insomnia.ModelType   as I
+import qualified Insomnia.ModuleType   as I
 import qualified Insomnia.Model       as I
 import qualified Insomnia.Toplevel    as I
 
@@ -179,11 +179,11 @@ toplevelItem (ToplevelModel ident mmt me) = do
   me' <- modelExpr me
   case mmt of
    Just mt -> do
-     mt' <- modelType mt
+     mt' <- moduleType mt
      return $ I.ToplevelModel ident' (I.ModelSeal me' mt')
    Nothing -> return $ I.ToplevelModel ident' me'
-toplevelItem (ToplevelModelType ident mt) =
-  I.ToplevelModelType <$> sigIdentifier ident <*> modelType mt
+toplevelItem (ToplevelModuleType ident mt) =
+  I.ToplevelModuleType <$> sigIdentifier ident <*> moduleType mt
 
 identifier :: Ident -> TA I.Identifier
 identifier s = return $ U.s2n s
@@ -201,16 +201,16 @@ typeField :: Ident -> TA (I.Field, I.TyConName)
 typeField ident = return (ident, U.s2n ident)
 
 
-modelType :: ModelType -> TA I.ModelType
-modelType (SigMT sig) = I.SigMT <$> signature sig
-modelType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
+moduleType :: ModuleType -> TA I.ModuleType
+moduleType (SigMT sig mk) = I.SigMT <$> signature sig <*> pure mk
+moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
 modelExpr :: ModelExpr -> TA I.ModelExpr
 modelExpr (ModelStruct mdl) = I.ModelStruct <$> model mdl
 modelExpr (ModelSeal me mt) =
-  I.ModelSeal <$> modelExpr me <*> modelType mt
+  I.ModelSeal <$> modelExpr me <*> moduleType mt
 modelExpr (ModelAssume mt) =
-  I.ModelAssume <$> modelType mt
+  I.ModelAssume <$> moduleType mt
 modelExpr (ModelId qid) = return $ I.ModelId (qualifiedIdPath qid)
 
 signature :: Signature -> TA I.Signature
@@ -231,11 +231,11 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
          tsd' <- withTyCon con Nothing $ typeSigDecl tsd
          rest <- withTyCon con Nothing $ kont
          return $ I.TypeSig f (U.bind (tycon, U.embed tsd') rest)
-       SubmodelSig ident mt -> do
+       SubmoduleSig ident mt -> do
          (f, ident') <- modelField ident
-         mt' <- modelType mt
+         mt' <- moduleType mt
          rest <- kont
-         return $ I.SubmodelSig f (U.bind (ident', U.embed mt') rest)
+         return $ I.SubmoduleSig f (U.bind (ident', U.embed mt') rest)
 
 model :: Model -> TA I.Model
 model (Model decls) = I.Model <$> foldr go (return []) decls

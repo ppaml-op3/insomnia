@@ -29,6 +29,7 @@ import Data.Format (Format(..), WrapShow(..))
 
 import Insomnia.Common.Literal
 import Insomnia.Common.Stochasticity
+import Insomnia.Common.ModuleKind
 import Insomnia.SurfaceSyntax.Syntax
 import Insomnia.SurfaceSyntax.FixityParser (Fixity(..), Assoc(..))
 
@@ -55,7 +56,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   , identLetter = alphaNum <|> char '_'
   , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
-  , reservedNames = ["model",
+  , reservedNames = ["model", "module",
                      "forall", "∀",
                      "⋆", "∷",
                      "infix", "infixr", "infixl",
@@ -112,8 +113,8 @@ variableOrPrefixInfixIdentifier =
 modelIdentifier :: Parser Ident
 modelIdentifier = tyconIdentifier
 
-modelTypeIdentifier :: Parser Ident
-modelTypeIdentifier = tyconIdentifier
+moduleTypeIdentifier :: Parser Ident
+moduleTypeIdentifier = tyconIdentifier
 
 tyconIdentifier :: Parser Ident
 tyconIdentifier = try $ do
@@ -198,23 +199,23 @@ toplevel = Toplevel <$> (whiteSpace *> (localIndentation Any $ many (absoluteInd
 toplevelItem :: Parser ToplevelItem
 toplevelItem =
   (toplevelModel <?> "toplevel model definition")
-  <|> (toplevelModelType <?> "toplevel model type definition")
+  <|> (toplevelModuleType <?> "toplevel model type definition")
 
 toplevelModel :: Parser ToplevelItem
 toplevelModel =
   ToplevelModel
   <$> (try (reserved "model" *> modelIdentifier))
-  <*> optional (classify *> (IdentMT <$> modelTypeIdentifier))
+  <*> optional (classify *> (IdentMT <$> moduleTypeIdentifier))
   <*> ((reservedOp "=" *> modelExpr)
        <|> literalModelShorthand)
   where
     literalModelShorthand = modelLiteral
 
-toplevelModelType :: Parser ToplevelItem
-toplevelModelType =
-  ToplevelModelType
-  <$> (try (reserved "model" *> reserved "type" *> modelTypeIdentifier))
-  <*> braces (SigMT <$> signature)
+toplevelModuleType :: Parser ToplevelItem
+toplevelModuleType =
+  ToplevelModuleType
+  <$> (try (reserved "model" *> reserved "type" *> moduleTypeIdentifier))
+  <*> braces (SigMT <$> signature <*> pure ModelMK)
 
 signature :: Parser Signature
 signature =
@@ -229,7 +230,7 @@ sigDecl =
 
 submodelSig :: Parser SigDecl
 submodelSig =
-  SubmodelSig
+  SubmoduleSig
   <$> (reserved "model" *> modelIdentifier)
   <* classify
   <*> modelTypeExpr
@@ -299,10 +300,10 @@ fixity =
 
     
 
-modelTypeExpr :: Parser ModelType
+modelTypeExpr :: Parser ModuleType
 modelTypeExpr =
-  (IdentMT <$> modelTypeIdentifier <?> "model type identifier")
-  <|> (SigMT <$> braces signature <?> "model signature in braces")
+  (IdentMT <$> moduleTypeIdentifier <?> "model type identifier")
+  <|> (SigMT <$> braces signature <*> pure ModelMK <?> "model signature in braces")
 
 
 modelLiteral :: Parser ModelExpr
@@ -317,7 +318,7 @@ modelExpr =
   <|> (modelPath <?> "qualified model name")
   where
     modelAssume =  (ModelAssume . IdentMT)
-                   <$> (reserved "assume" *> modelTypeIdentifier)
+                   <$> (reserved "assume" *> moduleTypeIdentifier)
     nestedModel = parens (mkNestedModelExpr
                           <$> modelExpr
                           <*> optional (classify *> modelTypeExpr))
@@ -368,7 +369,7 @@ typeAliasDefn =
 modelDefn :: Parser Decl
 modelDefn =
   mkModelDefn <$> (reserved "model" *> modelIdentifier)
-  <*> optional (classify *> modelTypeIdentifier)
+  <*> optional (classify *> moduleTypeIdentifier)
   <*> modelExpr
   where
     mkModelDefn modIdent maybeSigId content =

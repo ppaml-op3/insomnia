@@ -13,15 +13,15 @@ import Unbound.Generics.LocallyNameless
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn
-import Insomnia.ModelType
+import Insomnia.ModuleType
 
 import Insomnia.Common.Stochasticity
 import Insomnia.Expr (Expr)
 
 data ModelExpr =
   ModelStruct !Model -- model specified here
-  | ModelSeal !ModelExpr !ModelType -- generative sealing
-  | ModelAssume !ModelType    -- model assumed to exist.
+  | ModelSeal !ModelExpr !ModuleType -- generative sealing
+  | ModelAssume !ModuleType    -- model assumed to exist.
   | ModelId !Path       -- previously named model
   deriving (Show, Typeable, Generic)
 

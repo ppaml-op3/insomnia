@@ -25,12 +25,13 @@ import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 import Insomnia.Except (Except, runExcept)
 
 import Insomnia.Common.Stochasticity
+import Insomnia.Common.ModuleKind
 
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn (TypeAlias(..), ValueConstructor(..))
 import Insomnia.Expr (Var, QVar)
-import Insomnia.ModelType (Signature)
+import Insomnia.ModuleType (Signature)
 
 import Insomnia.Unify (MonadUnificationExcept(..),
                        UVar,
@@ -95,7 +96,7 @@ data TypeAliasClosure = TypeAliasClosure !Env !TypeAlias
 
 -- | Typechecking environment
 data Env = Env {
-  _envSigs :: M.Map SigIdentifier Signature -- ^ signatures
+  _envSigs :: M.Map SigIdentifier (Signature, ModuleKind) -- ^ signatures
   , _envModelSigs :: M.Map Identifier Signature -- ^ models' unselfified signatures (invariant: their selfified contents have been added to DCons and Globals)
   , _envDCons :: M.Map TypeConstructor TyConDesc -- ^ type constructor descriptors
   , _envCCons :: M.Map ValueConstructor AlgConstructor -- ^ value constructors
@@ -137,7 +138,7 @@ instance Pretty TypeAliasClosure where
 
 
 instance Pretty Env where
-  pp env = vcat [ "sigs", pp (env^.envSigs)
+  pp env = vcat [ "sigs", pp (fmap fst (env^.envSigs))
                 , "dcons", pp (env^.envDCons)
                 , "ccons", pp (env^.envCCons)
                 , "globals", pp (fmap fst (env^.envGlobals))
@@ -256,11 +257,11 @@ mkConstructorType constr =
     go t (tvk:tvks) = go (TForall (U.bind tvk t)) tvks
 
 -- | Lookup info about a (toplevel) module.
-lookupModelSig :: Identifier -> TC Signature
+lookupModelSig :: Identifier -> TC (Signature, ModuleKind)
 lookupModelSig ident = do
   m <- view (envModelSigs . at ident)
   case m of
-    Just sig -> return sig
+    Just sig -> return (sig, ModelMK)
     Nothing -> typeError $ "no module " <> formatErr ident
 
 -- | Look up info about a datatype
@@ -304,8 +305,8 @@ lookupVar v = lookupLocal v
 
 -- | Checks tht the given identifier is bound in the context to a
 -- signature.
-lookupModelType :: SigIdentifier -> TC Signature
-lookupModelType ident = do
+lookupModuleType :: SigIdentifier -> TC (Signature, ModuleKind)
+lookupModuleType ident = do
   mmsig <- view (envSigs . at ident)
   case mmsig of
     Just msig -> return msig
@@ -321,9 +322,9 @@ extendModelSigCtx ident msig =
 
 -- | Extend the type signatures environment by adding the given
 -- signature.
-extendModelTypeCtx :: SigIdentifier -> Signature -> TC a -> TC a
-extendModelTypeCtx ident msig =
-  local (envSigs . at ident ?~ msig)
+extendModuleTypeCtx :: SigIdentifier -> Signature -> ModuleKind -> TC a -> TC a
+extendModuleTypeCtx ident msig mk =
+  local (envSigs . at ident ?~ (msig, mk))
 
 
 -- | Extend the data type environment by adding the declaration

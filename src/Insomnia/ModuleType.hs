@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable, DeriveGeneric,
       MultiParamTypeClasses
   #-}
-module Insomnia.ModelType where
+module Insomnia.ModuleType where
 
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
@@ -14,17 +14,18 @@ import Insomnia.Expr (Expr)
 import Insomnia.TypeDefn
 
 import Insomnia.Common.Stochasticity
+import Insomnia.Common.ModuleKind
 
-data ModelType =
-  SigMT !Signature -- "{ decls ... }"
+data ModuleType =
+  SigMT !Signature !ModuleKind -- "{ decls ... }"
   | IdentMT !SigIdentifier -- "X_SIG"
   deriving (Show, Typeable, Generic)
 
 data Signature =
   UnitSig
-  | ValueSig Stochasticity Field Type Signature
-  | TypeSig Field (Bind (TyConName, Embed TypeSigDecl) Signature)
-  | SubmodelSig Field (Bind (Identifier, Embed ModelType) Signature)
+  | ValueSig !Stochasticity !Field !Type !Signature
+  | TypeSig !Field !(Bind (TyConName, Embed TypeSigDecl) Signature)
+  | SubmoduleSig !Field !(Bind (Identifier, Embed ModuleType) Signature)
     deriving (Show, Typeable, Generic)
 
 -- | A type declaration in a signature.
@@ -37,23 +38,23 @@ data TypeSigDecl =
   | AliasTypeSigDecl !TypeAlias
   deriving (Show, Typeable, Generic)
 
-instance Alpha ModelType
+instance Alpha ModuleType
 instance Alpha Signature
 instance Alpha TypeSigDecl
 
 instance Subst Path Signature
 instance Subst Path TypeSigDecl
-instance Subst Path ModelType
+instance Subst Path ModuleType
 
-instance Subst ValueConstructor ModelType
+instance Subst ValueConstructor ModuleType
 instance Subst ValueConstructor Signature
 instance Subst ValueConstructor TypeSigDecl
 
-instance Subst TypeConstructor ModelType
+instance Subst TypeConstructor ModuleType
 instance Subst TypeConstructor Signature
 instance Subst TypeConstructor TypeSigDecl
 
 -- model types do not have expressions in them.
-instance Subst Expr ModelType where
+instance Subst Expr ModuleType where
   subst _ _ = id
   substs _ = id

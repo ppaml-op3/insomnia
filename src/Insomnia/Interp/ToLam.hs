@@ -192,7 +192,7 @@ toplevelItem :: Translate m => I.ToplevelItem -> (DProgram -> m DProgram) -> m D
 toplevelItem it kont =
   case it of
   -- model types are just erased, they do not have runtime content
-   I.ToplevelModelType {} -> kont mempty
+   I.ToplevelModuleType {} -> kont mempty
   -- models translate to their constituent definitions.
    I.ToplevelModel ident me -> modelExpr (I.IdP ident) me False kont
 

@@ -12,8 +12,8 @@ import Insomnia.Identifier
 import Insomnia.Toplevel
 
 import Insomnia.Typecheck.Env
-import Insomnia.Typecheck.ModelType (checkModelType)
-import Insomnia.Typecheck.Selfify (selfifyModelType)
+import Insomnia.Typecheck.ModuleType (checkModuleType)
+import Insomnia.Typecheck.Selfify (selfifyModuleType)
 import Insomnia.Typecheck.ExtendModelCtx (extendModelCtx)
 import Insomnia.Typecheck.Model (inferModelExpr)
 
@@ -33,16 +33,16 @@ checkToplevelItem item kont =
     ToplevelModel modelIdent me ->
       let pmod = IdP modelIdent
       in inferModelExpr pmod me $ \me' msig -> do
-        selfSig <- selfifyModelType pmod msig
+        selfSig <- selfifyModuleType pmod msig
                    <??@ "while selfifying model " <> formatErr modelIdent
         extendModelSigCtx modelIdent msig
           $ extendModelCtx selfSig
           $ kont $ ToplevelModel modelIdent me'
           
-    ToplevelModelType modelTypeIdent modType -> do
-      (modType', msig) <- checkModelType modType
-                          <??@ ("while checking model type "
-                                <> formatErr modelTypeIdent)
-      extendModelTypeCtx modelTypeIdent msig
-        $ kont $ToplevelModelType modelTypeIdent modType'
+    ToplevelModuleType modTypeIdent modType -> do
+      (modType', msig, modK) <- checkModuleType modType
+                          <??@ ("while checking module type "
+                                <> formatErr modTypeIdent)
+      extendModuleTypeCtx modTypeIdent msig modK
+        $ kont $ ToplevelModuleType modTypeIdent modType'
         

@@ -27,6 +27,7 @@ library
                        --
                        Insomnia.Common.Literal
                        Insomnia.Common.Stochasticity
+                       Insomnia.Common.ModuleKind
                        --
                        Insomnia.Identifier
                        --
@@ -34,7 +35,7 @@ library
                        Insomnia.Expr
                        Insomnia.TypeDefn
                        --
-                       Insomnia.ModelType
+                       Insomnia.ModuleType
                        --
                        Insomnia.Model
                        --
@@ -51,12 +52,12 @@ library
                        --
                        Insomnia.Typecheck.SelfSig
                        Insomnia.Typecheck.ExtendModelCtx
-                       Insomnia.Typecheck.SigOfModelType
+                       Insomnia.Typecheck.SigOfModuleType
                        Insomnia.Typecheck.Selfify
                        Insomnia.Typecheck.ClarifySignature
                        --
                        Insomnia.Typecheck.TypeDefn
-                       Insomnia.Typecheck.ModelType
+                       Insomnia.Typecheck.ModuleType
                        --
                        Insomnia.Typecheck.Equiv.Types
                        Insomnia.Typecheck.Equiv.TypeDefn

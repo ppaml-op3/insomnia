@@ -41,7 +41,7 @@ toplevel :: Toplevel -> Toplevel
 toplevel (Toplevel items) = Toplevel $ map toplevelItem items
 
 toplevelItem :: ToplevelItem -> ToplevelItem
-toplevelItem t@(ToplevelModelType {}) = t
+toplevelItem t@(ToplevelModuleType {}) = t
 toplevelItem (ToplevelModel ident me) = ToplevelModel ident (modelExpr me)
 
 modelExpr :: ModelExpr -> ModelExpr

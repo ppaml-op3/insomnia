@@ -3,7 +3,7 @@
 module Insomnia.Toplevel where
 
 import Insomnia.Identifier
-import Insomnia.ModelType
+import Insomnia.ModuleType
 import Insomnia.Model
 
 -- | A toplevel contains a list of toplevel items.
@@ -17,5 +17,5 @@ newtype Toplevel = Toplevel [ToplevelItem]
 -- the binding of a model type name to a model type expression.
 data ToplevelItem =
   ToplevelModel Identifier ModelExpr
-  | ToplevelModelType SigIdentifier ModelType
+  | ToplevelModuleType SigIdentifier ModuleType
     deriving Show

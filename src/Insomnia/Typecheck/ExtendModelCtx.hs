@@ -7,7 +7,7 @@ import Control.Lens
 import Control.Monad.Reader.Class (MonadReader(..))
 
 import Insomnia.Types (TypeConstructor(..))
-import Insomnia.ModelType (TypeSigDecl(..))
+import Insomnia.ModuleType (TypeSigDecl(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
@@ -34,6 +34,6 @@ extendModelCtx (ValueSelfSig stoch qvar ty msig) =
 extendModelCtx (TypeSelfSig p tsd msig) =
   extendTypeSigDeclCtx (TCGlobal p) tsd
   . extendModelCtx msig
-extendModelCtx (SubmodelSelfSig _path subModSig msig) =
+extendModelCtx (SubmoduleSelfSig _path subModSig _modK msig) =
   extendModelCtx subModSig
   . extendModelCtx msig

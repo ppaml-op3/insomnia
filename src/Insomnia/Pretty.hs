@@ -18,12 +18,13 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Common.Literal
 import Insomnia.Common.Stochasticity
+import Insomnia.Common.ModuleKind
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr
 import Insomnia.TypeDefn
 import Insomnia.Model
-import Insomnia.ModelType
+import Insomnia.ModuleType
 import Insomnia.Toplevel
 import Insomnia.Unify
 
@@ -91,6 +92,10 @@ instance Pretty Literal where
 instance Pretty Stochasticity where
   pp DeterministicParam = "parameter"
   pp RandomVariable = mempty
+
+instance Pretty ModuleKind where
+  pp ModuleMK = "module"
+  pp ModelMK = "model"
 
 instance Pretty Pattern where
   pp WildcardP = "_"
@@ -370,8 +375,8 @@ ppModel ppName modelExpr =
 
 instance Pretty ToplevelItem where
   pp (ToplevelModel identifier model) = ppModel (pp identifier) model
-  pp (ToplevelModelType identifier modelType) =
-    fsep ["model", "type", pp identifier, pp modelType]
+  pp (ToplevelModuleType identifier moduleType) =
+    fsep ["model", "type", pp identifier, pp moduleType]
 
 instance Pretty ModelExpr where
   pp (ModelStruct model) = pp model
@@ -380,8 +385,8 @@ instance Pretty ModelExpr where
   pp (ModelAssume mtype) = fsep ["assume", nesting (pp mtype)]
   pp (ModelId modPath) = pp modPath
 
-instance Pretty ModelType where
-  pp (SigMT sig) = fsep ["{", nesting (pp sig), "}"]
+instance Pretty ModuleType where
+  pp (SigMT sig _mt) = fsep ["{", nesting (pp sig), "}"]
   pp (IdentMT ident) = pp ident
 
 instance Pretty Signature where
@@ -401,7 +406,7 @@ instance Pretty Signature where
            AliasTypeSigDecl a ->
              ppTypeAlias fld a)
        $$ pp sig
-  pp (SubmodelSig _fld bnd) =
+  pp (SubmoduleSig _fld bnd) =
     let ((mId, U.unembed -> mTy), sig) = UU.unsafeUnbind bnd
     in fsep ["model", pp mId, indent coloncolon (pp mTy)]
        $$ pp sig

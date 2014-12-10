@@ -1,6 +1,6 @@
 {-# LANGUAGE ViewPatterns #-}
 module Insomnia.Typecheck.Selfify
-       (selfifyModelType
+       (selfifyModuleType
        , selfifyTypeDefn
        ) where
 
@@ -15,23 +15,23 @@ import Insomnia.Expr (QVar(..))
 import Insomnia.TypeDefn (TypeDefn(..), ValConName,
                           ValConPath(..), ValueConstructor(..),
                           ConstructorDef(..))
-import Insomnia.ModelType (ModelType(..), Signature(..), TypeSigDecl(..))
+import Insomnia.ModuleType (ModuleType(..), Signature(..), TypeSigDecl(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
-import Insomnia.Typecheck.SigOfModelType (signatureOfModelType)
+import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
 
 -- | "Selfification" (c.f. TILT) is the process of adding to the current scope
 -- a type variable of singleton kind (ie, a module variable standing
 -- for a module expression) such that the module variable is given its principal
 -- kind (exposes maximal sharing).
-selfifyModelType :: Path -> Signature -> TC SelfSig
-selfifyModelType pmod msig_ =
+selfifyModuleType :: Path -> Signature -> TC SelfSig
+selfifyModuleType pmod msig_ =
   case msig_ of
     UnitSig -> return UnitSelfSig
     ValueSig stoch fld ty msig -> do
       let qvar = QVar pmod fld
-      selfSig <- selfifyModelType pmod msig
+      selfSig <- selfifyModuleType pmod msig
       return $ ValueSelfSig stoch qvar ty selfSig
     TypeSig fld bnd ->
       U.lunbind bnd $ \((tyId, U.unembed -> tsd), msig) -> do
@@ -44,16 +44,16 @@ selfifyModelType pmod msig_ =
           substTyCon = [(tyId, TCGlobal p)]
           tsd' = U.substs substTyCon $ U.substs substVCons tsd
           msig' = U.substs substTyCon $ U.substs substVCons msig
-      selfSig <- selfifyModelType pmod msig'
+      selfSig <- selfifyModuleType pmod msig'
       return $ TypeSelfSig p tsd' selfSig
-    SubmodelSig fld bnd ->
+    SubmoduleSig fld bnd ->
       U.lunbind bnd $ \((modId, U.unembed -> modTy), msig) -> do
         let p = ProjP pmod fld
-        modSig <- signatureOfModelType modTy
-        modSelfSig' <- selfifyModelType p modSig
+        (modSig, modK) <- signatureOfModuleType modTy
+        modSelfSig' <- selfifyModuleType p modSig
         let msig' = U.subst modId p msig
-        selfSig' <- selfifyModelType pmod msig'
-        return $ SubmodelSelfSig p modSelfSig' selfSig'
+        selfSig' <- selfifyModuleType pmod msig'
+        return $ SubmoduleSelfSig p modSelfSig' modK selfSig'
 
 selfSigToSignature :: SelfSig -> TC Signature
 selfSigToSignature UnitSelfSig = return UnitSig
@@ -65,13 +65,13 @@ selfSigToSignature (TypeSelfSig typePath tsd selfSig) = do
   freshId <- U.lfresh (U.s2n fieldName)
   sig <- selfSigToSignature selfSig
   return $ TypeSig fieldName (U.bind (freshId, U.embed tsd) sig)
-selfSigToSignature (SubmodelSelfSig path subSelfSig selfSig) = do
+selfSigToSignature (SubmoduleSelfSig path subSelfSig modK selfSig) = do
   let fieldName = lastOfPath path
   freshId <- U.lfresh (U.s2n fieldName)
   subSig <- selfSigToSignature subSelfSig
   sig <- selfSigToSignature selfSig
-  let subModTy = SigMT subSig
-  return $ SubmodelSig fieldName (U.bind (freshId, U.embed subModTy) sig)
+  let subModTy = SigMT subSig modK
+  return $ SubmoduleSig fieldName (U.bind (freshId, U.embed subModTy) sig)
 
 selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(ValConName, ValueConstructor)]
 selfifyTypeSigDecl pmod tsd =
