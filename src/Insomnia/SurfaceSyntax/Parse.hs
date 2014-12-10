@@ -245,7 +245,7 @@ valueSig =
 
 stochasticity :: Parser Stochasticity
 stochasticity =
-  (reserved "parameter" *> pure DeterministicParam)
+  (try (reserved "parameter") *> pure DeterministicParam)
   <|> pure RandomVariable
 
 typeSig :: Parser SigDecl
@@ -340,8 +340,9 @@ fixityDecl = uncurry FixityDecl <$> fixity
 valueDecl :: Parser Decl
 valueDecl =
   mkValueDecl <$> ((funDecl <?> "function definition")
-                 <|> (valueSigDecl <?> "function signature")
-                 <|> (valOrSampleDecl <?> "defined or sampled value"))
+                   <|> (valueSigDecl <?> "function signature")
+                   <|> (valOrSampleDecl <?> "defined or sampled value")
+                   <|> (parameterDecl <?> "parameter definition"))
   where
     mkValueDecl (fld, d) = ValueDecl fld d
 
@@ -395,12 +396,21 @@ mkLams ((v, mty):vs) e = Lam v mty (mkLams vs e)
 valueSigDecl :: Parser (Ident, ValueDecl)
 valueSigDecl =
   mkSigDecl
-  <$> stochasticity
-  <*> (reserved "sig" *> variableOrPrefixInfixIdentifier)
+  <$> try (stochasticity <* reserved "sig")
+  <*> variableOrPrefixInfixIdentifier
   <* classify
   <*> typeExpr
   where
     mkSigDecl stoch f ty = (f, SigDecl stoch ty)
+
+parameterDecl :: Parser (Ident, ValueDecl)
+parameterDecl =
+  mkParameterDecl
+  <$> try (reserved "parameter" *> variableOrPrefixInfixIdentifier)
+  <* reservedOp "="
+  <*> expr
+  where
+    mkParameterDecl f e = (f, ParameterDecl e)
 
 valOrSampleDecl :: Parser (Ident, ValueDecl)
 valOrSampleDecl =

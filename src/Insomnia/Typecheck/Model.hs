@@ -117,6 +117,7 @@ naturalSignature = go . modelDecls
         ValueDecl _fld (FunDecl {}) -> kont
         ValueDecl _fld (ValDecl {}) -> kont
         ValueDecl _fld (SampleDecl {}) -> kont
+        ValueDecl _fld (ParameterDecl {}) -> kont
         ValueDecl fld (SigDecl stoch ty) -> do
           sig' <- kont
           return (ValueSig stoch fld ty sig')
@@ -207,6 +208,11 @@ checkValueDecl fld qlf vd =
       ensureNoDefn qlf
       let v = (U.s2n fld :: Var)
       U.avoid [U.AnyName v] $ checkSampleDecl fld msig e
+    ParameterDecl e -> do
+      msig <- lookupGlobal qlf
+      ensureNoDefn qlf
+      let v = (U.s2n fld :: Var)
+      U.avoid [U.AnyName v] $ checkParameterDecl fld msig e
 
 checkSigDecl :: Stochasticity -> Type -> TC ValueDecl
 checkSigDecl stoch t = do
@@ -280,6 +286,20 @@ checkSampleDecl fld msig e = do
     UFail err -> typeError ("when checking " <> formatErr fld
                             <> formatErr err)
 
+checkParameterDecl :: Field -> Maybe (Type, Stochasticity) -> Expr -> TC ValueDecl
+checkParameterDecl fld msig e = do
+  mapM_ (ensureParameter fld . snd) msig
+  res <- solveUnification $ do
+    tu <- freshUVarT
+    case msig of
+     Just (ty,_) -> tu =?= ty
+     Nothing -> return ()
+    checkExpr e tu
+  case res of
+   UOkay e' -> return $ ParameterDecl e'
+   UFail err -> typeError ("when checking " <> formatErr fld
+                           <> formatErr err)
+
 -- | Given a type ∀ α1∷K1 ⋯ αN∷KN . τ, freshen αᵢ and add them to the
 -- local type context in the given continuation which is passed
 -- τ[αfresh/α]
@@ -340,6 +360,7 @@ extendValueDeclCtx pmod fld vd =
     FunDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
     ValDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
     SampleDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
+    ParameterDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
 
 -- | @extendSigDecl fld qvar ty decls checkRest@ adds the global
 -- binding of @qvar@ to type @ty@, and replaces any free appearances

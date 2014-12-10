@@ -33,6 +33,7 @@ valueDecl (ValDecl e) = SampleDecl (expr e)
 valueDecl vd@(FunDecl {}) = vd
 valueDecl vd@(SampleDecl {}) = vd
 valueDecl vd@(SigDecl {}) = vd
+valueDecl vd@(ParameterDecl {}) = vd
 
 -- the rest are plumbing.
 

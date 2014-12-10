@@ -63,6 +63,12 @@ enum T 10
 
 sig thinksRain :: T -> Prelude.Bool
 
+parameter sig pointOne :: Real
+parameter pointOne = 0.1
+
+parameter sig pointNine :: Real
+parameter pointNine = 0.9
+
 -- fun thinksRain t = let {
 --    forall (x :: T) in
 --      g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
@@ -73,7 +79,7 @@ sig thinksRain :: T -> Prelude.Bool
 -- table once.
 val thinksRain = let
   forall (x :: T) in
-    g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
+    g x ~ Prelude.cond raining (Prelude.flip pointNine) (Prelude.flip pointOne)
   in g
 
 
