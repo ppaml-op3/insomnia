@@ -62,7 +62,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
                      "infix", "infixr", "infixl",
                      "assume",
                      "data", "type", "enum",
-                     "parameter",
+                     "parameter", "random",
                      "val", "fun", "sig",
                      "let", "in", "case", "of",
                      "return",
@@ -238,16 +238,18 @@ submodelSig =
 valueSig :: Parser SigDecl
 valueSig =
   ValueSig
-  <$> stochasticity
+  <$> optStochasticity
   <*> (reserved "sig" *> variableOrPrefixInfixIdentifier)
   <* classify
   <*> typeExpr
 
 
-stochasticity :: Parser Stochasticity
-stochasticity =
-  (try (reserved "parameter") *> pure DeterministicParam)
-  <|> pure RandomVariable
+optStochasticity :: Parser (Maybe Stochasticity)
+optStochasticity =
+  ((try (reserved "parameter") *> pure (Just DeterministicParam))
+   <|> (try (reserved "random") *> pure (Just RandomVariable))
+   <|> pure Nothing
+  ) <?> "'parameter' or 'random' (or infer from context)"
 
 typeSig :: Parser SigDecl
 typeSig =
@@ -397,7 +399,7 @@ mkLams ((v, mty):vs) e = Lam v mty (mkLams vs e)
 valueSigDecl :: Parser (Ident, ValueDecl)
 valueSigDecl =
   mkSigDecl
-  <$> try (stochasticity <* reserved "sig")
+  <$> try (optStochasticity <* reserved "sig")
   <*> variableOrPrefixInfixIdentifier
   <* classify
   <*> typeExpr
@@ -411,13 +413,13 @@ parameterDecl =
   <* reservedOp "="
   <*> expr
   where
-    mkParameterDecl f e = (f, ParameterDecl e)
+    mkParameterDecl f e = (f, ValDecl (Just DeterministicParam) e)
 
 valOrSampleDecl :: Parser (Ident, ValueDecl)
 valOrSampleDecl =
   mkValOrSampleDecl
   <$> (reserved "val" *> variableOrPrefixInfixIdentifier)
-  <*> ((pure ValDecl <* reservedOp "=")
+  <*> ((pure (ValDecl Nothing) <* reservedOp "=")
        <|> (pure SampleDecl <* reservedOp "~"))
   <*> expr
   where

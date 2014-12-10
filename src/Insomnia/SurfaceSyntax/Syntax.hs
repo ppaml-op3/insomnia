@@ -57,7 +57,7 @@ data ModuleType =
 data Signature = Sig ![SigDecl]
                deriving (Show)
 
-data SigDecl = ValueSig !Stochasticity !Ident !Type
+data SigDecl = ValueSig !(Maybe Stochasticity) !Ident !Type
              | FixitySig !Ident !Fixity
              | TypeSig !Ident !TypeSigDecl
              | SubmoduleSig !Ident !ModuleType
@@ -97,10 +97,10 @@ data Decl = ValueDecl !Ident !ValueDecl
 
 data ValueDecl =
   FunDecl !Expr
-  | ParameterDecl !Expr
-  | ValDecl !Expr
+  -- parameters, random variables, or "figure it out from context"
+  | ValDecl !(Maybe Stochasticity) !Expr
   | SampleDecl !Expr
-  | SigDecl !Stochasticity !Type
+  | SigDecl !(Maybe Stochasticity) !Type
   deriving (Show)
 
 data Kind = KType | KArr !Kind !Kind

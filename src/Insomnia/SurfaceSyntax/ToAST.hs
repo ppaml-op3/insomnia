@@ -18,6 +18,8 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 
 import Insomnia.Common.Literal
+import Insomnia.Common.ModuleKind
+import Insomnia.Common.Stochasticity
 import qualified Insomnia.Identifier  as I
 import qualified Insomnia.Expr        as I
 import qualified Insomnia.Types       as I
@@ -41,6 +43,7 @@ data ValIdInfo =
 
 data Ctx = Ctx {_tyIdInfo :: M.Map Con TyIdInfo
                   , _valIdInfo :: M.Map QualifiedIdent ValIdInfo
+                  , _defaultStochasticity :: Stochasticity
                   }
             deriving (Show)
 
@@ -84,6 +87,7 @@ toAST = runToAST baseCtx . toplevel
                    , (Con $ QId [] "Real", TyConII Nothing)
                    ])
                   M.empty
+                  DeterministicParam
 
 
 runToAST :: Ctx -> TA a -> a
@@ -170,6 +174,16 @@ askValConstructors =
       justConOps _                        = Nothing
   in views valIdInfo (M.mapKeysMonotonic Con . M.mapMaybe justConOps)
 
+contextualStochasticity :: Maybe Stochasticity -> TA Stochasticity
+contextualStochasticity (Just stoch) = return stoch
+contextualStochasticity Nothing = view defaultStochasticity
+
+localStochasticityForModule :: ModuleKind -> TA a -> TA a
+localStochasticityForModule modK =
+  local (defaultStochasticity .~ case modK of
+                                  ModuleMK -> DeterministicParam
+                                  ModelMK -> RandomVariable)
+
 toplevel :: Toplevel -> TA I.Toplevel
 toplevel (Toplevel items) = I.Toplevel <$> mapM toplevelItem items
 
@@ -202,11 +216,12 @@ typeField ident = return (ident, U.s2n ident)
 
 
 moduleType :: ModuleType -> TA I.ModuleType
-moduleType (SigMT sig mk) = I.SigMT <$> signature sig <*> pure mk
+moduleType (SigMT sig modK) =
+  I.SigMT <$> localStochasticityForModule modK (signature sig) <*> pure modK
 moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
 modelExpr :: ModelExpr -> TA I.ModelExpr
-modelExpr (ModelStruct mdl) = I.ModelStruct <$> model mdl
+modelExpr (ModelStruct mdl) = I.ModelStruct <$> localStochasticityForModule ModelMK (model mdl)
 modelExpr (ModelSeal me mt) =
   I.ModelSeal <$> modelExpr me <*> moduleType mt
 modelExpr (ModelAssume mt) =
@@ -218,7 +233,8 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
   where
     go decl kont =
       case decl of
-       ValueSig stoch ident ty -> do
+       ValueSig mstoch ident ty -> do
+         stoch <- contextualStochasticity mstoch
          f <- valueField ident
          ty' <- type' ty
          rest <- kont
@@ -342,10 +358,15 @@ row (Row lts) = I.Row <$> mapM labeledType lts
 
 valueDecl :: ValueDecl -> TA I.ValueDecl
 valueDecl (FunDecl e) = I.FunDecl <$> expr e
-valueDecl (ParameterDecl e) = I.ParameterDecl <$> expr e
-valueDecl (ValDecl e) = I.ValDecl <$> expr e
+valueDecl (ValDecl mstoch e) = do
+  stoch <- contextualStochasticity mstoch
+  case stoch of
+   RandomVariable -> I.ValDecl <$> expr e
+   DeterministicParam -> I.ParameterDecl <$> expr e
 valueDecl (SampleDecl e) = I.SampleDecl <$> expr e
-valueDecl (SigDecl stoch ty) = I.SigDecl stoch <$> type' ty
+valueDecl (SigDecl mstoch ty) = do
+  stoch <- contextualStochasticity mstoch
+  I.SigDecl stoch <$> type' ty
 
 annot :: Maybe Type -> TA I.Annot
 annot Nothing = return $ I.Annot Nothing
