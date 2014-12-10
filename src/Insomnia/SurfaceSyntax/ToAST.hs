@@ -24,8 +24,8 @@ import qualified Insomnia.Identifier  as I
 import qualified Insomnia.Expr        as I
 import qualified Insomnia.Types       as I
 import qualified Insomnia.TypeDefn    as I
-import qualified Insomnia.ModuleType   as I
-import qualified Insomnia.Model       as I
+import qualified Insomnia.ModuleType  as I
+import qualified Insomnia.Module      as I
 import qualified Insomnia.Toplevel    as I
 
 import Insomnia.SurfaceSyntax.Syntax
@@ -43,7 +43,7 @@ data ValIdInfo =
 
 data Ctx = Ctx {_tyIdInfo :: M.Map Con TyIdInfo
                   , _valIdInfo :: M.Map QualifiedIdent ValIdInfo
-                  , _defaultStochasticity :: Stochasticity
+                  , _currentModuleKind :: ModuleKind
                   }
             deriving (Show)
 
@@ -87,7 +87,7 @@ toAST = runToAST baseCtx . toplevel
                    , (Con $ QId [] "Real", TyConII Nothing)
                    ])
                   M.empty
-                  DeterministicParam
+                  ModuleMK
 
 
 runToAST :: Ctx -> TA a -> a
@@ -174,28 +174,27 @@ askValConstructors =
       justConOps _                        = Nothing
   in views valIdInfo (M.mapKeysMonotonic Con . M.mapMaybe justConOps)
 
+stochasticityForModule :: ModuleKind -> Stochasticity
+stochasticityForModule ModuleMK = DeterministicParam
+stochasticityForModule ModelMK = RandomVariable
+
 contextualStochasticity :: Maybe Stochasticity -> TA Stochasticity
 contextualStochasticity (Just stoch) = return stoch
-contextualStochasticity Nothing = view defaultStochasticity
-
-localStochasticityForModule :: ModuleKind -> TA a -> TA a
-localStochasticityForModule modK =
-  local (defaultStochasticity .~ case modK of
-                                  ModuleMK -> DeterministicParam
-                                  ModelMK -> RandomVariable)
+contextualStochasticity Nothing =
+  views currentModuleKind stochasticityForModule
 
 toplevel :: Toplevel -> TA I.Toplevel
 toplevel (Toplevel items) = I.Toplevel <$> mapM toplevelItem items
 
 toplevelItem :: ToplevelItem -> TA I.ToplevelItem
-toplevelItem (ToplevelModel ident mmt me) = do
+toplevelItem (ToplevelModule modK ident mmt me) = do
   ident' <- identifier ident
-  me' <- modelExpr me
+  me' <- local (currentModuleKind .~ modK) (moduleExpr me)
   case mmt of
    Just mt -> do
      mt' <- moduleType mt
-     return $ I.ToplevelModel ident' (I.ModelSeal me' mt')
-   Nothing -> return $ I.ToplevelModel ident' me'
+     return $ I.ToplevelModule ident' (I.ModuleSeal me' mt')
+   Nothing -> return $ I.ToplevelModule ident' me'
 toplevelItem (ToplevelModuleType ident mt) =
   I.ToplevelModuleType <$> sigIdentifier ident <*> moduleType mt
 
@@ -208,8 +207,8 @@ sigIdentifier s = return $ U.s2n s
 valueField :: Ident -> TA I.Field
 valueField ident = return ident
 
-modelField :: Ident -> TA (I.Field, I.Identifier)
-modelField ident = return (ident, U.s2n ident)
+moduleField :: Ident -> TA (I.Field, I.Identifier)
+moduleField ident = return (ident, U.s2n ident)
 
 typeField :: Ident -> TA (I.Field, I.TyConName)
 typeField ident = return (ident, U.s2n ident)
@@ -217,16 +216,18 @@ typeField ident = return (ident, U.s2n ident)
 
 moduleType :: ModuleType -> TA I.ModuleType
 moduleType (SigMT sig modK) =
-  I.SigMT <$> localStochasticityForModule modK (signature sig) <*> pure modK
+  I.SigMT <$> local (currentModuleKind .~ modK) (signature sig) <*> pure modK
 moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
-modelExpr :: ModelExpr -> TA I.ModelExpr
-modelExpr (ModelStruct mdl) = I.ModelStruct <$> localStochasticityForModule ModelMK (model mdl)
-modelExpr (ModelSeal me mt) =
-  I.ModelSeal <$> modelExpr me <*> moduleType mt
-modelExpr (ModelAssume mt) =
-  I.ModelAssume <$> moduleType mt
-modelExpr (ModelId qid) = return $ I.ModelId (qualifiedIdPath qid)
+moduleExpr :: ModuleExpr -> TA I.ModuleExpr
+moduleExpr (ModuleStruct mdl) = do
+  modK <- view currentModuleKind
+  I.ModuleStruct <$> module' mdl <*> pure modK
+moduleExpr (ModuleSeal me mt) =
+  I.ModuleSeal <$> moduleExpr me <*> moduleType mt
+moduleExpr (ModuleAssume mt) =
+  I.ModuleAssume <$> moduleType mt
+moduleExpr (ModuleId qid) = return $ I.ModuleId (qualifiedIdPath qid)
 
 signature :: Signature -> TA I.Signature
 signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
@@ -248,13 +249,13 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
          rest <- withTyCon con Nothing $ kont
          return $ I.TypeSig f (U.bind (tycon, U.embed tsd') rest)
        SubmoduleSig ident mt -> do
-         (f, ident') <- modelField ident
+         (f, ident') <- moduleField ident
          mt' <- moduleType mt
          rest <- kont
          return $ I.SubmoduleSig f (U.bind (ident', U.embed mt') rest)
 
-model :: Model -> TA I.Model
-model (Model decls) = I.Model <$> foldr go (return []) decls
+module' :: Module -> TA I.Module
+module' (Module decls) = I.Module <$> foldr go (return []) decls
   where
     go decl kont =
       case decl of
@@ -277,11 +278,11 @@ model (Model decls) = I.Model <$> foldr go (return []) decls
          return (I.TypeAliasDefn f alias' : rest)
        FixityDecl ident fixity ->
          updateWithFixity ident fixity $ kont
-       SubmodelDefn ident me -> do
-         (f, _) <- modelField ident
-         me' <- modelExpr me
+       SubmoduleDefn ident modK me -> do
+         (f, _) <- moduleField ident
+         me' <- local (currentModuleKind .~ modK) (moduleExpr me)
          rest <- kont
-         return (I.SubmodelDefn f me' : rest)
+         return (I.SubmoduleDefn f me' : rest)
 
 typeSigDecl :: TypeSigDecl -> TA I.TypeSigDecl
 typeSigDecl (AbstractTypeSigDecl k) = I.AbstractTypeSigDecl <$> kind k

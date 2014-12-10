@@ -36,15 +36,15 @@ data Toplevel = Toplevel ![ToplevelItem]
               deriving (Show)
 
 data ToplevelItem =
-  ToplevelModel !Ident !(Maybe ModuleType) !ModelExpr
+  ToplevelModule !ModuleKind !Ident !(Maybe ModuleType) !ModuleExpr
   | ToplevelModuleType !Ident !ModuleType
     deriving (Show)
 
-data ModelExpr =
-  ModelStruct !Model
-  | ModelSeal !ModelExpr !ModuleType
-  | ModelAssume !ModuleType
-  | ModelId !QualifiedIdent
+data ModuleExpr =
+  ModuleStruct !Module
+  | ModuleSeal !ModuleExpr !ModuleType
+  | ModuleAssume !ModuleType
+  | ModuleId !QualifiedIdent
     deriving (Show)
              
 data ModuleType =
@@ -85,13 +85,13 @@ data DataDefn = DataDefn ![KindedTVar] ![ConstructorDef]
 data ConstructorDef = ConstructorDef !Ident ![Type]
                     deriving (Show)
 
-data Model = Model ![Decl]
+data Module = Module ![Decl]
            deriving (Show)
 
 data Decl = ValueDecl !Ident !ValueDecl
           | TypeDefn !Ident !TypeDefn
           | TypeAliasDefn !Ident !TypeAlias
-          | SubmodelDefn !Ident !ModelExpr
+          | SubmoduleDefn !Ident !ModuleKind !ModuleExpr
           | FixityDecl !Ident !Fixity
           deriving (Show)
 

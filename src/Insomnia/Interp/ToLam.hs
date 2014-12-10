@@ -18,7 +18,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 -- "I"nput language
 import qualified Insomnia.Toplevel as I
 import qualified Insomnia.Identifier as I
-import qualified Insomnia.Model as I
+import qualified Insomnia.Module as I
 import qualified Insomnia.TypeDefn as I
 import qualified Insomnia.Expr as I
 
@@ -47,7 +47,7 @@ foldlMapCont f0 f = foldr g f0
 type Old a = a
 
 data TranslationState = TranslationState {
-  _tstModels :: M.Map I.Path (Either I.Path I.Model) -- either an alias or a definition
+  _tstModules :: M.Map I.Path (Either I.Path I.Module) -- either an alias or a definition
   , _tstQVarNames :: M.Map I.QVar O.Var
   , _tstLocalNames :: M.Map I.Var O.Var
   , _tstConInfo :: M.Map I.ValConPath (O.ConId, Int)
@@ -56,8 +56,8 @@ data TranslationState = TranslationState {
 $(makeLenses ''TranslationState)
 
 class (U.Fresh m) => Translate m where
-  recallModel :: I.Path -> m (Either I.Path I.Model)
-  rememberModel :: I.Path -> (Either I.Path I.Model) -> m a -> m a
+  recallModule :: I.Path -> m (Either I.Path I.Module)
+  rememberModule :: I.Path -> (Either I.Path I.Module) -> m a -> m a
   -- generate the name in the output language corresponding to the given field,
   -- or return the previously generated such name, if available.
   named :: I.QVar -> (O.Var -> m a) -> m a
@@ -76,13 +76,13 @@ class LocalTranslate m where
 type TranslationMonad = StateT TranslationState U.FreshM
 
 instance Translate (StateT TranslationState U.FreshM) where
-  recallModel modPath = do
-    mans <- use (tstModels . at modPath)
+  recallModule modPath = do
+    mans <- use (tstModules . at modPath)
     case mans of
      Just ans -> return ans
-     Nothing -> fail ("internal error: expected to find model with name " ++ show modPath)
-  rememberModel modPath mdl kont = do
-    (tstModels . at modPath) ?= mdl
+     Nothing -> fail ("internal error: expected to find module with name " ++ show modPath)
+  rememberModule modPath mdl kont = do
+    (tstModules . at modPath) ?= mdl
     kont
   reexposeNamed oldQV newQV = do
     named oldQV $ \x -> do
@@ -119,10 +119,10 @@ instance Translate (StateT TranslationState U.FreshM) where
     tstConInfo . at c ?= info
 
 instance Translate m => Translate (ReaderT r m) where
-  recallModel = lift . recallModel
-  rememberModel p m c = do
+  recallModule = lift . recallModule
+  rememberModule p m c = do
     r <- ask
-    lift (rememberModel p m (runReaderT c r))
+    lift (rememberModule p m (runReaderT c r))
   named q c = do
     r <- ask
     lift (named q (\q' -> runReaderT (c q') r))
@@ -191,23 +191,23 @@ toplevel (I.Toplevel its_) = do
 toplevelItem :: Translate m => I.ToplevelItem -> (DProgram -> m DProgram) -> m DProgram
 toplevelItem it kont =
   case it of
-  -- model types are just erased, they do not have runtime content
+  -- module types are just erased, they do not have runtime content
    I.ToplevelModuleType {} -> kont mempty
-  -- models translate to their constituent definitions.
-   I.ToplevelModel ident me -> modelExpr (I.IdP ident) me False kont
+  -- modules translate to their constituent definitions.
+   I.ToplevelModule ident me -> moduleExpr (I.IdP ident) me False kont
 
-modelExpr :: Translate m
+moduleExpr :: Translate m
              => I.Path
-             -> I.ModelExpr
+             -> I.ModuleExpr
              -> Bool -- ^ generate new definitions?
              -> (DProgram -> m DProgram)
              -> m DProgram
-modelExpr modPath me isGenerative kont =
+moduleExpr modPath me isGenerative kont =
   case me of
-   I.ModelId oldPath -> do
-     mdlOrAlias <- recallModel oldPath
+   I.ModuleId oldPath -> do
+     mdlOrAlias <- recallModule oldPath
      case mdlOrAlias of
-      Left alias -> modelExpr modPath (I.ModelId alias) isGenerative kont
+      Left alias -> moduleExpr modPath (I.ModuleId alias) isGenerative kont
       Right mdl -> if not isGenerative
                    then
                       -- just an alias for existing definitions.  Call
@@ -217,30 +217,30 @@ modelExpr modPath me isGenerative kont =
                      reexpose mdl oldPath modPath kont
                    else
                      -- generative construction; emit new definitions
-                     -- for a new copy of the model.
-                     model modPath mdl kont
-   I.ModelAssume {} -> kont mempty -- should expose some names here?
-   I.ModelSeal me' _mt ->
+                     -- for a new copy of the module.
+                     module' modPath mdl kont
+   I.ModuleAssume {} -> kont mempty -- should expose some names here?
+   I.ModuleSeal me' _mt ->
      -- sealing is generative.  We want new copies now.
-     modelExpr modPath me' True kont
-   I.ModelStruct mdl ->
-     model modPath mdl kont
+     moduleExpr modPath me' True kont
+   I.ModuleStruct mdl _modK ->
+     module' modPath mdl kont
 
--- | given an existing model and its path, and a new path, expose all
--- the contents of the old model using the new names.  This is the
+-- | given an existing module and its path, and a new path, expose all
+-- the contents of the old module using the new names.  This is the
 -- non-generative case.  We are just mapping additional input language
 -- names to the same output language values.
 reexpose :: Translate m
-            => Old I.Model
+            => Old I.Module
             -> Old I.Path
             -> I.Path
             -> (DProgram -> m DProgram)
             -> m DProgram
-reexpose (I.Model decls) oldPath newPath =
+reexpose (I.Module decls) oldPath newPath =
   foldlMapCont
   (\kont ->
     -- in the continuation, remember that the new path is an alias for the old path
-    rememberModel newPath (Left oldPath) $ kont mempty)
+    rememberModule newPath (Left oldPath) $ kont mempty)
   (reexposeDecl oldPath newPath)
   decls
 
@@ -257,32 +257,32 @@ reexposeDecl oldPath newPath d_ kont =
      kont mempty
    I.TypeDefn {} -> error "unimplemented translation to reexpose a TypeDefn (in particular, value constructors)"
    I.TypeAliasDefn {} -> kont mempty
-   I.SubmodelDefn f _me -> do
+   I.SubmoduleDefn f _me -> do
      let oldSubpath = I.ProjP oldPath f
          newSubpath = I.ProjP newPath f
-     mans <- recallModel oldSubpath
+     mans <- recallModule oldSubpath
      -- if the old subpath was itself an alias, continue with that alias
-     -- otherwise, reexpose the submodel that the old subpath maps to.
+     -- otherwise, reexpose the submodule that the old subpath maps to.
      case mans of
-      Left alias -> modelExpr newSubpath (I.ModelId alias) False kont
+      Left alias -> moduleExpr newSubpath (I.ModuleId alias) False kont
       Right mdl -> reexpose mdl oldSubpath newSubpath kont
 
--- | given a model and a new path, expose all the contents of the
--- model using the new names.  This is the generative case.  If the
--- model has side effects, or generates new data type definitions,
+-- | given a module and a new path, expose all the contents of the
+-- module using the new names.  This is the generative case.  If the
+-- module has side effects, or generates new data type definitions,
 -- they will be present in the output language program at the current
 -- point in the translation.
-model :: Translate m
+module' :: Translate m
          => I.Path
-         -> I.Model
+         -> I.Module
          -> (DProgram -> m DProgram)
          -> m DProgram
-model modPath mdl@(I.Model decls_) = 
+module' modPath mdl@(I.Module decls_) = 
   foldlMapCont
   (\kont ->
     -- in translating the rest of the input program, remember that the
-    -- current path refers to the model we started with.
-    rememberModel modPath (Right mdl) $ kont mempty)
+    -- current path refers to the module we started with.
+    rememberModule modPath (Right mdl) $ kont mempty)
   (decl modPath)
   decls_
 
@@ -296,8 +296,8 @@ decl modPath d_ kont = do
    I.ValueDecl f vd -> valueDecl modPath f vd kont
    I.TypeDefn f td -> typeDefn modPath f td kont
    I.TypeAliasDefn {} -> kont mempty
-   I.SubmodelDefn f me ->
-     modelExpr (I.ProjP modPath f) me False kont
+   I.SubmoduleDefn f me ->
+     moduleExpr (I.ProjP modPath f) me False kont
 
 typeDefn :: Translate m
             => I.Path

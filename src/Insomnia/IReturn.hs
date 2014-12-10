@@ -17,7 +17,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Expr
 import Insomnia.Toplevel
-import Insomnia.Model
+import Insomnia.Module
 
 -- this is the meat of the transformation.
 
@@ -42,17 +42,17 @@ toplevel (Toplevel items) = Toplevel $ map toplevelItem items
 
 toplevelItem :: ToplevelItem -> ToplevelItem
 toplevelItem t@(ToplevelModuleType {}) = t
-toplevelItem (ToplevelModel ident me) = ToplevelModel ident (modelExpr me)
+toplevelItem (ToplevelModule ident me) = ToplevelModule ident (moduleExpr me)
 
-modelExpr :: ModelExpr -> ModelExpr
-modelExpr (ModelStruct mdl) = ModelStruct (model mdl)
-modelExpr me = me
+moduleExpr :: ModuleExpr -> ModuleExpr
+moduleExpr (ModuleStruct mdl modK) = ModuleStruct (module' mdl) modK
+moduleExpr me = me
 
-model :: Model -> Model
-model (Model ds) = Model (map decl ds)
+module' :: Module -> Module
+module' (Module ds) = Module (map decl ds)
 
 decl :: Decl -> Decl
 decl (ValueDecl f vd) = ValueDecl f (valueDecl vd)
-decl (SubmodelDefn f me) = SubmodelDefn f (modelExpr me)
+decl (SubmoduleDefn f me) = SubmoduleDefn f (moduleExpr me)
 decl d = d
 

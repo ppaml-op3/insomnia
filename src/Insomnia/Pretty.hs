@@ -23,7 +23,7 @@ import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr
 import Insomnia.TypeDefn
-import Insomnia.Model
+import Insomnia.Module
 import Insomnia.ModuleType
 import Insomnia.Toplevel
 import Insomnia.Unify
@@ -94,8 +94,8 @@ instance Pretty Stochasticity where
   pp RandomVariable = "random"
 
 instance Pretty ModuleKind where
-  pp ModuleMK = "module"
   pp ModelMK = "model"
+  pp ModuleMK = "module"
 
 instance Pretty Pattern where
   pp WildcardP = "_"
@@ -291,15 +291,15 @@ instance Pretty Decl where
   pp (TypeDefn c td) = ppTypeDefn c td
   pp (ValueDecl f vd) = ppValueDecl f vd
   pp (TypeAliasDefn f a) = ppTypeAlias f a
-  pp (SubmodelDefn f m) = ppModel (pp f) m
+  pp (SubmoduleDefn f m) = ppModule (pp f) m
 
 instance Pretty (PrettyShort Decl) where
   pp (PrettyShort (TypeDefn c td)) = ppShortTypeDefn c td
   pp (PrettyShort (ValueDecl f vd)) = ppShortValueDecl f vd
   pp (PrettyShort (TypeAliasDefn f _a)) =
     "type" <+> pp f <+> "=" <+> elipsis
-  pp (PrettyShort (SubmodelDefn f _m)) =
-    "model" <+> pp f <+> "=" <+> elipsis
+  pp (PrettyShort (SubmoduleDefn f _m)) =
+    "module" <+> pp f <+> "=" <+> elipsis
     
 instance Pretty (PrettyField TypeDefn) where
   pp (PrettyField fld defn) = ppTypeDefn fld defn
@@ -352,8 +352,8 @@ ppValSampleDecl :: PM Doc -> Field -> Expr -> PM Doc
 ppValSampleDecl sym v e =
   "val" <+> pp v <+> indent sym (pp e)
 
-instance Pretty Model where
-  pp (Model decls) =
+instance Pretty Module where
+  pp (Module decls) =
     fsep ["{"
          , vcat $ map (nesting . pp) decls
          , "}"]
@@ -362,31 +362,31 @@ instance Pretty Toplevel where
   pp (Toplevel items) =
     vcat $ punctuate "\n" $ map pp items
 
-ppModel :: PM Doc -> ModelExpr -> PM Doc
-ppModel ppName modelExpr =
-  case modelExpr of
-    ModelSeal modelExpr'@(ModelStruct {}) modelSig ->
-      fsep ["model", ppName
-           , indent coloncolon (pp modelSig)
-           , nesting (pp modelExpr')
+ppModule :: PM Doc -> ModuleExpr -> PM Doc
+ppModule ppName moduleExpr =
+  case moduleExpr of
+    ModuleSeal moduleExpr'@(ModuleStruct {}) moduleSig ->
+      fsep ["module", ppName
+           , indent coloncolon (pp moduleSig)
+           , nesting (pp moduleExpr')
            ]
     _ ->
-      fsep ["model", ppName, indent "=" (pp modelExpr)]
+      fsep ["module", ppName, indent "=" (pp moduleExpr)]
 
 instance Pretty ToplevelItem where
-  pp (ToplevelModel identifier model) = ppModel (pp identifier) model
+  pp (ToplevelModule identifier mdl) = ppModule (pp identifier) mdl
   pp (ToplevelModuleType identifier moduleType) =
-    fsep ["model", "type", pp identifier, pp moduleType]
+    fsep ["module", "type", pp identifier, pp moduleType]
 
-instance Pretty ModelExpr where
-  pp (ModelStruct model) = pp model
-  pp (ModelSeal model modelSig) =
-    parens (fsep [pp model, indent coloncolon (pp modelSig)])
-  pp (ModelAssume mtype) = fsep ["assume", nesting (pp mtype)]
-  pp (ModelId modPath) = pp modPath
+instance Pretty ModuleExpr where
+  pp (ModuleStruct mdl modK) = pp modK <> pp mdl
+  pp (ModuleSeal mdl moduleSig) =
+    parens (fsep [pp mdl, indent coloncolon (pp moduleSig)])
+  pp (ModuleAssume mtype) = fsep ["assume", nesting (pp mtype)]
+  pp (ModuleId modPath) = pp modPath
 
 instance Pretty ModuleType where
-  pp (SigMT sig _mt) = fsep ["{", nesting (pp sig), "}"]
+  pp (SigMT sig modK) = fsep [pp modK, "{", nesting (pp sig), "}"]
   pp (IdentMT ident) = pp ident
 
 instance Pretty Signature where
@@ -408,7 +408,7 @@ instance Pretty Signature where
        $$ pp sig
   pp (SubmoduleSig _fld bnd) =
     let ((mId, U.unembed -> mTy), sig) = UU.unsafeUnbind bnd
-    in fsep ["model", pp mId, indent coloncolon (pp mTy)]
+    in fsep ["module", pp mId, indent coloncolon (pp mTy)]
        $$ pp sig
         
 instance Pretty (UVar a) where

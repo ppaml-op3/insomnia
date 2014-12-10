@@ -37,7 +37,7 @@ library
                        --
                        Insomnia.ModuleType
                        --
-                       Insomnia.Model
+                       Insomnia.Module
                        --
                        Insomnia.Toplevel
                        --
@@ -51,7 +51,7 @@ library
                        Insomnia.Typecheck.Expr
                        --
                        Insomnia.Typecheck.SelfSig
-                       Insomnia.Typecheck.ExtendModelCtx
+                       Insomnia.Typecheck.ExtendModuleCtx
                        Insomnia.Typecheck.SigOfModuleType
                        Insomnia.Typecheck.Selfify
                        Insomnia.Typecheck.ClarifySignature
@@ -65,7 +65,7 @@ library
                        --
                        Insomnia.Typecheck.MayAscribe
                        --
-                       Insomnia.Typecheck.Model
+                       Insomnia.Typecheck.Module
                        Insomnia.Typecheck
                        --
                        Insomnia.Interp.Lam

@@ -198,18 +198,26 @@ toplevel = Toplevel <$> (whiteSpace *> (localIndentation Any $ many (absoluteInd
 
 toplevelItem :: Parser ToplevelItem
 toplevelItem =
-  (toplevelModel <?> "toplevel model definition")
-  <|> (toplevelModuleType <?> "toplevel model type definition")
+  (toplevelModule <?> "toplevel module or model definition")
+  <|> (toplevelModuleType <?> "toplevel module or model type definition")
 
-toplevelModel :: Parser ToplevelItem
-toplevelModel =
-  ToplevelModel
-  <$> (try (reserved "model" *> modelIdentifier))
+toplevelModule :: Parser ToplevelItem
+toplevelModule =
+  mkToplevelModule
+  <$> (try kindAndId)
   <*> optional (classify *> (IdentMT <$> moduleTypeIdentifier))
-  <*> ((reservedOp "=" *> modelExpr)
-       <|> literalModelShorthand)
+  <*> ((reservedOp "=" *> moduleExpr)
+       <|> literalModuleShorthand)
   where
-    literalModelShorthand = modelLiteral
+    kindAndId = ((,) <$> moduleKind <*> modelIdentifier)
+    literalModuleShorthand = moduleLiteral
+    mkToplevelModule (modK, modId) = ToplevelModule modK modId
+
+moduleKind :: Parser ModuleKind
+moduleKind =
+  ((reserved "model" *> pure ModelMK )
+   <|> (reserved "module" *> pure ModuleMK))
+  <?> "module kind"
 
 toplevelModuleType :: Parser ToplevelItem
 toplevelModuleType =
@@ -308,26 +316,26 @@ modelTypeExpr =
   <|> (SigMT <$> braces signature <*> pure ModelMK <?> "model signature in braces")
 
 
-modelLiteral :: Parser ModelExpr
-modelLiteral =
-  (ModelStruct . Model) <$> braces (localIndentation Ge $ many $ absoluteIndentation decl)
+moduleLiteral :: Parser ModuleExpr
+moduleLiteral =
+  (ModuleStruct . Module) <$> braces (localIndentation Ge $ many $ absoluteIndentation decl)
 
-modelExpr :: Parser ModelExpr
-modelExpr =
-  (modelLiteral <?> "braced model definition")
-  <|> (modelAssume <?> "model postulate (\"assume\")")
-  <|> (nestedModel <?> "model sealed with a signature")
-  <|> (modelPath <?> "qualified model name")
+moduleExpr :: Parser ModuleExpr
+moduleExpr =
+  (moduleLiteral <?> "braced module definition")
+  <|> (moduleAssume <?> "module postulate (\"assume\")")
+  <|> (nestedModule <?> "module sealed with a signature")
+  <|> (modulePath <?> "qualified module name")
   where
-    modelAssume =  (ModelAssume . IdentMT)
-                   <$> (reserved "assume" *> moduleTypeIdentifier)
-    nestedModel = parens (mkNestedModelExpr
-                          <$> modelExpr
-                          <*> optional (classify *> modelTypeExpr))
-    modelPath = ModelId <$> modelId
+    moduleAssume =  (ModuleAssume . IdentMT)
+                    <$> (reserved "assume" *> moduleTypeIdentifier)
+    nestedModule = parens (mkNestedModuleExpr
+                           <$> moduleExpr
+                           <*> optional (classify *> modelTypeExpr))
+    modulePath = ModuleId <$> modelId
 
-    mkNestedModelExpr modExpr Nothing = modExpr
-    mkNestedModelExpr modExpr (Just modTy) = ModelSeal modExpr modTy
+    mkNestedModuleExpr modExpr Nothing = modExpr
+    mkNestedModuleExpr modExpr (Just modTy) = ModuleSeal modExpr modTy
 
 
 decl :: Parser Decl
@@ -335,7 +343,7 @@ decl = (valueDecl <?> "value declaration")
        <|> (fixityDecl <?> "fixity declaration")
        <|> (typeDefn <?> "type definition")
        <|> (typeAliasDefn <?> "type alias definition")
-       <|> (modelDefn <?> "submodel definition")
+       <|> (moduleDefn <?> "submodule definition")
 
 fixityDecl :: Parser Decl
 fixityDecl = uncurry FixityDecl <$> fixity
@@ -368,18 +376,19 @@ typeAliasDefn =
       TypeAliasDefn fld (TypeAlias tyvars ty)
 
 
-modelDefn :: Parser Decl
-modelDefn =
-  mkModelDefn <$> (reserved "model" *> modelIdentifier)
+moduleDefn :: Parser Decl
+moduleDefn =
+  mkModuleDefn <$> moduleKind
+  <*> modelIdentifier
   <*> optional (classify *> moduleTypeIdentifier)
-  <*> modelExpr
+  <*> moduleExpr
   where
-    mkModelDefn modIdent maybeSigId content =
+    mkModuleDefn modK modIdent maybeSigId content =
       let
         m = case maybeSigId of
           Nothing -> content
-          Just msigId -> ModelSeal content (IdentMT msigId)
-      in SubmodelDefn modIdent m
+          Just msigId -> ModuleSeal content (IdentMT msigId)
+      in SubmoduleDefn modIdent modK m
 
 funDecl :: Parser (Ident, ValueDecl)
 funDecl =
@@ -388,7 +397,7 @@ funDecl =
   <*> (some annVar)
   <*> (reservedOp "=" *> expr)
   where
-    mkFunDecl f xs e =(f, FunDecl (mkLams xs e))
+    mkFunDecl f xs e = (f, FunDecl (mkLams xs e))
 
 -- | Make a sequence of nested lambdas
 mkLams :: [(Ident, Maybe Type)] -> Expr -> Expr

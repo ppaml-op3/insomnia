@@ -3,7 +3,7 @@
       ViewPatterns,
       DeriveDataTypeable, DeriveGeneric
   #-}
-module Insomnia.Model where
+module Insomnia.Module where
 
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
@@ -16,17 +16,18 @@ import Insomnia.TypeDefn
 import Insomnia.ModuleType
 
 import Insomnia.Common.Stochasticity
+import Insomnia.Common.ModuleKind
 import Insomnia.Expr (Expr)
 
-data ModelExpr =
-  ModelStruct !Model -- model specified here
-  | ModelSeal !ModelExpr !ModuleType -- generative sealing
-  | ModelAssume !ModuleType    -- model assumed to exist.
-  | ModelId !Path       -- previously named model
+data ModuleExpr =
+  ModuleStruct !Module !ModuleKind -- module specified here
+  | ModuleSeal !ModuleExpr !ModuleType -- generative sealing
+  | ModuleAssume !ModuleType    -- module assumed to exist.
+  | ModuleId !Path       -- previously named module
   deriving (Show, Typeable, Generic)
 
--- A single model.
-data Model = Model { modelDecls :: [Decl] }
+-- A single module.
+data Module = Module { moduleDecls :: [Decl] }
               deriving (Show, Typeable, Generic)
 
 -- | A declaration
@@ -34,7 +35,7 @@ data Decl =
   ValueDecl !Field !ValueDecl -- ^ declaration of a value
   | TypeDefn !Field !TypeDefn   -- ^ generative construction of new types
   | TypeAliasDefn !Field !TypeAlias -- ^ a type alias definition
-  | SubmodelDefn !Field !ModelExpr -- ^ a nested module definition
+  | SubmoduleDefn !Field !ModuleExpr -- ^ a nested module definition
   deriving (Show, Typeable, Generic)
 
 data ValueDecl =
@@ -45,27 +46,27 @@ data ValueDecl =
   | SigDecl !Stochasticity !Type   -- ^ a function signature "[parameter] sig f :: A -> B"
   deriving (Show, Typeable, Generic)
 
-instance Alpha ModelExpr
-instance Alpha Model
+instance Alpha ModuleExpr
+instance Alpha Module
 instance Alpha Decl
 instance Alpha ValueDecl
 
-instance Subst Path ModelExpr
-instance Subst Path Model
+instance Subst Path ModuleExpr
+instance Subst Path Module
 instance Subst Path Decl
 instance Subst Path ValueDecl
 
-instance Subst TypeConstructor ModelExpr
-instance Subst TypeConstructor Model
+instance Subst TypeConstructor ModuleExpr
+instance Subst TypeConstructor Module
 instance Subst TypeConstructor Decl
 instance Subst TypeConstructor ValueDecl
 
-instance Subst ValueConstructor ModelExpr
-instance Subst ValueConstructor Model
+instance Subst ValueConstructor ModuleExpr
+instance Subst ValueConstructor Module
 instance Subst ValueConstructor Decl
 instance Subst ValueConstructor ValueDecl
 
-instance Subst Expr ModelExpr
-instance Subst Expr Model
+instance Subst Expr ModuleExpr
+instance Subst Expr Module
 instance Subst Expr Decl
 instance Subst Expr ValueDecl

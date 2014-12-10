@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
--- | Typecheck "model type" and "module type" expressions.
+-- | Typecheck "module type" and "module type" expressions.
 module Insomnia.Typecheck.ModuleType where
 
 import qualified Unbound.Generics.LocallyNameless as U
@@ -16,11 +16,11 @@ import Insomnia.ModuleType
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType)
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
-import Insomnia.Typecheck.ExtendModelCtx (extendTypeSigDeclCtx, extendModelCtx)
+import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtx)
 import Insomnia.Typecheck.Selfify (selfifyModuleType)
 
--- | Check that the given model type expression is well-formed, and
--- return both the model type expression and the signature that it
+-- | Check that the given module type expression is well-formed, and
+-- return both the module type expression and the signature that it
 -- "evaluates" to.
 checkModuleType :: ModuleType -> TC (ModuleType, Signature, ModuleKind)
 checkModuleType (SigMT msig modK) = do
@@ -39,9 +39,9 @@ compatibleModuleStochasticity _ _ = True
 
 -- | @compatibleSubmodule mod1 mod2@ returns True iff a submodule of
 -- kind @mod2@ can appear inside a @mod1@.  Modules may not appear
--- inside models.  All other combos okay.
+-- inside modules.  All other combos okay.
 compatibleSubmodule :: ModuleKind -> ModuleKind -> Bool
-compatibleSubmodule ModelMK ModuleMK = False
+compatibleSubmodule ModuleMK ModuleMK = False
 compatibleSubmodule _ _ = True
 
 checkSignature :: Maybe Path -> ModuleKind -> Signature -> TC Signature
@@ -79,7 +79,7 @@ checkSignature mpath_ modK = flip (checkSignature' mpath_) ensureNoDuplicateFiel
                      <> formatErr submodK <> " " <> formatErr modPath)
         selfSig <- selfifyModuleType modPath modSig
         let sig' = U.subst modIdent modPath sig
-        extendModelCtx selfSig
+        extendModuleCtx selfSig
           $ checkSignature' mpath sig' $ \(sig'', flds) ->
           kont (SubmoduleSig fld $ U.bind (modIdent, U.embed modTy') sig''
                 , fld:flds)

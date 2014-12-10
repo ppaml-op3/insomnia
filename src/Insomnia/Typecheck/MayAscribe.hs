@@ -17,7 +17,7 @@ import Insomnia.ModuleType (ModuleType, Signature(..), TypeSigDecl(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
-import Insomnia.Typecheck.ExtendModelCtx (extendTypeSigDeclCtx, extendModelCtx)
+import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtx)
 import Insomnia.Typecheck.Selfify (selfifyModuleType, )
 
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
@@ -26,12 +26,12 @@ import Insomnia.Typecheck.Equiv.TypeDefn (equivTypeDefn)
 import Insomnia.Typecheck.Equiv.TypeAlias (equivTypeAlias)
 
 -- | TODO: @msig1 `mayAscribe` msig2@ succeeds if it is okay to
--- ascribe @msig2@ to any model whose type is @msig1@.  That is,
+-- ascribe @msig2@ to any module whose type is @msig1@.  That is,
 -- @msig2@ is more general than @msig1@.  Returns the second
 -- signature.
 mayAscribe :: Signature -> Signature -> TC Signature
 mayAscribe msig1 msig2 = do
-  modId <- U.lfresh (U.s2n "<unnamed model>")
+  modId <- U.lfresh (U.s2n "<unnamed module>")
   checkSignature (IdP modId) (TailPreSig msig1) msig2
   return msig2
 
@@ -119,12 +119,12 @@ checkValueFieldTail pmod stoch2 fld ty msig1 =
       matchValueField (stoch2, fld, ty) (stoch1, fld', ty')
       $ checkValueFieldTail pmod stoch2 fld ty mrest1
     SubmoduleSig fld' bnd ->
-      U.lunbind bnd $ \((ident1, U.unembed -> modelTy), mrest1_) -> do
+      U.lunbind bnd $ \((ident1, U.unembed -> moduleTy), mrest1_) -> do
         let pdefn = ProjP pmod fld'
             mrest1 = U.subst ident1 pdefn mrest1_
-        (subSig, _modK) <- signatureOfModuleType modelTy
+        (subSig, _modK) <- signatureOfModuleType moduleTy
         subSelf <- selfifyModuleType pdefn subSig
-        extendModelCtx subSelf $
+        extendModuleCtx subSelf $
           checkValueFieldTail pmod stoch2 fld ty mrest1
     TypeSig fld' bnd ->
       U.lunbind bnd $ \((tycon1, U.unembed -> tsd_), mrest1_) -> do
@@ -183,12 +183,12 @@ checkTypeFieldTail pmod fld bnd msig1 kont =
     ValueSig stoch1 fld' ty' mrest1 ->
       checkTypeFieldTail pmod fld bnd mrest1 (kont . ValuePreSig stoch1 fld' ty')
     SubmoduleSig fld' bnd' ->
-      U.lunbind bnd' $ \((ident1, U.unembed -> modelTy), mrest1_) -> do
-        (subSig, modK) <- signatureOfModuleType modelTy
+      U.lunbind bnd' $ \((ident1, U.unembed -> moduleTy), mrest1_) -> do
+        (subSig, modK) <- signatureOfModuleType moduleTy
         let pSubmod = ProjP pmod fld'
         selfSig <- selfifyModuleType pSubmod subSig
         let mrest1 = U.subst ident1 pSubmod mrest1_
-        extendModelCtx selfSig $
+        extendModuleCtx selfSig $
           checkTypeFieldTail pmod fld bnd mrest1 (kont . SubmodulePreSig fld' subSig modK)
     TypeSig fld' bnd' ->
       if fld /= fld'
@@ -320,17 +320,17 @@ checkSubmoduleField pmod fld bnd msig1 kont =
       else
         -- found a match.
         -- check that such a module can be ascribed the given signature.
-        U.lunbind bnd $ \((ident2, U.unembed -> modelTy2), mrest2_) -> do
-          (sig2, modK2) <- signatureOfModuleType modelTy2
+        U.lunbind bnd $ \((ident2, U.unembed -> moduleTy2), mrest2_) -> do
+          (sig2, modK2) <- signatureOfModuleType moduleTy2
           let pSubmod = ProjP pmod fld
           unless (modK1 == modK2) $
             typeError ("The sub-" <> formatErr modK1 <> " " <> formatErr pSubmod
                        <> " cannot be ascribed a "
                        <> formatErr modK2 <>" signature")
           checkSignature pSubmod (TailPreSig sig1) sig2
-          -- when mrest2 talks about this submodel, it should actually
+          -- when mrest2 talks about this submodule, it should actually
           -- talk about the selfified version from sig1 which is just
-          -- the projection of this submodel field from the current
+          -- the projection of this submodule field from the current
           -- path.
           let mrest2 = U.subst ident2 pSubmod mrest2_
           kont (SubmodulePreSig fld' sig1 modK1 mrest1) mrest2
@@ -359,13 +359,13 @@ checkSubmoduleFieldTail pmod fld bnd msig1 kont =
           checkSubmoduleFieldTail pmod fld bnd mrest1 $ \mrest1' ->
           kont (TypePreSig fld' tsd mrest1')
     SubmoduleSig fld' bnd' ->
-      {- model type M_SIG1 {
-           model M :: { ... (1) }
+      {- module type M_SIG1 {
+           module M :: { ... (1) }
            ... (3)
          }
 
-         model type M_SIG2 {
-           model M' :: { ... (2) }
+         module type M_SIG2 {
+           module M' :: { ... (2) }
            ... (4)
          }
 
@@ -379,22 +379,22 @@ checkSubmoduleFieldTail pmod fld bnd msig1 kont =
          and go on checking (3) against (4).
       -}
       if fld /= fld'
-      then U.lunbind bnd' $ \((ident1, U.unembed -> modelTy1), mrest1_) -> do
-        (sig1, modK1) <- signatureOfModuleType modelTy1
+      then U.lunbind bnd' $ \((ident1, U.unembed -> moduleTy1), mrest1_) -> do
+        (sig1, modK1) <- signatureOfModuleType moduleTy1
         let pSubmod = ProjP pmod fld'
         selfSig1 <- selfifyModuleType pSubmod sig1
         let mrest1 = U.subst ident1 pSubmod mrest1_
-        extendModelCtx selfSig1 $
+        extendModuleCtx selfSig1 $
           checkSubmoduleFieldTail pmod fld bnd mrest1 $ \mrest1' ->
           kont (SubmodulePreSig fld' sig1 modK1 mrest1')
       else U.lunbind2 bnd bnd' $ \res ->
       case res of
-        Nothing -> fail ("checkSubmodelField internal error. "
+        Nothing -> fail ("checkSubmoduleField internal error. "
                          <> " Did not expect lunbind2 to return Nothing")
-        Just ((ident2, U.unembed -> modelTy2), mrest2_,
-              (ident1, U.unembed -> modelTy1), mrest1_) -> do
-          (sig1, modK1) <- signatureOfModuleType modelTy1
-          (sig2, modK2) <- signatureOfModuleType modelTy2
+        Just ((ident2, U.unembed -> moduleTy2), mrest2_,
+              (ident1, U.unembed -> moduleTy1), mrest1_) -> do
+          (sig1, modK1) <- signatureOfModuleType moduleTy1
+          (sig2, modK2) <- signatureOfModuleType moduleTy2
           let pSubmod = ProjP pmod fld
           unless (modK1 == modK2) $
             typeError ("The sub-" <> formatErr modK1 <> " " <> formatErr pSubmod
@@ -406,5 +406,5 @@ checkSubmoduleFieldTail pmod fld bnd msig1 kont =
           let
             mrest1 = U.subst ident1 pSubmod mrest1_
             mrest2 = U.subst ident2 pSubmod mrest2_
-          extendModelCtx selfSig1 $
+          extendModuleCtx selfSig1 $
             kont (SubmodulePreSig fld' sig1 modK1 (TailPreSig mrest1)) mrest2

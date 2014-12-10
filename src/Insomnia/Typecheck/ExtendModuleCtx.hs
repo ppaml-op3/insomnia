@@ -1,6 +1,6 @@
-module Insomnia.Typecheck.ExtendModelCtx (
+module Insomnia.Typecheck.ExtendModuleCtx (
   extendTypeSigDeclCtx
-  , extendModelCtx
+  , extendModuleCtx
   ) where
 
 import Control.Lens
@@ -24,16 +24,16 @@ extendTypeSigDeclCtx dcon tsd = do
 -- | Given a (selfified) signature, add all of its fields to the context
 -- by prefixing them with the given path - presumably the path of this
 -- very module.
-extendModelCtx :: SelfSig -> TC a -> TC a
-extendModelCtx UnitSelfSig = id
-extendModelCtx (ValueSelfSig stoch qvar ty msig) =
-  -- TODO: if we are modeling joint distributions, does it ever make
-  -- sense to talk about value components of other models?
+extendModuleCtx :: SelfSig -> TC a -> TC a
+extendModuleCtx UnitSelfSig = id
+extendModuleCtx (ValueSelfSig stoch qvar ty msig) =
+  -- TODO: if we are moduleing joint distributions, does it ever make
+  -- sense to talk about value components of other modules?
   local (envGlobals . at qvar ?~ (ty, stoch))
-  . extendModelCtx msig
-extendModelCtx (TypeSelfSig p tsd msig) =
+  . extendModuleCtx msig
+extendModuleCtx (TypeSelfSig p tsd msig) =
   extendTypeSigDeclCtx (TCGlobal p) tsd
-  . extendModelCtx msig
-extendModelCtx (SubmoduleSelfSig _path subModSig _modK msig) =
-  extendModelCtx subModSig
-  . extendModelCtx msig
+  . extendModuleCtx msig
+extendModuleCtx (SubmoduleSelfSig _path subModSig _modK msig) =
+  extendModuleCtx subModSig
+  . extendModuleCtx msig
