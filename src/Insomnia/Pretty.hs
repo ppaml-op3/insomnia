@@ -91,7 +91,7 @@ instance Pretty Literal where
 
 instance Pretty Stochasticity where
   pp DeterministicParam = "parameter"
-  pp RandomVariable = mempty
+  pp RandomVariable = "random"
 
 instance Pretty ModuleKind where
   pp ModuleMK = "module"

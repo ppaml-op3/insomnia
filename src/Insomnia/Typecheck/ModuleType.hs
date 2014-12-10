@@ -4,6 +4,10 @@ module Insomnia.Typecheck.ModuleType where
 
 import qualified Unbound.Generics.LocallyNameless as U
 
+import Control.Monad (unless)
+import Data.Monoid ((<>))
+
+import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
 import Insomnia.Identifier (Field, Path(..))
 import Insomnia.Types (TypeConstructor(..), Kind(..))
@@ -20,14 +24,28 @@ import Insomnia.Typecheck.Selfify (selfifyModuleType)
 -- "evaluates" to.
 checkModuleType :: ModuleType -> TC (ModuleType, Signature, ModuleKind)
 checkModuleType (SigMT msig modK) = do
-  msig' <- checkSignature Nothing msig
+  msig' <- checkSignature Nothing modK msig
   return (SigMT msig' modK, msig', modK)
 checkModuleType (IdentMT ident) = do
   (msig, modK) <- lookupModuleType ident
   return (IdentMT ident, msig, modK)
 
-checkSignature :: Maybe Path -> Signature -> TC Signature
-checkSignature mpath_ = flip (checkSignature' mpath_) ensureNoDuplicateFields
+-- | Returns True iff a value signature with the given stochasticity
+-- appears in a module type with the given type.  Random variables are
+-- illegal in modules.  All other combos okay.
+compatibleModuleStochasticity :: ModuleKind -> Stochasticity -> Bool
+compatibleModuleStochasticity ModuleMK RandomVariable = False
+compatibleModuleStochasticity _ _ = True
+
+-- | @compatibleSubmodule mod1 mod2@ returns True iff a submodule of
+-- kind @mod2@ can appear inside a @mod1@.  Modules may not appear
+-- inside models.  All other combos okay.
+compatibleSubmodule :: ModuleKind -> ModuleKind -> Bool
+compatibleSubmodule ModelMK ModuleMK = False
+compatibleSubmodule _ _ = True
+
+checkSignature :: Maybe Path -> ModuleKind -> Signature -> TC Signature
+checkSignature mpath_ modK = flip (checkSignature' mpath_) ensureNoDuplicateFields
   where
     -- TODO: actually check that the field names are unique.
     ensureNoDuplicateFields :: (Signature, [Field]) -> TC Signature
@@ -39,6 +57,9 @@ checkSignature mpath_ = flip (checkSignature' mpath_) ensureNoDuplicateFields
     checkSignature' _mpath UnitSig kont = kont (UnitSig, [])
     checkSignature' mpath (ValueSig stoch fld ty sig) kont = do
         ty' <- checkType ty KType
+        unless (compatibleModuleStochasticity modK stoch) $ do
+          typeError (formatErr modK <> " signature may not contain a "
+                     <> formatErr stoch <> " variable " <> formatErr fld)
         checkSignature' mpath sig $ \(sig', flds) ->
           kont (ValueSig stoch fld ty' sig', fld:flds)
     checkSignature' mpath (TypeSig fld bnd) kont =
@@ -52,7 +73,10 @@ checkSignature mpath_ = flip (checkSignature' mpath_) ensureNoDuplicateFields
     checkSignature' mpath (SubmoduleSig fld bnd) kont =
       U.lunbind bnd $ \((modIdent, U.unembed -> modTy), sig) -> do
         let modPath = mpathAppend mpath fld
-        (modTy', modSig, modK) <- checkModuleType modTy
+        (modTy', modSig, submodK) <- checkModuleType modTy
+        unless (compatibleSubmodule modK submodK) $ do
+          typeError (formatErr modK <> " signature may not contain a sub-"
+                     <> formatErr submodK <> " " <> formatErr modPath)
         selfSig <- selfifyModuleType modPath modSig
         let sig' = U.subst modIdent modPath sig
         extendModelCtx selfSig
