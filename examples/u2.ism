@@ -9,7 +9,7 @@ model type PRELUDE {
 
   data List (a ∷ ⋆) = Nil | Cons a (List a)
 
-  sig (:) :: ∀ (a ∷ ⋆) . a -> List a -> List a
+  parameter sig (:) :: ∀ (a ∷ ⋆) . a -> List a -> List a
   
 
   model S :: {
@@ -17,15 +17,15 @@ model type PRELUDE {
      type W = S2.T
   }
 
-  sig cond :: forall (d :: *) . Bool -> d -> d -> d
+  parameter sig cond :: forall (d :: *) . Bool -> d -> d -> d
 
   data Proxy (a :: *) = Proxy
-  sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
-  sig flip :: Real -> Dist Bool
+  parameter sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
+  parameter sig flip :: Real -> Dist Bool
 
   type H = S.W -> Int
 
-  sig foo :: S.W -> S.S2.T
+  parameter sig foo :: S.W -> S.S2.T
 }
 
 model Prelude :: PRELUDE {
@@ -41,7 +41,7 @@ model Prelude :: PRELUDE {
 
    type Bool2 = Bool
 
-   sig (&&) :: Bool -> Bool -> Bool
+   parameter sig (&&) :: Bool -> Bool -> Bool
    fun (&&) b1 b2 =
      case b1 of
        { True -> b2
@@ -52,7 +52,7 @@ model Prelude :: PRELUDE {
 
    data List (a ∷ ⋆) = Nil | Cons a (List a)
 
-   sig (:) :: ∀ (a ∷ ⋆) . a -> List a -> List a
+   parameter sig (:) :: ∀ (a ∷ ⋆) . a -> List a -> List a
    fun (:) x xs = Cons x xs
 
    infixr : 6
@@ -60,14 +60,14 @@ model Prelude :: PRELUDE {
    sig l1 :: List Int
    val l1 = (3 : 4 : Nil)
 
-   sig map :: ∀ (a :: *) (b :: *) . (a -> b) -> List a -> List b
+   parameter sig map :: ∀ (a :: *) (b :: *) . (a -> b) -> List a -> List b
    fun map f xs =
      case xs of
      { Nil -> Nil
      ; (Cons y ys) -> f y : map f ys
      }
 
-   sig cond :: forall (c :: *) . Bool -> c -> c -> c
+   parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
    fun cond b t f =
        case b of
        {
@@ -77,12 +77,12 @@ model Prelude :: PRELUDE {
 
    data Proxy (a :: *) = Proxy
 
-   sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
-   sig flip :: Real -> Dist Bool
+   parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
+   parameter sig flip :: Real -> Dist Bool
 
    type H = S.W -> S.S2.T
 
-   sig foo :: S.W -> S.S2.T
+   parameter sig foo :: S.W -> S.S2.T
    fun foo x = x
 }
 
@@ -93,7 +93,7 @@ model Raining {
 sig raining :: Prelude.Bool2
 val raining ~ (Prelude.uniform Prelude.Proxy)
 
-sig bar :: Prelude.S.S2.T -> Prelude.S.W
+parameter sig bar :: Prelude.S.S2.T -> Prelude.S.W
 fun bar x = Prelude.foo x
 
 enum T 10

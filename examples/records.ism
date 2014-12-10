@@ -2,20 +2,20 @@
 model type DIST_PARAMS {
   type NormalParams = { μ :: Real ; σ :: Real }
 
-  sig normal :: NormalParams -> Dist Real
+  parameter sig normal :: NormalParams -> Dist Real
 }
 
 model DistParams :: DIST_PARAMS {
    type NormalParams = { μ :: Real ; σ :: Real }
 
-   sig normal :: NormalParams -> Dist Real
+   parameter sig normal :: NormalParams -> Dist Real
 }
 
 model N {
   sig h :: Real
   val h ~ DistParams.normal { μ = 1.0, σ = 1.0 }
 
-  sig (.+) :: Real -> Real -> Real
+  parameter sig (.+) :: Real -> Real -> Real
 
   infixl .+ 6
 

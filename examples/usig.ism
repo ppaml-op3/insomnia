@@ -1,4 +1,5 @@
 
 model type Raining {
+  data Bool = True | False
   sig isRaining :: Bool
 }

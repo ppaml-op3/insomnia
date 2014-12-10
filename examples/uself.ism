@@ -1,7 +1,7 @@
 model type T {
   type T :: *
   sig x :: T
-  sig f :: T -> Real
+  parameter sig f :: T -> Real
 }
 
 model M1 :: T {
@@ -10,7 +10,7 @@ model M1 :: T {
   sig x :: T
   val x = T
 
-  sig f :: T -> Real
+  parameter sig f :: T -> Real
   fun f t =
     case t of
     { T -> 1.0
