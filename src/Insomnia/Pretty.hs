@@ -265,7 +265,9 @@ ppCollapseLam lam mavs dot e_ =
     _ -> do
       let
         avs = appEndo mavs []
-      lam <+> fsep (map ppAnnVar avs) <+> indent dot (pp e_)
+      fsep [lam,
+            nesting $ fsep (map ppAnnVar avs),
+            indent dot (pp e_)]
 
 ppDataDefn :: Field -> DataDefn -> PM Doc
 ppDataDefn d bnd =
