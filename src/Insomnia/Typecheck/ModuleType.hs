@@ -38,10 +38,10 @@ compatibleModuleStochasticity ModuleMK RandomVariable = False
 compatibleModuleStochasticity _ _ = True
 
 -- | @compatibleSubmodule mod1 mod2@ returns True iff a submodule of
--- kind @mod2@ can appear inside a @mod1@.  Modules may not appear
--- inside modules.  All other combos okay.
+-- kind @mod2@ can appear inside a @mod1@.  Models may not appear
+-- inside models.  All other combos okay.
 compatibleSubmodule :: ModuleKind -> ModuleKind -> Bool
-compatibleSubmodule ModuleMK ModuleMK = False
+compatibleSubmodule ModelMK ModelMK = False
 compatibleSubmodule _ _ = True
 
 checkSignature :: Maybe Path -> ModuleKind -> Signature -> TC Signature
