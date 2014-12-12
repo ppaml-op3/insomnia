@@ -1,30 +1,30 @@
-model type PRELUDE {
-  parameter sig (+) :: Int -> Int -> Int
+module type PRELUDE {
+  sig (+) :: Int -> Int -> Int
   infixl + 6
 
-  parameter sig (.+) :: Real -> Real -> Real
+  sig (.+) :: Real -> Real -> Real
   infixl .+ 6
 
   data Bool = True | False
 
-  parameter sig cond :: ∀ (c :: *) . Bool -> c -> c -> c
+  sig cond :: ∀ (c :: *) . Bool -> c -> c -> c
 
   data List (a :: *) = Nil | Cons a (List a)
 
-  parameter sig map :: ∀ (a :: *) (b :: *) . (a -> b) -> List a -> List b
+  sig map :: ∀ (a :: *) (b :: *) . (a -> b) -> List a -> List b
 }
 
-model Prelude :: PRELUDE {
+module Prelude :: PRELUDE {
 
-  parameter sig (+) :: Int -> Int -> Int
+  sig (+) :: Int -> Int -> Int
   infixl + 6
 
-  parameter sig (.+) :: Real -> Real -> Real
+  sig (.+) :: Real -> Real -> Real
   infixl .+ 6
 
   data Bool = True | False
 
-  parameter sig cond :: ∀ (c :: *) . Bool -> c -> c -> c
+  sig cond :: ∀ (c :: *) . Bool -> c -> c -> c
   fun cond b t f =
     case b of
     { True -> t
@@ -33,7 +33,7 @@ model Prelude :: PRELUDE {
 
   data List (a :: *) = Nil | Cons a (List a)
 
-  parameter sig map :: ∀ (a :: *) (b :: *) . (a -> b) -> List a -> List b
+  sig map :: ∀ (a :: *) (b :: *) . (a -> b) -> List a -> List b
   fun map f xs = case xs of
    (Cons y ys) -> Cons (f y) (map f ys)
    Nil -> Nil

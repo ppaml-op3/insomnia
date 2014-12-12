@@ -221,9 +221,12 @@ moduleKind =
 
 toplevelModuleType :: Parser ToplevelItem
 toplevelModuleType =
-  ToplevelModuleType
-  <$> (try (reserved "model" *> reserved "type" *> moduleTypeIdentifier))
-  <*> braces (SigMT <$> signature <*> pure ModelMK)
+  mkToplevelModuleType
+  <$> (try ((,) <$> moduleKind <* reserved "type" <*> moduleTypeIdentifier))
+  <*> braces signature
+  where
+    mkToplevelModuleType (modK, ident) sig =
+      ToplevelModuleType modK ident (SigMT sig)
 
 signature :: Parser Signature
 signature =
@@ -238,10 +241,14 @@ sigDecl =
 
 submodelSig :: Parser SigDecl
 submodelSig =
-  SubmoduleSig
-  <$> (reserved "model" *> modelIdentifier)
+  mkSubmoduleSig
+  <$> moduleKind
+  <*> modelIdentifier
   <* classify
   <*> modelTypeExpr
+  where
+    mkSubmoduleSig modK modId modTyExp =
+      SubmoduleSig modId modTyExp modK 
 
 valueSig :: Parser SigDecl
 valueSig =
@@ -312,8 +319,8 @@ fixity =
 
 modelTypeExpr :: Parser ModuleType
 modelTypeExpr =
-  (IdentMT <$> moduleTypeIdentifier <?> "model type identifier")
-  <|> (SigMT <$> braces signature <*> pure ModelMK <?> "model signature in braces")
+  (IdentMT <$> moduleTypeIdentifier <?> "module type identifier")
+  <|> (SigMT <$> braces signature <?> "module signature in braces")
 
 
 moduleLiteral :: Parser ModuleExpr

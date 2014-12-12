@@ -37,7 +37,7 @@ data Toplevel = Toplevel ![ToplevelItem]
 
 data ToplevelItem =
   ToplevelModule !ModuleKind !Ident !(Maybe ModuleType) !ModuleExpr
-  | ToplevelModuleType !Ident !ModuleType
+  | ToplevelModuleType !ModuleKind !Ident !ModuleType
     deriving (Show)
 
 data ModuleExpr =
@@ -48,7 +48,7 @@ data ModuleExpr =
     deriving (Show)
              
 data ModuleType =
-  SigMT !Signature !ModuleKind
+  SigMT !Signature
   | IdentMT !Ident
     deriving (Show)
 
@@ -60,7 +60,7 @@ data Signature = Sig ![SigDecl]
 data SigDecl = ValueSig !(Maybe Stochasticity) !Ident !Type
              | FixitySig !Ident !Fixity
              | TypeSig !Ident !TypeSigDecl
-             | SubmoduleSig !Ident !ModuleType
+             | SubmoduleSig !Ident !ModuleType !ModuleKind
              deriving (Show)
 
 data TypeSigDecl =

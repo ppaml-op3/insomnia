@@ -195,8 +195,10 @@ toplevelItem (ToplevelModule modK ident mmt me) = do
      mt' <- moduleType mt
      return $ I.ToplevelModule ident' (I.ModuleSeal me' mt')
    Nothing -> return $ I.ToplevelModule ident' me'
-toplevelItem (ToplevelModuleType ident mt) =
-  I.ToplevelModuleType <$> sigIdentifier ident <*> moduleType mt
+toplevelItem (ToplevelModuleType modK ident mt) =
+  I.ToplevelModuleType
+  <$> sigIdentifier ident
+  <*> local (currentModuleKind .~ modK) (moduleType mt)
 
 identifier :: Ident -> TA I.Identifier
 identifier s = return $ U.s2n s
@@ -215,8 +217,9 @@ typeField ident = return (ident, U.s2n ident)
 
 
 moduleType :: ModuleType -> TA I.ModuleType
-moduleType (SigMT sig modK) =
-  I.SigMT <$> local (currentModuleKind .~ modK) (signature sig) <*> pure modK
+moduleType (SigMT sig) = do
+  modK <- view currentModuleKind
+  I.SigMT <$> (signature sig) <*> pure modK
 moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
 moduleExpr :: ModuleExpr -> TA I.ModuleExpr
@@ -248,9 +251,9 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
          tsd' <- withTyCon con Nothing $ typeSigDecl tsd
          rest <- withTyCon con Nothing $ kont
          return $ I.TypeSig f (U.bind (tycon, U.embed tsd') rest)
-       SubmoduleSig ident mt -> do
+       SubmoduleSig ident mt modK -> do
          (f, ident') <- moduleField ident
-         mt' <- moduleType mt
+         mt' <- local (currentModuleKind .~ modK) (moduleType mt)
          rest <- kont
          return $ I.SubmoduleSig f (U.bind (ident', U.embed mt') rest)
 
