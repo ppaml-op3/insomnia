@@ -233,7 +233,7 @@ ensureParameter what stoch =
    DeterministicParam -> return ()
    RandomVariable ->
      typeError ("Expected " <> formatErr what
-                <> " to be a parameter, but it is a random variable")
+                <> " to be a parameter, but it was declared as a random variable")
 
 ensureRandomVariable :: Pretty what => what -> Stochasticity -> TC ()
 ensureRandomVariable what stoch =
@@ -241,7 +241,7 @@ ensureRandomVariable what stoch =
    RandomVariable -> return ()
    DeterministicParam ->
      typeError ("Expected " <> formatErr what
-                <> " to be a random variable, but it is a parameter")
+                <> " to be a random variable, but it was declared as a parameter")
 
 ensureExpStochasticity :: Pretty what => Stochasticity -> what -> Stochasticity -> TC ()
 ensureExpStochasticity want =
