@@ -21,7 +21,8 @@ import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
                        Type(..), freshUVarT)
 import Insomnia.Expr (Var, QVar(..), Expr(Q))
-import Insomnia.ModuleType (ModuleType(..), Signature(..), TypeSigDecl(..))
+import Insomnia.ModuleType (ModuleType(..), Signature(..), TypeSigDecl(..),
+                            SigV(..), sigVKind, sigVSig)
 import Insomnia.Module
 import Insomnia.Pretty (Pretty, PrettyShort(..))
 
@@ -37,58 +38,61 @@ import Insomnia.Typecheck.TypeDefn (checkTypeDefn,
                                     extendTypeDefnCtx,
                                     extendTypeAliasCtx)
 import Insomnia.Typecheck.ModuleType (checkModuleType)
-import Insomnia.Typecheck.Selfify (selfifyTypeDefn, selfifyModuleType)
-import Insomnia.Typecheck.ClarifySignature (clarifySignature)
-import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtx)
+import Insomnia.Typecheck.Selfify (selfifyTypeDefn, selfifySigV)
+import Insomnia.Typecheck.ClarifySignature (clarifySignatureV)
+import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtxV)
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
-import Insomnia.Typecheck.MayAscribe (mayAscribe)
+import Insomnia.Typecheck.MayAscribe (mayAscribeV)
 
 -- | Infer the signature of the given module expression
-inferModuleExpr :: Path -> ModuleExpr -> (ModuleExpr -> Signature -> ModuleKind -> TC a) -> TC a
+inferModuleExpr :: Path -> ModuleExpr -> (ModuleExpr -> SigV Signature -> TC a) -> TC a
 inferModuleExpr pmod (ModuleStruct mdl modK) kont = do
   mdl' <- checkModule pmod mdl
             <??@ "while checking module " <> formatErr pmod
   msig <- naturalSignature mdl
-  kont (ModuleStruct mdl' modK) msig modK
+  kont (ModuleStruct mdl' modK) (SigV msig modK)
 inferModuleExpr pmod (ModuleSeal mdl mtypeSealed) kont = do
-  inferModuleExpr pmod mdl $ \mdl' msigInferred modK -> do
-    (mtypeSealed', msigSealed, modK') <-
+  inferModuleExpr pmod mdl $ \mdl' sigvInferred -> do
+    (mtypeSealed', sigvSealed) <-
       checkModuleType mtypeSealed
       <??@ ("while checking sealing signature of " <> formatErr pmod)
-    unless (modK == modK') $ do
+    unless (sigvSealed^.sigVKind == sigvInferred^.sigVKind) $ do
       typeError (formatErr pmod <> " is sealing a "
-                 <> formatErr modK <> " as a " <> formatErr modK')
-    msigSealed' <- mayAscribe msigInferred msigSealed
+                 <> formatErr (sigvInferred^.sigVKind)
+                 <> " as a " <> formatErr (sigvSealed^.sigVKind))
+    sigvSealed' <- mayAscribeV sigvInferred sigvSealed
                    <??@ ("while checking validity of signature sealing to "
                          <> formatErr pmod)
-    kont (ModuleSeal mdl' mtypeSealed') msigSealed' modK'
+    kont (ModuleSeal mdl' mtypeSealed') sigvSealed'
 inferModuleExpr pmod (ModuleAssume moduleType) kont = do
-  (moduleType', msig, modK) <- checkModuleType moduleType
-                        <??@ ("while checking postulated signature of "
-                              <> formatErr pmod)
-  kont (ModuleAssume moduleType') msig modK
+  (moduleType', sigV) <- checkModuleType moduleType
+                         <??@ ("while checking postulated signature of "
+                               <> formatErr pmod)
+  kont (ModuleAssume moduleType') sigV
 inferModuleExpr pmod (ModuleId modPathRHS) kont = do
-  (msig, modK) <- lookupModuleSigPath modPathRHS
+  sigV <- lookupModuleSigPath modPathRHS
           <??@ ("while checking the definition of " <> formatErr pmod)
-  msig' <- clarifySignature modPathRHS msig
-  kont (ModuleId modPathRHS) msig' modK
+  sigV' <- clarifySignatureV modPathRHS sigV
+  kont (ModuleId modPathRHS) sigV'
   -- lookup a module's signature (selfified?) and return it.
 
-lookupModuleSigPath :: Path -> TC (Signature, ModuleKind)
+lookupModuleSigPath :: Path -> TC (SigV Signature)
 lookupModuleSigPath (IdP ident) = lookupModuleSig ident
 lookupModuleSigPath (ProjP pmod fieldName) = do
-  (sig, _modK) <- lookupModuleSigPath pmod
-  projectModuleField pmod fieldName sig
+  sigV <- lookupModuleSigPath pmod
+  projectModuleField pmod fieldName sigV
 
-projectModuleField :: Path -> Field -> Signature -> TC (Signature, ModuleKind)
+projectModuleField :: Path -> Field -> (SigV Signature) -> TC (SigV Signature)
 projectModuleField pmod fieldName = go
   where
-    go :: Signature -> TC (Signature, ModuleKind)
-    go UnitSig = typeError ("The module " <> formatErr pmod
+    go :: SigV Signature -> TC (SigV Signature)
+    go =  go' . view sigVSig
+    go' :: Signature -> TC (SigV Signature)
+    go' UnitSig = typeError ("The module " <> formatErr pmod
                             <> " does not have a submodule named "
                             <> formatErr fieldName)
-    go (ValueSig _ _ _ mrest) = go mrest
-    go (TypeSig fld' bnd) =
+    go' (ValueSig _ _ _ mrest) = go' mrest
+    go' (TypeSig fld' bnd) =
       U.lunbind bnd $ \((tycon', _), mrest_) ->
       -- slightly tricky - we have to replace the tycon' in the rest
       -- of the module by the selfified name of the component so that
@@ -96,13 +100,13 @@ projectModuleField pmod fieldName = go
       -- refer to earlier components of its parent module by the
       -- correct name.
       let mrest = U.subst tycon' (TCGlobal $ TypePath pmod fld') mrest_
-      in go mrest
-    go (SubmoduleSig fld' bnd) =
+      in go' mrest
+    go' (SubmoduleSig fld' bnd) =
       if fieldName /= fld'
       then
         U.lunbind bnd $ \((ident', _), mrest_) ->
         let mrest = U.subst ident' (ProjP pmod fld') mrest_
-        in go mrest
+        in go' mrest
       else
         U.lunbind bnd $ \((_, U.unembed -> modTy), _) ->
         signatureOfModuleType modTy
@@ -138,16 +142,16 @@ naturalSignature = go . moduleDecls
           let tsd = AliasTypeSigDecl alias
           return $ TypeSig fld (U.bind (ident, U.embed tsd) sig')
         SubmoduleDefn fld moduleExpr -> do
-          (subSig, modK) <- naturalSignatureModuleExpr moduleExpr
-          let ident = U.s2n fld
-              moduleTy = SigMT subSig modK
+          subSigV <- naturalSignatureModuleExpr moduleExpr
           sig' <- kont 
+          let ident = U.s2n fld
+              moduleTy = SigMT subSigV
           return $ SubmoduleSig fld (U.bind (ident, U.embed moduleTy) sig')
             
-naturalSignatureModuleExpr :: ModuleExpr -> TC (Signature, ModuleKind)
+naturalSignatureModuleExpr :: ModuleExpr -> TC (SigV Signature)
 naturalSignatureModuleExpr (ModuleStruct mdl modK) = do
   modSig <- naturalSignature mdl
-  return (modSig, modK)
+  return (SigV modSig modK)
 naturalSignatureModuleExpr (ModuleSeal _ mt) = signatureOfModuleType mt
 naturalSignatureModuleExpr (ModuleAssume mt) = signatureOfModuleType mt
 naturalSignatureModuleExpr (ModuleId path) = lookupModuleSigPath path
@@ -188,7 +192,7 @@ checkDecl' pmod d =
       in ValueDecl fld <$> checkValueDecl fld qfld vd
     SubmoduleDefn fld moduleExpr -> do
       moduleExpr' <- inferModuleExpr (ProjP pmod fld) moduleExpr
-                    (\moduleExpr' _sig _modK -> return moduleExpr')
+                     (\moduleExpr' _sigV -> return moduleExpr')
       return $ SubmoduleDefn fld moduleExpr'
 
 checkValueDecl :: Field -> QVar -> ValueDecl -> TC ValueDecl
@@ -356,9 +360,9 @@ extendDCtx pmod d =
           shortIdent = U.s2n fld
           substitution = [(shortIdent, pSubMod)]
           rest' = U.substs substitution rest
-      (subSig, modK) <- naturalSignatureModuleExpr moduleExpr
-      subSelfSig <- selfifyModuleType pSubMod subSig
-      extendModuleCtx subSelfSig $ kont rest'
+      subSigV <- naturalSignatureModuleExpr moduleExpr
+      subSelfSigV <- selfifySigV pSubMod subSigV
+      extendModuleCtxV subSelfSigV $ kont rest'
 
 extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC [Decl]) -> TC [Decl]
 extendValueDeclCtx pmod fld vd =

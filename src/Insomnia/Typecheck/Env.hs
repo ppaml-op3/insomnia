@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell, OverloadedStrings,
-      FlexibleInstances, MultiParamTypeClasses
+      FlexibleContexts, FlexibleInstances, MultiParamTypeClasses
   #-}
 -- | The typechecking environment.
 --
@@ -25,13 +25,12 @@ import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 import Insomnia.Except (Except, runExcept)
 
 import Insomnia.Common.Stochasticity
-import Insomnia.Common.ModuleKind
 
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn (TypeAlias(..), ValueConstructor(..))
 import Insomnia.Expr (Var, QVar)
-import Insomnia.ModuleType (Signature)
+import Insomnia.ModuleType (Signature, SigV(..))
 
 import Insomnia.Unify (MonadUnificationExcept(..),
                        UVar,
@@ -96,8 +95,8 @@ data TypeAliasClosure = TypeAliasClosure !Env !TypeAlias
 
 -- | Typechecking environment
 data Env = Env {
-  _envSigs :: M.Map SigIdentifier (Signature, ModuleKind) -- ^ signatures
-  , _envModuleSigs :: M.Map Identifier (Signature, ModuleKind) -- ^ modules' unselfified signatures (invariant: their selfified contents have been added to DCons and Globals)
+  _envSigs :: M.Map SigIdentifier (SigV Signature) -- ^ signatures
+  , _envModuleSigs :: M.Map Identifier (SigV Signature) -- ^ modules' unselfified signatures (invariant: their selfified contents have been added to DCons and Globals)
   , _envDCons :: M.Map TypeConstructor TyConDesc -- ^ type constructor descriptors
   , _envCCons :: M.Map ValueConstructor AlgConstructor -- ^ value constructors
   , _envGlobals :: M.Map QVar (Type, Stochasticity)      -- ^ declared global vars and params
@@ -138,7 +137,7 @@ instance Pretty TypeAliasClosure where
 
 
 instance Pretty Env where
-  pp env = vcat [ "sigs", pp (fmap fst (env^.envSigs))
+  pp env = vcat [ "sigs", pp (env^.envSigs)
                 , "dcons", pp (env^.envDCons)
                 , "ccons", pp (env^.envCCons)
                 , "globals", pp (fmap fst (env^.envGlobals))
@@ -257,11 +256,11 @@ mkConstructorType constr =
     go t (tvk:tvks) = go (TForall (U.bind tvk t)) tvks
 
 -- | Lookup info about a (toplevel) module.
-lookupModuleSig :: Identifier -> TC (Signature, ModuleKind)
+lookupModuleSig :: Identifier -> TC (SigV Signature)
 lookupModuleSig ident = do
   m <- view (envModuleSigs . at ident)
   case m of
-    Just (sig, modK) -> return (sig, modK)
+    Just sigv -> return sigv
     Nothing -> typeError $ "no module " <> formatErr ident
 
 -- | Look up info about a datatype
@@ -305,34 +304,36 @@ lookupVar v = lookupLocal v
 
 -- | Checks tht the given identifier is bound in the context to a
 -- signature.
-lookupModuleType :: SigIdentifier -> TC (Signature, ModuleKind)
+lookupModuleType :: SigIdentifier -> TC (SigV Signature)
 lookupModuleType ident = do
   mmsig <- view (envSigs . at ident)
   case mmsig of
-    Just msig -> return msig
+    Just sigv -> return sigv
     Nothing -> typeError ("no model type " <> formatErr ident
                           <> " in scope")
 
 -- | Extend the toplevel modules environment by adding the given
 -- module.  Invariant - the selfified types, constructors and terms
 -- should be added separately using extendDConCtx, etc.
-extendModuleSigCtx :: Identifier -> Signature -> ModuleKind -> TC a -> TC a
-extendModuleSigCtx ident msig modK =
-  local (envModuleSigs . at ident ?~ (msig, modK))
+extendModuleSigCtx :: MonadReader Env m
+                      => Identifier -> SigV Signature -> m a -> m a
+extendModuleSigCtx ident sigv =
+  local (envModuleSigs . at ident ?~ sigv)
 
 -- | Extend the type signatures environment by adding the given
 -- signature.
-extendModuleTypeCtx :: SigIdentifier -> Signature -> ModuleKind -> TC a -> TC a
-extendModuleTypeCtx ident msig mk =
-  local (envSigs . at ident ?~ (msig, mk))
+extendModuleTypeCtx :: MonadReader Env m
+                       => SigIdentifier -> SigV Signature -> m a -> m a
+extendModuleTypeCtx ident sigv =
+  local (envSigs . at ident ?~ sigv)
 
 
 -- | Extend the data type environment by adding the declaration
 -- of the given data type with the given kind
-extendDConCtx :: TypeConstructor -> TyConDesc -> TC a -> TC a
+extendDConCtx :: MonadReader Env m => TypeConstructor -> TyConDesc -> m a -> m a
 extendDConCtx dcon k = local (envDCons . at dcon ?~ k)
 
-extendConstructorsCtx :: [(ValueConstructor, AlgConstructor)] -> TC a -> TC a
+extendConstructorsCtx :: MonadReader Env m => [(ValueConstructor, AlgConstructor)] -> m a -> m a
 extendConstructorsCtx cconstrs =
   local (envCCons %~ M.union (M.fromList cconstrs))
 

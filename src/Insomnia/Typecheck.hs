@@ -13,8 +13,8 @@ import Insomnia.Toplevel
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.ModuleType (checkModuleType)
-import Insomnia.Typecheck.Selfify (selfifyModuleType)
-import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtx)
+import Insomnia.Typecheck.Selfify (selfifySigV)
+import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtxV)
 import Insomnia.Typecheck.Module (inferModuleExpr)
 
 checkToplevel :: Toplevel -> TC Toplevel
@@ -32,17 +32,17 @@ checkToplevelItem item kont =
   case item of
     ToplevelModule moduleIdent me ->
       let pmod = IdP moduleIdent
-      in inferModuleExpr pmod me $ \me' msig modK -> do
-        selfSig <- selfifyModuleType pmod msig
+      in inferModuleExpr pmod me $ \me' sigV -> do
+        selfSigV <- selfifySigV pmod sigV
                    <??@ "while selfifying module " <> formatErr moduleIdent
-        extendModuleSigCtx moduleIdent msig modK
-          $ extendModuleCtx selfSig
+        extendModuleSigCtx moduleIdent sigV
+          $ extendModuleCtxV selfSigV
           $ kont $ ToplevelModule moduleIdent me'
           
     ToplevelModuleType modTypeIdent modType -> do
-      (modType', msig, modK) <- checkModuleType modType
+      (modType', sigV) <- checkModuleType modType
                           <??@ ("while checking module type "
                                 <> formatErr modTypeIdent)
-      extendModuleTypeCtx modTypeIdent msig modK
+      extendModuleTypeCtx modTypeIdent sigV
         $ kont $ ToplevelModuleType modTypeIdent modType'
         

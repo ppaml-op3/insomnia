@@ -219,7 +219,8 @@ typeField ident = return (ident, U.s2n ident)
 moduleType :: ModuleType -> TA I.ModuleType
 moduleType (SigMT sig) = do
   modK <- view currentModuleKind
-  I.SigMT <$> (signature sig) <*> pure modK
+  let mkSig s = I.SigMT (I.SigV s modK)
+  mkSig <$> (signature sig)
 moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
 moduleExpr :: ModuleExpr -> TA I.ModuleExpr

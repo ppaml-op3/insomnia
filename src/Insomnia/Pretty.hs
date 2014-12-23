@@ -135,7 +135,6 @@ bindingsToList NilBs = []
 bindingsToList (ConsBs (U.unrebind -> (b1, bs))) =
   b1 : bindingsToList bs
 
-
 instance Pretty Expr where
   pp (V v) = pp v
   pp (C c) = pp c
@@ -388,8 +387,11 @@ instance Pretty ModuleExpr where
   pp (ModuleId modPath) = pp modPath
 
 instance Pretty ModuleType where
-  pp (SigMT sig modK) = fsep [pp modK, "{", nesting (pp sig), "}"]
+  pp (SigMT sigv) = pp sigv
   pp (IdentMT ident) = pp ident
+
+instance Pretty a => Pretty (SigV a) where
+  pp (SigV x modK) = fsep [pp modK, "{", pp x, "}" ]
 
 instance Pretty Signature where
   pp UnitSig = mempty

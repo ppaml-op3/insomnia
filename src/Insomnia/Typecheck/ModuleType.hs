@@ -4,6 +4,8 @@ module Insomnia.Typecheck.ModuleType where
 
 import qualified Unbound.Generics.LocallyNameless as U
 
+import Control.Lens
+import Control.Applicative ((<$>))
 import Control.Monad (unless)
 import Data.Monoid ((<>))
 
@@ -16,19 +18,19 @@ import Insomnia.ModuleType
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType)
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
-import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtx)
-import Insomnia.Typecheck.Selfify (selfifyModuleType)
+import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtxV)
+import Insomnia.Typecheck.Selfify (selfifySigV)
 
 -- | Check that the given module type expression is well-formed, and
 -- return both the module type expression and the signature that it
 -- "evaluates" to.
-checkModuleType :: ModuleType -> TC (ModuleType, Signature, ModuleKind)
-checkModuleType (SigMT msig modK) = do
-  msig' <- checkSignature Nothing modK msig
-  return (SigMT msig' modK, msig', modK)
+checkModuleType :: ModuleType -> TC (ModuleType, SigV Signature)
+checkModuleType (SigMT sigv) = do
+  sigv' <- checkSigV Nothing sigv
+  return (SigMT sigv', sigv')
 checkModuleType (IdentMT ident) = do
-  (msig, modK) <- lookupModuleType ident
-  return (IdentMT ident, msig, modK)
+  sigv <- lookupModuleType ident
+  return (IdentMT ident, sigv)
 
 -- | Returns True iff a value signature with the given stochasticity
 -- appears in a module type with the given type.  Random variables are
@@ -43,6 +45,9 @@ compatibleModuleStochasticity _ _ = True
 compatibleSubmodule :: ModuleKind -> ModuleKind -> Bool
 compatibleSubmodule ModelMK ModelMK = False
 compatibleSubmodule _ _ = True
+
+checkSigV :: Maybe Path -> SigV Signature -> TC (SigV Signature)
+checkSigV mpath (SigV msig modK) = flip SigV modK <$> checkSignature mpath modK msig
 
 checkSignature :: Maybe Path -> ModuleKind -> Signature -> TC Signature
 checkSignature mpath_ modK = flip (checkSignature' mpath_) ensureNoDuplicateFields
@@ -73,13 +78,13 @@ checkSignature mpath_ modK = flip (checkSignature' mpath_) ensureNoDuplicateFiel
     checkSignature' mpath (SubmoduleSig fld bnd) kont =
       U.lunbind bnd $ \((modIdent, U.unembed -> modTy), sig) -> do
         let modPath = mpathAppend mpath fld
-        (modTy', modSig, submodK) <- checkModuleType modTy
-        unless (compatibleSubmodule modK submodK) $ do
+        (modTy', modSigV) <- checkModuleType modTy
+        unless (compatibleSubmodule modK (modSigV^.sigVKind)) $ do
           typeError (formatErr modK <> " signature may not contain a sub-"
-                     <> formatErr submodK <> " " <> formatErr modPath)
-        selfSig <- selfifyModuleType modPath modSig
+                     <> formatErr (modSigV^.sigVKind) <> " " <> formatErr modPath)
+        selfSigV <- selfifySigV modPath modSigV
         let sig' = U.subst modIdent modPath sig
-        extendModuleCtx selfSig
+        extendModuleCtxV selfSigV
           $ checkSignature' mpath sig' $ \(sig'', flds) ->
           kont (SubmoduleSig fld $ U.bind (modIdent, U.embed modTy') sig''
                 , fld:flds)

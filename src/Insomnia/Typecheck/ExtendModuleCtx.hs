@@ -1,5 +1,7 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Insomnia.Typecheck.ExtendModuleCtx (
   extendTypeSigDeclCtx
+  , extendModuleCtxV
   , extendModuleCtx
   ) where
 
@@ -7,7 +9,7 @@ import Control.Lens
 import Control.Monad.Reader.Class (MonadReader(..))
 
 import Insomnia.Types (TypeConstructor(..))
-import Insomnia.ModuleType (TypeSigDecl(..))
+import Insomnia.ModuleType (TypeSigDecl(..), SigV, sigVSig)
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
@@ -21,6 +23,9 @@ extendTypeSigDeclCtx dcon tsd = do
       extendDConCtx dcon (GenerativeTyCon $ AbstractType k)
     AliasTypeSigDecl alias -> extendTypeAliasCtx dcon alias
   
+extendModuleCtxV :: SigV SelfSig -> TC a -> TC a
+extendModuleCtxV sigv = extendModuleCtx (sigv^.sigVSig)
+
 -- | Given a (selfified) signature, add all of its fields to the context
 -- by prefixing them with the given path - presumably the path of this
 -- very module.
@@ -34,6 +39,6 @@ extendModuleCtx (ValueSelfSig stoch qvar ty msig) =
 extendModuleCtx (TypeSelfSig p tsd msig) =
   extendTypeSigDeclCtx (TCGlobal p) tsd
   . extendModuleCtx msig
-extendModuleCtx (SubmoduleSelfSig _path subModSig _modK msig) =
-  extendModuleCtx subModSig
+extendModuleCtx (SubmoduleSelfSig _path subSigV msig) =
+  extendModuleCtxV subSigV
   . extendModuleCtx msig

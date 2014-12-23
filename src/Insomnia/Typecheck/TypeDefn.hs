@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 -- | Utitlities for checking type definitions
 -- whether in a model type or in a model definition.
 module Insomnia.Typecheck.TypeDefn (checkTypeDefn,
@@ -57,7 +57,8 @@ checkConstructor (ConstructorDef ccon args) = do
   return (ConstructorDef ccon args')
 
 -- | Extend the typing context by adding the given type defintion.
-extendTypeDefnCtx :: TypeConstructor -> TypeDefn -> TC a -> TC a
+extendTypeDefnCtx :: (U.LFresh m, MonadReader Env m)
+                     => TypeConstructor -> TypeDefn -> m a -> m a
 extendTypeDefnCtx dcon td =
   case td of
     DataDefn constrs -> extendDataDefnCtx dcon constrs
@@ -71,7 +72,8 @@ extendTypeAliasCtx dcon alias comp = do
     $ comp
 
 -- | Extend the typing context by adding the given type and value constructors
-extendDataDefnCtx :: TypeConstructor -> DataDefn -> TC a -> TC a
+extendDataDefnCtx :: (U.LFresh m, MonadReader Env m)
+                     => TypeConstructor -> DataDefn -> m a -> m a
 extendDataDefnCtx dcon bnd comp = do
   U.lunbind bnd $ \ (vks, constrs) -> do
     let kparams = map snd vks
@@ -83,7 +85,7 @@ extendDataDefnCtx dcon bnd comp = do
       extendConstructorsCtx constructors comp
 
 -- | Extend the typing context by adding the given enumeration type
-extendEnumDefnCtx :: TypeConstructor -> Nat -> TC a -> TC a
+extendEnumDefnCtx :: MonadReader Env m => TypeConstructor -> Nat -> m a -> m a
 extendEnumDefnCtx dcon n =
   extendDConCtx dcon (GenerativeTyCon $ EnumerationType n)
 

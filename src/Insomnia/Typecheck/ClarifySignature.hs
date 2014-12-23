@@ -1,5 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
-module Insomnia.Typecheck.ClarifySignature (clarifySignature) where
+module Insomnia.Typecheck.ClarifySignature (clarifySignatureV) where
+
+import Data.Traversable (Traversable(..))
 
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
@@ -10,11 +12,14 @@ import Insomnia.Types (Kind(..), Type(..),
                        TypePath(..),
                        KindedTVar, kArrs)
 import Insomnia.TypeDefn (TypeAlias(..), TypeDefn(..))
-import Insomnia.ModuleType (Signature(..), ModuleType(..), TypeSigDecl(..))
+import Insomnia.ModuleType (Signature(..), ModuleType(..), TypeSigDecl(..), SigV)
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
 
+
+clarifySignatureV :: Path -> SigV Signature -> TC (SigV Signature)
+clarifySignatureV = traverse . clarifySignature
 
 -- | Given the signature of the given path (ie, assume that the module
 -- with that path has the given signature), return a signature that's
@@ -100,7 +105,7 @@ clarifySubmodule :: Path
                    -> Signature
                    -> TC Signature
 clarifySubmodule pmod f ident subModTy rest = do
-  (subSig, modK) <- signatureOfModuleType subModTy
-  clearSubSig <- clarifySignature (ProjP pmod f) subSig
+  subSigV <- signatureOfModuleType subModTy
+  clearSubSigV <- clarifySignatureV (ProjP pmod f) subSigV
   rest' <- clarifySignature pmod rest
-  return $ SubmoduleSig f $ U.bind (ident, U.embed (SigMT clearSubSig modK)) rest'
+  return $ SubmoduleSig f $ U.bind (ident, U.embed (SigMT clearSubSigV)) rest'
