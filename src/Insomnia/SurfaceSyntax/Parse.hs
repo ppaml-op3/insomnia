@@ -388,8 +388,10 @@ moduleDefn =
   mkModuleDefn <$> moduleKind
   <*> modelIdentifier
   <*> optional (classify *> moduleTypeIdentifier)
-  <*> moduleExpr
+  <*> ((reservedOp "=" *> moduleExpr)
+       <|> literalModuleShorthand)
   where
+    literalModuleShorthand = moduleLiteral
     mkModuleDefn modK modIdent maybeSigId content =
       let
         m = case maybeSigId of
