@@ -24,8 +24,6 @@ import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 
 import Insomnia.Except (Except, runExcept)
 
-import Insomnia.Common.Stochasticity
-
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn (TypeAlias(..), ValueConstructor(..))
@@ -95,15 +93,27 @@ data TypeAliasClosure = TypeAliasClosure !Env !TypeAlias
 
 -- | Typechecking environment
 data Env = Env {
-  _envSigs :: M.Map SigIdentifier (SigV Signature) -- ^ signatures
-  , _envModuleSigs :: M.Map Identifier (SigV Signature) -- ^ modules' unselfified signatures (invariant: their selfified contents have been added to DCons and Globals)
-  , _envDCons :: M.Map TypeConstructor TyConDesc -- ^ type constructor descriptors
-  , _envCCons :: M.Map ValueConstructor AlgConstructor -- ^ value constructors
-  , _envGlobals :: M.Map QVar (Type, Stochasticity)      -- ^ declared global vars and params
-  , _envGlobalDefns :: M.Map QVar ()    -- ^ defined global vars
-  , _envTys :: M.Map TyVar Kind        -- ^ local type variables
-  , _envLocals :: M.Map Var Type       -- ^ local value variables
-  , _envVisibleSelector :: M.Map Var () -- ^ local vars that may be used as indices of tabulated functions.  (Come into scope in "forall" expressions)
+  -- | signatures
+  _envSigs :: M.Map SigIdentifier (SigV Signature)
+    -- | modules' unselfified signatures (invariant: their selfified
+    -- contents have been added to DCons and Globals iff their kind is
+    -- ModuleMK)
+  , _envModuleSigs :: M.Map Identifier (SigV Signature)
+    -- | type constructor descriptors
+  , _envDCons :: M.Map TypeConstructor TyConDesc
+    -- | value constructors
+  , _envCCons :: M.Map ValueConstructor AlgConstructor
+    -- | declared global vars
+  , _envGlobals :: M.Map QVar Type
+    -- | defined global vars
+  , _envGlobalDefns :: M.Map QVar ()
+    -- | local type variables
+  , _envTys :: M.Map TyVar Kind
+    -- | local value variables
+  , _envLocals :: M.Map Var Type
+    -- | local vars that may be used as indices of tabulated
+    -- functions.  (Come into scope in "forall" expressions)
+  , _envVisibleSelector :: M.Map Var ()
   }
 
 
@@ -140,7 +150,7 @@ instance Pretty Env where
   pp env = vcat [ "sigs", pp (env^.envSigs)
                 , "dcons", pp (env^.envDCons)
                 , "ccons", pp (env^.envCCons)
-                , "globals", pp (fmap fst (env^.envGlobals))
+                , "globals", pp (env^.envGlobals)
                 , "global defns", pp (env^.envGlobalDefns)
                                   -- TODO: the rest of the env
                 ]
@@ -206,7 +216,7 @@ realT :: Type
 realT = TC conReal
 
 
--- | The typechecking monad sand unification
+-- | The typechecking monad sans unification
 type TCSimple = ReaderT Env (LFreshMT (Except TCError))
 
 -- | The typechecking monad
@@ -286,21 +296,11 @@ lookupTyVar tv = do
     Just k -> return k
     Nothing -> typeError $ "no type variable " <> formatErr tv
 
-lookupGlobal :: QVar -> TC (Maybe (Type, Stochasticity))
+lookupGlobal :: QVar -> TC (Maybe Type)
 lookupGlobal v = view (envGlobals . at v)
 
 lookupLocal :: Var -> TC (Maybe Type)
 lookupLocal v = view (envLocals . at v)
-
-lookupVar :: Var -> TC (Maybe Type)
-lookupVar v = lookupLocal v
-  -- TODO: does this make sense?  It should now be the case that
-  -- all global variable refernces are turned into QVars before we
-  -- get going.
-  -- do
-  -- tl <- First <$> lookupLocal v
-  -- tg <- First <$> lookupGlobal v
-  -- return $ getFirst (tl <> tg)
 
 -- | Checks tht the given identifier is bound in the context to a
 -- signature.

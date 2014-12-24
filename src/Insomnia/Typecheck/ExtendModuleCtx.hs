@@ -9,7 +9,8 @@ import Control.Lens
 import Control.Monad.Reader.Class (MonadReader(..))
 
 import Insomnia.Types (TypeConstructor(..))
-import Insomnia.ModuleType (TypeSigDecl(..), SigV, sigVSig)
+import Insomnia.Common.ModuleKind
+import Insomnia.ModuleType (TypeSigDecl(..), SigV(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
@@ -24,17 +25,21 @@ extendTypeSigDeclCtx dcon tsd = do
     AliasTypeSigDecl alias -> extendTypeAliasCtx dcon alias
   
 extendModuleCtxV :: SigV SelfSig -> TC a -> TC a
-extendModuleCtxV sigv = extendModuleCtx (sigv^.sigVSig)
+extendModuleCtxV (SigV sig mk) =
+  case mk of
+   -- can't address model components directly.
+   ModelMK -> id
+   ModuleMK -> extendModuleCtx sig
 
 -- | Given a (selfified) signature, add all of its fields to the context
 -- by prefixing them with the given path - presumably the path of this
 -- very module.
 extendModuleCtx :: SelfSig -> TC a -> TC a
 extendModuleCtx UnitSelfSig = id
-extendModuleCtx (ValueSelfSig stoch qvar ty msig) =
+extendModuleCtx (ValueSelfSig qvar ty msig) =
   -- TODO: if we are moduleing joint distributions, does it ever make
   -- sense to talk about value components of other modules?
-  local (envGlobals . at qvar ?~ (ty, stoch))
+  local (envGlobals . at qvar ?~ ty)
   . extendModuleCtx msig
 extendModuleCtx (TypeSelfSig p tsd msig) =
   extendTypeSigDeclCtx (TCGlobal p) tsd

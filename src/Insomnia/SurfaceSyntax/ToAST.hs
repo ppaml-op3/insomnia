@@ -240,10 +240,20 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
       case decl of
        ValueSig mstoch ident ty -> do
          stoch <- contextualStochasticity mstoch
+         -- TODO: allow models to contain parameters
+         -- and desugar from
+         --   model { params ; vals ~ es }
+         -- to
+         --   module {
+         --     module $Params { params } ;
+         --     model $Model {
+         --       vals ~ es[$Params.params/params]
+         --     }
+         --   }
          f <- valueField ident
          ty' <- type' ty
          rest <- kont
-         return $ I.ValueSig stoch f ty' rest
+         return $ I.ValueSig f ty' rest
        FixitySig ident fixity ->
          updateWithFixity ident fixity kont
        TypeSig ident tsd -> do

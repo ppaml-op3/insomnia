@@ -27,7 +27,7 @@ data ModuleType =
 
 data Signature =
   UnitSig
-  | ValueSig !Stochasticity !Field !Type !Signature
+  | ValueSig !Field !Type !Signature
   | TypeSig !Field !(Bind (TyConName, Embed TypeSigDecl) Signature)
   | SubmoduleSig !Field !(Bind (Identifier, Embed ModuleType) Signature)
     deriving (Show, Typeable, Generic)

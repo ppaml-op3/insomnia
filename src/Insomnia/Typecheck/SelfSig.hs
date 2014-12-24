@@ -9,7 +9,6 @@ module Insomnia.Typecheck.SelfSig where
 import Insomnia.Identifier (Path)
 import Insomnia.Types (Type, TypePath)
 import Insomnia.Expr (QVar)
-import Insomnia.Common.Stochasticity
 import Insomnia.ModuleType (TypeSigDecl, SigV)
 
 -- | A selfified signature.  After selfification, all references to
@@ -17,7 +16,7 @@ import Insomnia.ModuleType (TypeSigDecl, SigV)
 -- by their fully qualified name with respect to the path to the model.
 data SelfSig =
   UnitSelfSig
-  | ValueSelfSig Stochasticity QVar Type SelfSig
+  | ValueSelfSig QVar Type SelfSig
   | TypeSelfSig TypePath TypeSigDecl SelfSig
   | SubmoduleSelfSig Path (SigV SelfSig) SelfSig
 

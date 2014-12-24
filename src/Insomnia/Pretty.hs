@@ -395,11 +395,8 @@ instance Pretty a => Pretty (SigV a) where
 
 instance Pretty Signature where
   pp UnitSig = mempty
-  pp (ValueSig stoch fld ty sig) =
-    fsep [case stoch of
-           RandomVariable -> "val"
-           DeterministicParam -> "parameter"
-         , text fld, indent coloncolon (pp ty)]
+  pp (ValueSig fld ty sig) =
+    fsep ["val", text fld, indent coloncolon (pp ty)]
     $$ pp sig
   pp (TypeSig fld bnd) =
     let ((tv, U.unembed -> tsd), sig) = UU.unsafeUnbind bnd
