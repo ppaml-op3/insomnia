@@ -1,14 +1,14 @@
-model type S_SIG {
+module type S_SIG {
   type T :: *
 }
 
-model type PRELUDE {
+module type PRELUDE {
   data Bool = True | False
   -- type Bool :: *
   type Bool2 = Bool
 
-  model S :: {
-     model S2 :: S_SIG
+  module S :: {
+     module S2 :: S_SIG
   }
 
   parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
@@ -18,10 +18,10 @@ model type PRELUDE {
   parameter sig flip :: Real -> Dist Bool
 }
 
-model Prelude :: PRELUDE {
+module Prelude :: PRELUDE {
 
-   model S {
-      model S2 {
+   module S {
+      module S2 {
          type T = Int
       }
       type W = Int
@@ -46,41 +46,42 @@ model Prelude :: PRELUDE {
    fun foo x = x
 }
 
-model Raining {
+module Raining {
 
-sig raining :: Prelude.Bool2
-val raining ~ (Prelude.uniform Prelude.Proxy)
+  parameter sig double :: Real -> Real
 
-sig x :: Real
-val x ~ Prelude.uniform Prelude.Proxy
+  enum T 10
 
-parameter sig double :: Real -> Real
+  sig thinksRain :: T -> Prelude.Bool
 
-sig y :: Real
-val y = double x 
+  parameter sig pointOne :: Real
+  parameter pointOne = 0.1
 
-enum T 10
+  parameter sig pointNine :: Real
+  parameter pointNine = 0.9
 
-sig thinksRain :: T -> Prelude.Bool
+  model ModelTest  {
+    sig raining :: Prelude.Bool2
+    val raining ~ (Prelude.uniform Prelude.Proxy)
 
-parameter sig pointOne :: Real
-parameter pointOne = 0.1
+    sig x :: Real
+    val x ~ Prelude.uniform Prelude.Proxy
 
-parameter sig pointNine :: Real
-parameter pointNine = 0.9
+    sig y :: Real
+    val y = double x 
 
--- fun thinksRain t = let {
---    forall (x :: T) in
---      g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
---    } in g t
+    -- fun thinksRain t = let {
+    --    forall (x :: T) in
+    --      g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
+    --    } in g t
 
--- Ryan observes that the version above creates a new table every time
--- that 'thinksRain' is called.  Instead what we want is to create the
--- table once.
-val thinksRain = let
-  forall (x :: T) in
-    g x ~ Prelude.cond raining (Prelude.flip pointNine) (Prelude.flip pointOne)
-  in g
-
+    -- Ryan observes that the version above creates a new table every time
+    -- that 'thinksRain' is called.  Instead what we want is to create the
+    -- table once.
+    val thinksRain = let
+      forall (x :: T) in
+        g x ~ Prelude.cond raining (Prelude.flip pointNine) (Prelude.flip pointOne)
+      in g
+  }
 
 }
