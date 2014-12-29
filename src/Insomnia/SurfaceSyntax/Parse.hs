@@ -210,7 +210,7 @@ toplevelModule =
        <|> literalModuleShorthand)
   where
     kindAndId = ((,) <$> moduleKind <*> modelIdentifier)
-    literalModuleShorthand = moduleLiteral
+    literalModuleShorthand = moduleExprLiteral
     mkToplevelModule (modK, modId) = ToplevelModule modK modId
 
 moduleKind :: Parser ModuleKind
@@ -323,16 +323,23 @@ modelTypeExpr =
   <|> (SigMT <$> braces signature <?> "module signature in braces")
 
 
-moduleLiteral :: Parser ModuleExpr
+moduleLiteral :: Parser Module
 moduleLiteral =
-  (ModuleStruct . Module) <$> braces (localIndentation Ge $ many $ absoluteIndentation decl)
+  Module <$> braces (localIndentation Ge $ many $ absoluteIndentation decl)
+
+moduleExprLiteral :: Parser ModuleExpr
+moduleExprLiteral = ModuleStruct <$> moduleLiteral
+
+modelExprLiteral :: Parser ModelExpr
+modelExprLiteral = ModelStruct <$> moduleLiteral
 
 moduleExpr :: Parser ModuleExpr
 moduleExpr =
-  (moduleLiteral <?> "braced module definition")
+  (moduleExprLiteral <?> "braced module definition")
   <|> (moduleAssume <?> "module postulate (\"assume\")")
   <|> (nestedModule <?> "module sealed with a signature")
   <|> (modulePath <?> "qualified module name")
+  <|> (reserved "model" *> (ModuleModel <$> modelExpr) <?> "model expression")
   where
     moduleAssume =  (ModuleAssume . IdentMT)
                     <$> (reserved "assume" *> moduleTypeIdentifier)
@@ -343,6 +350,13 @@ moduleExpr =
 
     mkNestedModuleExpr modExpr Nothing = modExpr
     mkNestedModuleExpr modExpr (Just modTy) = ModuleSeal modExpr modTy
+
+modelExpr :: Parser ModelExpr
+modelExpr =
+  (modelPath <?> "model identifier")
+  <|> (modelExprLiteral <?> "braced model definition")
+  where
+    modelPath = ModelId <$> modelId
 
 
 decl :: Parser Decl
@@ -391,7 +405,7 @@ moduleDefn =
   <*> ((reservedOp "=" *> moduleExpr)
        <|> literalModuleShorthand)
   where
-    literalModuleShorthand = moduleLiteral
+    literalModuleShorthand = moduleExprLiteral
     mkModuleDefn modK modIdent maybeSigId content =
       let
         m = case maybeSigId of

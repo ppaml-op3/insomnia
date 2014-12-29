@@ -224,16 +224,21 @@ moduleType (SigMT sig) = do
 moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
 moduleExpr :: ModuleExpr -> TA I.ModuleExpr
-moduleExpr (ModuleStruct mdl) = do
-  modK <- view currentModuleKind
-  case modK of
-   ModuleMK -> I.ModuleStruct <$> module' mdl
-   ModelMK -> I.ModuleModel . I.ModelStruct <$> module' mdl
+moduleExpr (ModuleStruct mdl) =
+  I.ModuleStruct <$> module' mdl
 moduleExpr (ModuleSeal me mt) =
   I.ModuleSeal <$> moduleExpr me <*> moduleType mt
 moduleExpr (ModuleAssume mt) =
   I.ModuleAssume <$> moduleType mt
 moduleExpr (ModuleId qid) = return $ I.ModuleId (qualifiedIdPath qid)
+moduleExpr (ModuleModel mdl) = 
+  I.ModuleModel <$> local (currentModuleKind .~ ModelMK) (modelExpr mdl)
+
+modelExpr :: ModelExpr -> TA I.ModelExpr
+modelExpr (ModelId qid) = return $ I.ModelId (qualifiedIdPath qid)
+modelExpr (ModelStruct mdl) = 
+  I.ModelStruct <$> module' mdl
+  
 
 signature :: Signature -> TA I.Signature
 signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls

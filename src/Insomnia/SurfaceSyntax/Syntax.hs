@@ -45,6 +45,12 @@ data ModuleExpr =
   | ModuleSeal !ModuleExpr !ModuleType
   | ModuleAssume !ModuleType
   | ModuleId !QualifiedIdent
+  | ModuleModel !ModelExpr
+    deriving (Show)
+
+data ModelExpr =
+  ModelId !QualifiedIdent
+  | ModelStruct !Module
     deriving (Show)
              
 data ModuleType =
