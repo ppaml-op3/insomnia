@@ -37,8 +37,6 @@ extendModuleCtxV (SigV sig mk) =
 extendModuleCtx :: SelfSig -> TC a -> TC a
 extendModuleCtx UnitSelfSig = id
 extendModuleCtx (ValueSelfSig qvar ty msig) =
-  -- TODO: if we are moduleing joint distributions, does it ever make
-  -- sense to talk about value components of other modules?
   local (envGlobals . at qvar ?~ ty)
   . extendModuleCtx msig
 extendModuleCtx (TypeSelfSig p tsd msig) =

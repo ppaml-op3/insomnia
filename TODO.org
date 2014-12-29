@@ -1,16 +1,63 @@
-* TODO
-** Infix syntax
+* Tasks
+** TODO Reconcile concrete syntax with wiki examples.
+   At the very least ~::~ vs ~:~ in type ascription.
+** TODO Desugar mixed-model syntax into nested modules.
+   [[file:src/Insomnia/SurfaceSyntax/ToAST.hs::--%20TODO:%20allow%20models%20to%20contain%20parameters][file:src/Insomnia/SurfaceSyntax/ToAST.hs::-- TODO: allow models to contain parameters]]
+   #+BEGIN_EXAMPLE
+   model X {
+     parameter p = e
+     val s ~ e'
+   }
+   -- becomes
+   module X {
+     parameter p = e
+     model $Model {
+       val s ~ e'
+     }
+   }
+   -- in the rest of the program, references to X as a model now go to X.$Model
+   -- note that X.s is not legal, so it's only things like sampling from X or observing it.
+   #+END_EXAMPLE
+** TODO Translate models to interpreter language
+   [[file:src/Insomnia/Interp/ToLam.hs::--%20TODO:%20translate%20models][file:src/Insomnia/Interp/ToLam.hs::-- TODO: translate models]]
+** TODO consume type annotations on parsed samples
+   [[file:src/Insomnia/SurfaceSyntax/Parse.hs::mkBinding%20(v,%20_ty)%20op%20e%20%3D%20op%20v%20e%20--%20TODO:%20use%20the%20type][file:src/Insomnia/SurfaceSyntax/Parse.hs::-- TODO: use the type]]
+** TODO make a special module for the builtin types
+   [[file:src/Insomnia/SurfaceSyntax/ToAST.hs::--%20TODO:%20these%20really%20ought%20to%20be%20imported%20from%20somewhere,%20not%20built%20in.][file:src/Insomnia/SurfaceSyntax/ToAST.hs::-- TODO: these really ought to be imported from somewhere, not built in.]]
+** TODO Resurrect infix resolution tests
+   [[file:src/Insomnia/SurfaceSyntax/ToAST.hs::--%20TODO:%20make%20infix%20resolution%20tests%20executable%20again.][file:src/Insomnia/SurfaceSyntax/ToAST.hs::-- TODO: make infix resolution tests executable again.]]
+** TODO Consider explicitly representing scope of Toplevel
+   [[file:src/Insomnia/Toplevel.hs::--%20TODO:%20worth%20representing%20this%20stuff%20using%20Unbound%20binders?][file:src/Insomnia/Toplevel.hs::-- TODO: worth representing this stuff using Unbound binders?]]
+** TODO Share datatype definition
+   [[file:src/Insomnia/Typecheck/ClarifySignature.hs::--%20TODO:%20share%20the%20value%20constructors%20of%20a%20generative%20type%20definition.][file:src/Insomnia/Typecheck/ClarifySignature.hs::-- TODO: share the value constructors of a generative type definition.]]
+   [[file:src/Insomnia/Typecheck/ClarifySignature.hs::--%20TODO:%20also%20need%20to%20alias%20the%20value%20constructors.%20Will%20need%20a][file:src/Insomnia/Typecheck/ClarifySignature.hs::-- TODO: also need to alias the value constructors. Will need a]]
+   This is probably not too difficult internally now since value constructors are a separate datatype.
+** TODO Pretty print entire Env in debugging type errors.
+   [[file:src/Insomnia/Typecheck/Env.hs::--%20TODO:%20the%20rest%20of%20the%20env][file:src/Insomnia/Typecheck/Env.hs::-- TODO: the rest of the env]]
+** TODO Generalize let-bound values
+   [[file:src/Insomnia/Typecheck/Expr.hs::--%20XXX%20:%20TODO%20generalize%20uvars,%20or%20else%20freeze%20'em%20if%20we're%20going%20to][file:src/Insomnia/Typecheck/Expr.hs::-- XXX : TODO generalize uvars, or else freeze 'em if we're going to]]
+
+   But maybe not.  Folk wisdom is that programmers don't mind putting
+   in type annotations for truly polymorphic local bindings.
+** TODO Ensure there are no duplicate fields in a module.
+   [[file:src/Insomnia/Typecheck/ModuleType.hs::--%20TODO:%20actually%20check%20that%20the%20field%20names%20are%20unique.][file:src/Insomnia/Typecheck/ModuleType.hs::-- TODO: actually check that the field names are unique.]]
+** TODO Add row polymorphism?
+   [[file:src/Insomnia/Types.hs::data%20Rows%20%3D%20Rows%20--%20TODO][file:src/Insomnia/Types.hs::data Rows = Rows -- TODO]]
+** DONE Infix syntax
 
    Parse to full application, understand fixity declarations, parse
    with precedence to disambiguate applications.
 
    Use exact rationals for precedence, not integers!
 
-** Tabled ~for~ syntax
+** TODO Tabled declaration ~for~ syntax
 
-   As a declaration form.
+   #+BEGIN_EXAMPLE
+   forall i : t1 
+     fun f i ~ e i
+   #+END_EXAMPLE
 
-** Analysis to rule out inductive data types.
+** TODO Analysis to rule out inductive data types.
 
    Unless they turn out to be useful, in which case we will need to
    understand their semantics.

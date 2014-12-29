@@ -652,7 +652,7 @@ disfix atms precs = do
 
 ---------------------------------------- Examples/Tests
 
--- TODO:
+-- TODO: make infix resolution tests executable again.
 
 -- example1 :: () -> I.Type
 -- example1 () = runReader (type' y) c

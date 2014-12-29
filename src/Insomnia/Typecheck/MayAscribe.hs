@@ -40,7 +40,7 @@ mayAscribeV sigv1 sigv2 =
                 <> " type signature to a "
                 <> formatErr modK1)
 
--- | TODO: @msig1 `mayAscribe` msig2@ succeeds if it is okay to
+-- | @msig1 `mayAscribe` msig2@ succeeds if it is okay to
 -- ascribe @msig2@ to any module whose type is @msig1@.  That is,
 -- @msig2@ is more general than @msig1@.  Returns the second
 -- signature.
