@@ -10,7 +10,6 @@ import Control.Lens
 import Control.Monad (unless)
 import Control.Monad.Reader.Class (MonadReader(..))
 
-import Data.Foldable (mapM_)
 import Data.Monoid ((<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
@@ -46,11 +45,15 @@ import Insomnia.Typecheck.MayAscribe (mayAscribeV)
 
 -- | Infer the signature of the given module expression
 inferModuleExpr :: Path -> ModuleExpr -> (ModuleExpr -> SigV Signature -> TC a) -> TC a
-inferModuleExpr pmod (ModuleStruct mdl modK) kont = do
-  mdl' <- checkModule pmod mdl
+inferModuleExpr pmod (ModuleStruct mdl) kont = do
+  mdl' <- checkModule pmod DeterministicParam mdl
             <??@ "while checking module " <> formatErr pmod
   msig <- naturalSignature mdl
-  kont (ModuleStruct mdl' modK) (SigV msig modK)
+  kont (ModuleStruct mdl') (SigV msig ModuleMK)
+inferModuleExpr pmod (ModuleModel mdl) kont = do
+  (mdl', msig) <- checkModelExpr pmod mdl
+          <??@ "while checking model " <> formatErr pmod
+  kont (ModuleModel mdl') (SigV msig ModelMK)
 inferModuleExpr pmod (ModuleSeal mdl mtypeSealed) kont = do
   inferModuleExpr pmod mdl $ \mdl' sigvInferred -> do
     (mtypeSealed', sigvSealed) <-
@@ -75,6 +78,21 @@ inferModuleExpr pmod (ModuleId modPathRHS) kont = do
   sigV' <- clarifySignatureV modPathRHS sigV
   kont (ModuleId modPathRHS) sigV'
   -- lookup a module's signature (selfified?) and return it.
+
+checkModelExpr :: Path -> ModelExpr -> TC (ModelExpr, Signature)
+checkModelExpr pmod mexpr =
+  case mexpr of
+   ModelId p -> do
+     sigv <- lookupModuleSigPath p
+     case sigv of
+      (SigV msig ModuleMK) -> return (ModelId p, msig)
+      (SigV _msig ModelMK) -> typeError ("model path " <> formatErr p
+                                         <> " cannot be used in a model expression.")
+   ModelStruct mdl -> do
+     mdl' <- checkModule pmod RandomVariable mdl
+             <??@ "while checking model " <> formatErr pmod
+     msig <- naturalSignature mdl
+     return (ModelStruct mdl', msig)
 
 lookupModuleSigPath :: Path -> TC (SigV Signature)
 lookupModuleSigPath (IdP ident) = lookupModuleSig ident
@@ -149,33 +167,42 @@ naturalSignature = go . moduleDecls
           return $ SubmoduleSig fld (U.bind (ident, U.embed moduleTy) sig')
             
 naturalSignatureModuleExpr :: ModuleExpr -> TC (SigV Signature)
-naturalSignatureModuleExpr (ModuleStruct mdl modK) = do
+naturalSignatureModuleExpr (ModuleStruct mdl) = do
   modSig <- naturalSignature mdl
-  return (SigV modSig modK)
+  return (SigV modSig ModuleMK)
 naturalSignatureModuleExpr (ModuleSeal _ mt) = signatureOfModuleType mt
 naturalSignatureModuleExpr (ModuleAssume mt) = signatureOfModuleType mt
 naturalSignatureModuleExpr (ModuleId path) = lookupModuleSigPath path
+naturalSignatureModuleExpr (ModuleModel mdl) = naturalSignatureModelExpr mdl
+
+naturalSignatureModelExpr :: ModelExpr -> TC (SigV Signature)
+naturalSignatureModelExpr (ModelId p) = do
+  sigv <- lookupModuleSigPath p
+  return (sigv & sigVKind .~ ModelMK)
+naturalSignatureModelExpr (ModelStruct mdl) = do
+  modSig <- naturalSignature mdl
+  return (SigV modSig ModelMK)
 
 -- | Typecheck the contents of a module.
-checkModule :: Path -> Module -> TC Module
-checkModule pmod =
+checkModule :: Path -> Stochasticity -> Module -> TC Module
+checkModule pmod stoch =
   fmap Module . go . moduleDecls
   where
     go :: [Decl] -> TC [Decl]
     go [] = return []
     go (decl:decls) = do
-      decl' <- checkDecl pmod decl
+      decl' <- checkDecl pmod stoch decl
       decls' <- extendDCtx pmod decl' decls go
       return (decl':decls')
 
-checkDecl :: Path -> Decl -> TC Decl
-checkDecl pmod d =
-  checkDecl' pmod d
+checkDecl :: Path -> Stochasticity -> Decl -> TC Decl
+checkDecl pmod stoch d =
+  checkDecl' pmod stoch d
   <??@ "while checking " <> formatErr (PrettyShort d)
 
 -- | Given the path to the module, check the declarations.
-checkDecl' :: Path -> Decl -> TC Decl
-checkDecl' pmod d =
+checkDecl' :: Path -> Stochasticity -> Decl -> TC Decl
+checkDecl' pmod stoch d =
   case d of
     TypeDefn fld td -> do
       let dcon = TCGlobal (TypePath pmod fld)

@@ -45,8 +45,13 @@ toplevelItem t@(ToplevelModuleType {}) = t
 toplevelItem (ToplevelModule ident me) = ToplevelModule ident (moduleExpr me)
 
 moduleExpr :: ModuleExpr -> ModuleExpr
-moduleExpr (ModuleStruct mdl modK) = ModuleStruct (module' mdl) modK
+moduleExpr (ModuleStruct mdl) = ModuleStruct (module' mdl)
+moduleExpr (ModuleModel mdl) = ModuleModel (modelExpr mdl)
 moduleExpr me = me
+
+modelExpr :: ModelExpr -> ModelExpr
+modelExpr (ModelStruct mdl) = ModelStruct (module' mdl)
+modelExpr me = me
 
 module' :: Module -> Module
 module' (Module ds) = Module (map decl ds)

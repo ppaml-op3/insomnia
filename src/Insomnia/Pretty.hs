@@ -380,11 +380,16 @@ instance Pretty ToplevelItem where
     fsep ["module", "type", pp identifier, pp moduleType]
 
 instance Pretty ModuleExpr where
-  pp (ModuleStruct mdl modK) = pp modK <> pp mdl
+  pp (ModuleStruct mdl) = "module" <+> pp mdl
+  pp (ModuleModel mdl) = "model" <+> pp mdl
   pp (ModuleSeal mdl moduleSig) =
     parens (fsep [pp mdl, indent coloncolon (pp moduleSig)])
   pp (ModuleAssume mtype) = fsep ["assume", nesting (pp mtype)]
   pp (ModuleId modPath) = pp modPath
+
+instance Pretty ModelExpr where
+  pp (ModelId p) = pp p
+  pp (ModelStruct mdl) = pp mdl
 
 instance Pretty ModuleType where
   pp (SigMT sigv) = pp sigv

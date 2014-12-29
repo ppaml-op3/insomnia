@@ -16,14 +16,19 @@ import Insomnia.TypeDefn
 import Insomnia.ModuleType
 
 import Insomnia.Common.Stochasticity
-import Insomnia.Common.ModuleKind
 import Insomnia.Expr (Expr)
 
 data ModuleExpr =
-  ModuleStruct !Module !ModuleKind -- module specified here
+  ModuleStruct !Module -- module specified here
+  | ModuleModel !ModelExpr -- model suspension
   | ModuleSeal !ModuleExpr !ModuleType -- generative sealing
   | ModuleAssume !ModuleType    -- module assumed to exist.
   | ModuleId !Path       -- previously named module
+  deriving (Show, Typeable, Generic)
+
+data ModelExpr =
+  ModelStruct !Module  -- model specified here
+  | ModelId !Path      -- previously named model
   deriving (Show, Typeable, Generic)
 
 -- A single module.
@@ -47,26 +52,31 @@ data ValueDecl =
   deriving (Show, Typeable, Generic)
 
 instance Alpha ModuleExpr
+instance Alpha ModelExpr
 instance Alpha Module
 instance Alpha Decl
 instance Alpha ValueDecl
 
 instance Subst Path ModuleExpr
+instance Subst Path ModelExpr
 instance Subst Path Module
 instance Subst Path Decl
 instance Subst Path ValueDecl
 
 instance Subst TypeConstructor ModuleExpr
+instance Subst TypeConstructor ModelExpr
 instance Subst TypeConstructor Module
 instance Subst TypeConstructor Decl
 instance Subst TypeConstructor ValueDecl
 
 instance Subst ValueConstructor ModuleExpr
+instance Subst ValueConstructor ModelExpr
 instance Subst ValueConstructor Module
 instance Subst ValueConstructor Decl
 instance Subst ValueConstructor ValueDecl
 
 instance Subst Expr ModuleExpr
+instance Subst Expr ModelExpr
 instance Subst Expr Module
 instance Subst Expr Decl
 instance Subst Expr ValueDecl

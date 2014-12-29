@@ -226,7 +226,9 @@ moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 moduleExpr :: ModuleExpr -> TA I.ModuleExpr
 moduleExpr (ModuleStruct mdl) = do
   modK <- view currentModuleKind
-  I.ModuleStruct <$> module' mdl <*> pure modK
+  case modK of
+   ModuleMK -> I.ModuleStruct <$> module' mdl
+   ModelMK -> I.ModuleModel . I.ModelStruct <$> module' mdl
 moduleExpr (ModuleSeal me mt) =
   I.ModuleSeal <$> moduleExpr me <*> moduleType mt
 moduleExpr (ModuleAssume mt) =

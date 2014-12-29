@@ -223,8 +223,20 @@ moduleExpr modPath me isGenerative kont =
    I.ModuleSeal me' _mt ->
      -- sealing is generative.  We want new copies now.
      moduleExpr modPath me' True kont
-   I.ModuleStruct mdl _modK ->
+   I.ModuleStruct mdl ->
      module' modPath mdl kont
+   I.ModuleModel mdl ->
+     modelExpr modPath mdl kont
+
+
+modelExpr :: Translate m
+             => I.Path
+             -> I.ModelExpr
+             -> (DProgram -> m DProgram)
+             -> m DProgram
+modelExpr _modPath _modelExpr kont = kont mempty
+                                     -- TODO: translate models
+
 
 -- | given an existing module and its path, and a new path, expose all
 -- the contents of the old module using the new names.  This is the
