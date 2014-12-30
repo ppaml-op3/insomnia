@@ -51,14 +51,17 @@ data ModuleExpr =
 data ModelExpr =
   ModelId !QualifiedIdent
   | ModelStruct !Module
+  | ModelLocal ![ModelLocalBind] !ModelExpr !ModuleType
     deriving (Show)
              
+data ModelLocalBind =
+  SampleMLB !Ident !ModuleExpr
+  deriving (Show)
+
 data ModuleType =
   SigMT !Signature
   | IdentMT !Ident
     deriving (Show)
-
-
 
 data Signature = Sig ![SigDecl]
                deriving (Show)

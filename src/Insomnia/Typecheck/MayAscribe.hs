@@ -20,8 +20,8 @@ import Insomnia.ModuleType (ModuleType, Signature(..), TypeSigDecl(..),
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
-import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtxV)
-import Insomnia.Typecheck.Selfify (selfifySigV )
+import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtx)
+import Insomnia.Typecheck.Selfify (selfifySignature)
 
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
 import Insomnia.Typecheck.Equiv.Types (equivTypes)
@@ -142,9 +142,13 @@ checkValueFieldTail pmod fld ty msig1 =
         let pdefn = ProjP pmod fld'
             mrest1 = U.subst ident1 pdefn mrest1_
         subSigV <- signatureOfModuleType moduleTy
-        subSelfV <- selfifySigV pdefn subSigV
-        extendModuleCtxV subSelfV $
-          checkValueFieldTail pmod fld ty mrest1
+        case subSigV of
+         (SigV subSig ModuleMK) -> do
+           subSelf <- selfifySignature pdefn subSig
+           extendModuleCtx subSelf $
+             checkValueFieldTail pmod fld ty mrest1
+         (SigV _subSig ModelMK) -> do
+           checkValueFieldTail pmod fld ty mrest1
     TypeSig fld' bnd ->
       U.lunbind bnd $ \((tycon1, U.unembed -> tsd_), mrest1_) -> do
         let pdefn = TypePath pmod fld'
@@ -205,10 +209,14 @@ checkTypeFieldTail pmod fld bnd msig1 kont =
       U.lunbind bnd' $ \((ident1, U.unembed -> moduleTy), mrest1_) -> do
         subSigV <- signatureOfModuleType moduleTy
         let pSubmod = ProjP pmod fld'
-        selfSigV <- selfifySigV pSubmod subSigV
-        let mrest1 = U.subst ident1 pSubmod mrest1_
-        extendModuleCtxV selfSigV $
-          checkTypeFieldTail pmod fld bnd mrest1 (kont . SubmodulePreSig fld' subSigV)
+            mrest1 = U.subst ident1 pSubmod mrest1_
+        case subSigV of
+         (SigV subSig ModuleMK) -> do
+           selfSig <- selfifySignature pSubmod subSig
+           extendModuleCtx selfSig $
+             checkTypeFieldTail pmod fld bnd mrest1 (kont . SubmodulePreSig fld' subSigV)
+         (SigV _subSig ModelMK) -> do
+           checkTypeFieldTail pmod fld bnd mrest1 (kont . SubmodulePreSig fld' subSigV)
     TypeSig fld' bnd' ->
       if fld /= fld'
       then 
@@ -404,11 +412,16 @@ checkSubmoduleFieldTail pmod fld bnd msig1 kont =
       then U.lunbind bnd' $ \((ident1, U.unembed -> moduleTy1), mrest1_) -> do
         sigV1 <- signatureOfModuleType moduleTy1
         let pSubmod = ProjP pmod fld'
-        selfSigV1 <- selfifySigV pSubmod sigV1
-        let mrest1 = U.subst ident1 pSubmod mrest1_
-        extendModuleCtxV selfSigV1 $
-          checkSubmoduleFieldTail pmod fld bnd mrest1 $ \mrest1' ->
-          kont (SubmodulePreSig fld' sigV1 mrest1')
+            mrest1 = U.subst ident1 pSubmod mrest1_
+        case sigV1 of
+         (SigV sig1 ModuleMK) -> do
+           selfSig1 <- selfifySignature pSubmod sig1
+           extendModuleCtx selfSig1 $
+             checkSubmoduleFieldTail pmod fld bnd mrest1 $ \mrest1' ->
+             kont (SubmodulePreSig fld' sigV1 mrest1')
+         (SigV _ ModelMK) -> do
+           checkSubmoduleFieldTail pmod fld bnd mrest1 $ \mrest1' ->
+             kont (SubmodulePreSig fld' sigV1 mrest1')
       else U.lunbind2 bnd bnd' $ \res ->
       case res of
         Nothing -> fail ("checkSubmoduleField internal error. "
@@ -426,9 +439,13 @@ checkSubmoduleFieldTail pmod fld bnd msig1 kont =
                        <> " cannot be ascribed a "
                        <> formatErr modK2 <>" signature")
           checkSigV pSubmod (TailPreSig $ sigv1 ^. sigVSig) sigv2
-          selfSigV1 <- selfifySigV pSubmod sigv1
           let
             mrest1 = U.subst ident1 pSubmod mrest1_
             mrest2 = U.subst ident2 pSubmod mrest2_
-          extendModuleCtxV selfSigV1 $
-            kont (SubmodulePreSig fld' sigv1 (TailPreSig mrest1)) mrest2
+          case sigv1 of
+           (SigV sig1 ModuleMK) -> do
+             selfSig1 <- selfifySignature pSubmod sig1
+             extendModuleCtx selfSig1 $
+               kont (SubmodulePreSig fld' sigv1 (TailPreSig mrest1)) mrest2
+           (SigV _ ModelMK) ->
+             kont (SubmodulePreSig fld' sigv1 (TailPreSig mrest1)) mrest2

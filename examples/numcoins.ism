@@ -1,13 +1,23 @@
-module type POISSOND {
+model type POISSOND {
   type N :: *
   sig x :: N
 }
 
+model Q = assume POISSOND
 
-module PoissonL = model {
-  module H = assume POISSOND
-  type N = H.N
+model type POISSONL {
+  type N :: *
   sig x :: N
-  val x = H.x
 }
+
+module PoissonL =
+  model
+  local
+    H ~ Q
+  in {
+    type N = H.N
+    sig x :: H.N
+    val x = H.x
+  } :: POISSONL
+
 

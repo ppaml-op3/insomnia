@@ -148,6 +148,7 @@ instance Pretty TypeAliasClosure where
 
 instance Pretty Env where
   pp env = vcat [ "sigs", pp (env^.envSigs)
+                , "modules", pp (env^.envModuleSigs)
                 , "dcons", pp (env^.envDCons)
                 , "ccons", pp (env^.envCCons)
                 , "globals", pp (env^.envGlobals)

@@ -1,25 +1,31 @@
 {-# LANGUAGE ViewPatterns #-}
 module Insomnia.Typecheck.ClarifySignature (clarifySignatureV) where
 
-import Data.Traversable (Traversable(..))
-
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
+import Insomnia.Common.ModuleKind
 import Insomnia.Identifier (Path(..), Identifier, Field)
 import Insomnia.Types (Kind(..), Type(..),
                        TyConName, TypeConstructor(..),
                        TypePath(..),
                        KindedTVar, kArrs)
 import Insomnia.TypeDefn (TypeAlias(..), TypeDefn(..))
-import Insomnia.ModuleType (Signature(..), ModuleType(..), TypeSigDecl(..), SigV)
+import Insomnia.ModuleType (Signature(..), ModuleType(..), TypeSigDecl(..), SigV(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
 
 
+-- | Clarify a signature by making its abstract types be manifestly equal to
+-- the projections from the corresponding fields of the given module path.
+-- But note that for /model/-types we do not do this: a model signature does not refer to a
+-- module until it has been sampled.
 clarifySignatureV :: Path -> SigV Signature -> TC (SigV Signature)
-clarifySignatureV = traverse . clarifySignature
+clarifySignatureV pmod (SigV msig ModuleMK) = do
+  clearSig <- clarifySignature pmod msig
+  return (SigV clearSig ModuleMK)
+clarifySignatureV _pmod s@(SigV _ ModelMK) = return s
 
 -- | Given the signature of the given path (ie, assume that the module
 -- with that path has the given signature), return a signature that's

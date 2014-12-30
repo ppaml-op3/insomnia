@@ -10,6 +10,7 @@ import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
 
+import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn
@@ -29,6 +30,16 @@ data ModuleExpr =
 data ModelExpr =
   ModelStruct !Module  -- model specified here
   | ModelId !Path      -- previously named model
+    -- | local X ~ M in M' : Mt Note that X is not bound in Mt.  The
+    -- annotation is required due to the "avoidance problem": we could
+    -- try to naively infer a principal signature and issue an error
+    -- if X is mentioned, but in general there does not exist a most
+    -- general signature for M' that doesn't mention X.
+  | ModelLocal !(Bind (Telescope ModelLocalBind) ModelExpr) !ModuleType -- must annotate with sig.
+  deriving (Show, Typeable, Generic)
+
+data ModelLocalBind =
+  SampleMLB !Identifier !(Embed ModuleExpr)
   deriving (Show, Typeable, Generic)
 
 -- A single module.
@@ -53,30 +64,35 @@ data ValueDecl =
 
 instance Alpha ModuleExpr
 instance Alpha ModelExpr
+instance Alpha ModelLocalBind
 instance Alpha Module
 instance Alpha Decl
 instance Alpha ValueDecl
 
 instance Subst Path ModuleExpr
 instance Subst Path ModelExpr
+instance Subst Path ModelLocalBind
 instance Subst Path Module
 instance Subst Path Decl
 instance Subst Path ValueDecl
 
 instance Subst TypeConstructor ModuleExpr
 instance Subst TypeConstructor ModelExpr
+instance Subst TypeConstructor ModelLocalBind
 instance Subst TypeConstructor Module
 instance Subst TypeConstructor Decl
 instance Subst TypeConstructor ValueDecl
 
 instance Subst ValueConstructor ModuleExpr
 instance Subst ValueConstructor ModelExpr
+instance Subst ValueConstructor ModelLocalBind
 instance Subst ValueConstructor Module
 instance Subst ValueConstructor Decl
 instance Subst ValueConstructor ValueDecl
 
 instance Subst Expr ModuleExpr
 instance Subst Expr ModelExpr
+instance Subst Expr ModelLocalBind
 instance Subst Expr Module
 instance Subst Expr Decl
 instance Subst Expr ValueDecl

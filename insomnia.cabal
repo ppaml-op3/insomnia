@@ -28,6 +28,7 @@ library
                        Insomnia.Common.Literal
                        Insomnia.Common.Stochasticity
                        Insomnia.Common.ModuleKind
+                       Insomnia.Common.Telescope
                        --
                        Insomnia.Identifier
                        --

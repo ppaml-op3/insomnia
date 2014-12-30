@@ -42,6 +42,8 @@ extendModuleCtx (ValueSelfSig qvar ty msig) =
 extendModuleCtx (TypeSelfSig p tsd msig) =
   extendTypeSigDeclCtx (TCGlobal p) tsd
   . extendModuleCtx msig
-extendModuleCtx (SubmoduleSelfSig _path subSigV msig) =
-  extendModuleCtxV subSigV
+extendModuleCtx (SubmoduleSelfSig _path subSig msig) =
+  extendModuleCtx subSig
   . extendModuleCtx msig
+extendModuleCtx (SubmodelSelfSig _path _subSig msig) =
+  extendModuleCtx msig

@@ -1,4 +1,26 @@
 * Tasks
+** TODO values fields without type sign aren't part of principal sig    :bug:
+   #+BEGIN_EXAMPLE
+     module X {
+       sig x : t1
+       val x = e1
+       val y = e2
+     }
+   #+END_EXAMPLE
+
+   The principal signature of X is ~{ val x : t1 }~ instead of the
+   expected ~{val x : t1; val y : t2 }~.  This is because principal
+   signature computation for a structure looks for ~sig f : t~
+   declarations.  Type elaboration should insert such declarations.
+
+   This will require a slight architectural tweak.  Currently that
+   portion of the typechecking code assumes that each field
+   declaration in the structure before typechecking gives rise to
+   exactly one field declaration after typechecking (it uses a list of
+   decls for the module and just conses the fields together).  Instead
+   we should use a ~Endo [Decl]~ Monoid to allow zero or more elaborated
+   declarations.
+
 ** TODO Reconcile concrete syntax with wiki examples.
    At the very least ~::~ vs ~:~ in type ascription.
 ** TODO Desugar mixed-model syntax into nested modules.

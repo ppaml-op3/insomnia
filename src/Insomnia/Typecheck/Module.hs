@@ -16,6 +16,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
+import Insomnia.Common.Telescope
 import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
                        Type(..), freshUVarT)
@@ -37,9 +38,9 @@ import Insomnia.Typecheck.TypeDefn (checkTypeDefn,
                                     extendTypeDefnCtx,
                                     extendTypeAliasCtx)
 import Insomnia.Typecheck.ModuleType (checkModuleType)
-import Insomnia.Typecheck.Selfify (selfifyTypeDefn, selfifySigV)
+import Insomnia.Typecheck.Selfify (selfifyTypeDefn, selfifySignature)
 import Insomnia.Typecheck.ClarifySignature (clarifySignatureV)
-import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtxV)
+import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtxV, extendModuleCtx)
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
 import Insomnia.Typecheck.MayAscribe (mayAscribeV)
 
@@ -77,7 +78,6 @@ inferModuleExpr pmod (ModuleId modPathRHS) kont = do
           <??@ ("while checking the definition of " <> formatErr pmod)
   sigV' <- clarifySignatureV modPathRHS sigV
   kont (ModuleId modPathRHS) sigV'
-  -- lookup a module's signature (selfified?) and return it.
 
 checkModelExpr :: Path -> ModelExpr -> TC (ModelExpr, Signature)
 checkModelExpr pmod mexpr =
@@ -93,6 +93,31 @@ checkModelExpr pmod mexpr =
              <??@ "while checking model " <> formatErr pmod
      msig <- naturalSignature mdl
      return (ModelStruct mdl', msig)
+   ModelLocal bnd mty -> do
+     (mty', sigvAscribed) <- checkModuleType mty
+     U.lunbind bnd $ \(binds, body) ->
+       traverseTelescopeContT (checkLocalModelBind pmod) binds $ \binds' -> do
+         (body', sigInferred) <- checkModelExpr pmod body
+         sigvSealed' <- mayAscribeV (SigV sigInferred ModelMK) sigvAscribed
+                        <??@ ("while checking validity of signature ascription to body of local model in "
+                              <> formatErr pmod)
+         return (ModelLocal (U.bind binds' body') mty', sigvSealed'^.sigVSig)
+
+
+checkLocalModelBind :: Path -> ModelLocalBind -> (ModelLocalBind -> TC a) -> TC a
+checkLocalModelBind pmod (SampleMLB modId (U.unembed -> mdl)) kont =
+  inferModuleExpr (IdP modId) mdl $ \mdl' sigv -> do
+    unless (sigv^.sigVKind == ModelMK) $
+      typeError ("local model sample binding "
+                 <> formatErr modId <>
+                 " in definition of " <> formatErr pmod
+                 <> " is a module, not a model")
+    -- N.B.: in the local binding, we bind the identifier to a module,
+    -- not a model.
+    selfSig <- selfifySignature (IdP modId) (sigv^.sigVSig)
+    extendModuleSigCtx modId (sigv & sigVKind .~ ModuleMK)
+      $ extendModuleCtx selfSig
+      $ kont (SampleMLB modId (U.embed mdl'))
 
 lookupModuleSigPath :: Path -> TC (SigV Signature)
 lookupModuleSigPath (IdP ident) = lookupModuleSig ident
@@ -182,6 +207,8 @@ naturalSignatureModelExpr (ModelId p) = do
 naturalSignatureModelExpr (ModelStruct mdl) = do
   modSig <- naturalSignature mdl
   return (SigV modSig ModelMK)
+naturalSignatureModelExpr (ModelLocal _ mt) =
+  signatureOfModuleType mt
 
 -- | Typecheck the contents of a module.
 checkModule :: Path -> Stochasticity -> Module -> TC Module
@@ -384,8 +411,12 @@ extendDCtx pmod d =
           substitution = [(shortIdent, pSubMod)]
           rest' = U.substs substitution rest
       subSigV <- naturalSignatureModuleExpr moduleExpr
-      subSelfSigV <- selfifySigV pSubMod subSigV
-      extendModuleCtxV subSelfSigV $ kont rest'
+      case subSigV of
+       (SigV subSig ModuleMK) -> do
+         subSelfSig <- selfifySignature pSubMod subSig
+         extendModuleCtx subSelfSig $ kont rest'
+       (SigV _ ModelMK) ->
+         kont rest'
 
 extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC [Decl]) -> TC [Decl]
 extendValueDeclCtx pmod fld vd =

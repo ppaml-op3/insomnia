@@ -19,6 +19,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 import Insomnia.Common.Literal
 import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
+import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr
@@ -390,6 +391,16 @@ instance Pretty ModuleExpr where
 instance Pretty ModelExpr where
   pp (ModelId p) = pp p
   pp (ModelStruct mdl) = pp mdl
+  pp (ModelLocal bnd ty) =
+    let (bnds, body) = UU.unsafeUnbind bnd
+    in fsep ["local",
+             nesting (fsep $ ppTelescope pp bnds),
+             "in",
+             nesting (fsep [pp body, indent coloncolon (pp ty)])]
+
+instance Pretty ModelLocalBind where
+  pp (SampleMLB ident (U.unembed -> mdl)) =
+    fsep [pp ident, indent "~" (pp mdl)]
 
 instance Pretty ModuleType where
   pp (SigMT sigv) = pp sigv
@@ -434,6 +445,12 @@ instance Pretty a => Pretty (UnificationFailure TypeUnificationError a) where
          <+> pp r1 <+> indent "≟" (pp r2)
          <+> " because the rows have different labels"]
     
+
+-- | @ppTelescope pelem t@ pretty prints the 'Telescope' @t@
+-- using @psep@ to separate the elements and @pelem@ to print each element.
+ppTelescope :: U.Alpha p => (p -> PM Doc) -> Telescope p -> [PM Doc]
+ppTelescope pelem t =
+  foldMapTelescope (\x -> [pelem x]) t
 
 -- onUnicode' :: String -> String -> PM Doc
 -- onUnicode' yes no = onUnicode (text yes) (text no)

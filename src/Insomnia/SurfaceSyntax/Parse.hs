@@ -56,7 +56,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   , identLetter = alphaNum <|> char '_'
   , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
-  , reservedNames = ["model", "module",
+  , reservedNames = ["model", "module", "local",
                      "forall", "∀",
                      "⋆", "∷",
                      "infix", "infixr", "infixl",
@@ -192,7 +192,10 @@ parseFile fp = do
 ----------------------------------------
 
 toplevel :: Parser Toplevel
-toplevel = Toplevel <$> (whiteSpace *> (localIndentation Any $ many (absoluteIndentation toplevelItem)) <* finish)
+toplevel = Toplevel
+           <$ whiteSpace
+           <*> (localIndentation Any $ many $ absoluteIndentation toplevelItem)
+           <* finish
   where
     finish = localTokenMode (const Any) eof
 
@@ -205,7 +208,7 @@ toplevelModule :: Parser ToplevelItem
 toplevelModule =
   mkToplevelModule
   <$> (try kindAndId)
-  <*> optional (classify *> (IdentMT <$> moduleTypeIdentifier))
+  <*> optional (IdentMT <$ classify <*> moduleTypeIdentifier)
   <*> ((reservedOp "=" *> moduleExpr)
        <|> literalModuleShorthand)
   where
@@ -215,8 +218,8 @@ toplevelModule =
 
 moduleKind :: Parser ModuleKind
 moduleKind =
-  ((reserved "model" *> pure ModelMK )
-   <|> (reserved "module" *> pure ModuleMK))
+  ((ModelMK <$ reserved "model")
+   <|> (ModuleMK <$ reserved "module"))
   <?> "module kind"
 
 toplevelModuleType :: Parser ToplevelItem
@@ -355,8 +358,30 @@ modelExpr :: Parser ModelExpr
 modelExpr =
   (modelPath <?> "model identifier")
   <|> (modelExprLiteral <?> "braced model definition")
+  <|> (modelLocalExpr <?> "local model expression")
   where
     modelPath = ModelId <$> modelId
+
+modelLocalExpr :: Parser ModelExpr
+modelLocalExpr =
+  ModelLocal
+  <$ reserved "local"
+  <*> many modelLocalBind
+  <* reserved "in"
+  <*> modelExpr
+  <* classify
+  <*> modelTypeExpr
+
+modelLocalBind :: Parser ModelLocalBind
+modelLocalBind =
+  sampleLocalBind <?> "module sampling declaration"
+
+sampleLocalBind :: Parser ModelLocalBind
+sampleLocalBind =
+  try (SampleMLB
+       <$> modelIdentifier
+       <* reservedOp "~")
+  <*> moduleExpr
 
 
 decl :: Parser Decl

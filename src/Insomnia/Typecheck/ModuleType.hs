@@ -14,8 +14,8 @@ import Insomnia.ModuleType
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType)
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
-import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtxV)
-import Insomnia.Typecheck.Selfify (selfifySigV)
+import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtx)
+import Insomnia.Typecheck.Selfify (selfifySignature)
 
 -- | Check that the given module type expression is well-formed, and
 -- return both the module type expression and the signature that it
@@ -58,13 +58,24 @@ checkSignature mpath_ _modK = flip (checkSignature' mpath_) ensureNoDuplicateFie
       U.lunbind bnd $ \((modIdent, U.unembed -> modTy), sig) -> do
         let modPath = mpathAppend mpath fld
         (modTy', modSigV) <- checkModuleType modTy
-        selfSigV <- selfifySigV modPath modSigV
         let sig' = U.subst modIdent modPath sig
-        extendModuleCtxV selfSigV
-          $ checkSignature' mpath sig' $ \(sig'', flds) ->
-          kont (SubmoduleSig fld $ U.bind (modIdent, U.embed modTy') sig''
-                , fld:flds)
-        
+        case modSigV of
+         (SigV modSig ModuleMK) -> do
+           selfSig <- selfifySignature modPath modSig
+           extendModuleCtx selfSig
+             $ checkSignature' mpath sig'
+             $ \(sig'', flds) ->
+                kont (SubmoduleSig fld $ U.bind (modIdent, U.embed modTy') sig'', fld:flds)
+         (SigV _modSig ModelMK) -> do
+           -- N.B. We don't add modSig to the environment because in
+           -- fact there's nothing that can be done with it in a
+           -- signature!  you can't project out of a model, so its
+           -- type components aren't useful, and you can't sample the
+           -- submodel in the signature because sampling only happens
+           -- in modules, not module types!
+           checkSignature' mpath sig'
+           $ \(sig'', flds) ->
+              kont (SubmoduleSig fld $ U.bind (modIdent, U.embed modTy') sig'', fld:flds)
 
 mpathAppend :: Maybe Path -> Field -> Path
 mpathAppend Nothing fld = IdP (U.s2n fld)

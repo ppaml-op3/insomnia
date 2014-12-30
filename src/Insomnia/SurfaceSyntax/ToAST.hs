@@ -19,6 +19,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.Literal
 import Insomnia.Common.ModuleKind
+import Insomnia.Common.Telescope
 import Insomnia.Common.Stochasticity
 import qualified Insomnia.Identifier  as I
 import qualified Insomnia.Expr        as I
@@ -238,6 +239,24 @@ modelExpr :: ModelExpr -> TA I.ModelExpr
 modelExpr (ModelId qid) = return $ I.ModelId (qualifiedIdPath qid)
 modelExpr (ModelStruct mdl) = 
   I.ModelStruct <$> module' mdl
+modelExpr (ModelLocal binds body mt) = do
+  mt' <- moduleType mt
+  go binds $ \binds' -> do
+    body' <- modelExpr body
+    return (I.ModelLocal (U.bind binds' body') mt')
+  where
+    go :: [ModelLocalBind] -> (Telescope I.ModelLocalBind -> TA a) -> TA a
+    go [] kont = kont NilT
+    go (b:bs) kont = 
+      modelLocalBind b $ \b' ->
+      go bs $ \bs' ->
+      kont (ConsT (U.rebind b' bs'))
+
+modelLocalBind :: ModelLocalBind -> (I.ModelLocalBind -> TA a ) -> TA a
+modelLocalBind (SampleMLB ident mdl) kont = do
+  ident' <- identifier ident
+  mdl' <- moduleExpr mdl
+  kont (I.SampleMLB ident' (U.embed mdl'))
   
 
 signature :: Signature -> TA I.Signature
