@@ -12,6 +12,7 @@ import Data.Monoid (Monoid(..), (<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.Literal
+import Insomnia.Common.Telescope
 import Insomnia.Types (Kind(..), Type(..), Row(..), canonicalOrderRowLabels, freshUVarT)
 import Insomnia.Expr
 
@@ -157,11 +158,7 @@ checkPattern tscrut p =
 -- | check a sequence of bindings and pass them to the given continuation
 -- in an environment suitably extended by the new bindings.
 checkBindings :: Bindings -> (Bindings -> TC a) -> TC a
-checkBindings NilBs kont = kont NilBs
-checkBindings (ConsBs (U.unrebind -> (bind, binds))) kont =
-  checkBinding bind $ \bind' ->
-  checkBindings binds $ \ binds' ->
-  kont (ConsBs (U.rebind bind' binds'))
+checkBindings bs kont = traverseTelescopeContT checkBinding (bindingsTele bs) (kont . Bindings)
 
 checkBinding :: Binding -> (Binding -> TC a) -> TC a
 checkBinding (ValB (v, U.unembed -> ann) (U.unembed -> e)) kont =

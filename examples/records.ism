@@ -1,14 +1,14 @@
 
-model type DIST_PARAMS {
+module type DIST_PARAMS {
   type NormalParams = { μ :: Real ; σ :: Real }
 
-  parameter sig normal :: NormalParams -> Dist Real
+  sig normal :: NormalParams -> Dist Real
 }
 
-model DistParams :: DIST_PARAMS {
+module DistParams :: DIST_PARAMS {
    type NormalParams = { μ :: Real ; σ :: Real }
 
-   parameter sig normal :: NormalParams -> Dist Real
+   sig normal :: NormalParams -> Dist Real
 }
 
 model N {
@@ -21,8 +21,11 @@ model N {
 
   sig z :: Real
   val z = let
-    { p = { μ = 1.0, σ = 1.0 }
-    } in case p of
-    { { μ = μ, σ = σ } -> μ .+ σ
-    }
+    p = { μ = 1.0, σ = 1.0 }
+    q = p -- (just to check that let bindings scope correctly)
+    in case q of
+      -- annoying parser bug here: without the parens, the parser
+      -- treats the braces as beginning an explicitly delimited case block
+      ({ μ = μ, σ = σ }) -> μ .+ σ
+    
 }

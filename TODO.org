@@ -84,6 +84,25 @@
    Unless they turn out to be useful, in which case we will need to
    understand their semantics.
 
+** TODO parsing record pattern matching and explicit braces             :bug:
+   #+BEGIN_EXAMPLE
+     case e of
+       { f1 = p1, f2 = p2 } -> e
+   #+END_EXAMPLE
+
+  The parser sees the above as an explicitly-delimited pattern list.  ~case e of { pat1 ; pat2 }~.
+  So we get a parse error about the leftmost ~=~.
+
+  The workaround is to write
+
+  #+BEGIN_EXAMPLE
+    case e of
+      ({ f1 = p1, f2 = p2 }) -> e
+  #+END_EXAMPLE
+
+  If bare record types (without a datatype wrapped around them) are going to be common, this
+  may get very annoying.
+
 * Ideas about syntax
 
   http://ppaml.cs.tufts.edu/Sean%E2%80%99s%20simple%20model%20notation

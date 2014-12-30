@@ -5,7 +5,6 @@ module Insomnia.Typecheck.Selfify
        ) where
 
 import Data.Monoid (Monoid(..))
-import Data.Traversable (Traversable(..))
 
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU

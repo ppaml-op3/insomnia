@@ -17,7 +17,6 @@ import Insomnia.Types
 import Insomnia.Expr (Expr)
 import Insomnia.TypeDefn
 
-import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
 
 data ModuleType =

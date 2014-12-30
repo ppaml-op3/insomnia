@@ -538,14 +538,15 @@ pattern (PhraseP atms) = do
 
 
 bindings :: [Binding] -> (I.Bindings -> TA a) -> TA a
-bindings [] kont = kont I.NilBs
-bindings (bnd:bnds) kont = 
-  binding bnd $ \bnd' ->
-  bindings bnds $ \bnds' ->
-  kont (prependBindings bnd' bnds')
+bindings bnds kont = go bnds (kont . I.Bindings)
   where
+    go [] k = k NilT
+    go (bnd:bnds) k =
+      binding bnd $ \bnd' ->
+      go bnds $ \bnds' ->
+      k (prependBindings bnd' bnds')
     prependBindings [] ys = ys
-    prependBindings (x:xs) ys = I.ConsBs $ U.rebind x (prependBindings xs ys)
+    prependBindings (x:xs) ys = ConsT $ U.rebind x (prependBindings xs ys)
 
 binding :: Binding -> ([I.Binding] -> TA a) -> TA a
 binding (SigB _ident _ty) kont = kont []

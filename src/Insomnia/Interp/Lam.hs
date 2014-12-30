@@ -11,7 +11,7 @@ import qualified Data.Map as M
 import Unbound.Generics.LocallyNameless
 
 import Insomnia.Common.Literal
-
+import Insomnia.Common.Telescope
 
 type ConId = String
 
@@ -50,9 +50,8 @@ data Pattern =
   | ConP !(Embed ConId) ![Pattern]
   deriving (Show, Typeable, Generic)
 
-data Bindings =
-  NilBs
-  | ConsBs (Rebind Binding Bindings)
+newtype Bindings =
+  Bindings { bindginsTele :: Telescope Binding }
   deriving (Show, Typeable, Generic)
            
 data Binding =

@@ -24,7 +24,9 @@ import qualified Insomnia.Expr as I
 
 -- "O"output language
 import qualified Insomnia.Interp.Lam as O
-import  Insomnia.Common.Literal
+
+import Insomnia.Common.Literal
+import Insomnia.Common.Telescope
 
 -- @foldlMapCont (\kont -> interposeOn (kont initialSummary))
 -- eachItemCPS items initialKont@ is a fold over @items@ in
@@ -410,14 +412,7 @@ bindings :: (Translate m, LocalTranslate m)
             -> (O.Bindings -> m a)
             -> m a
 bindings bdgs_ kont =
-  case bdgs_ of
-   I.NilBs -> kont O.NilBs
-   I.ConsBs rbd ->
-     let (bdg, bdgs) = U.unrebind rbd
-     in
-      binding bdg $ \bdg' ->
-      bindings bdgs $ \bdgs' ->
-      kont (O.ConsBs $ U.rebind bdg' bdgs')
+  traverseTelescopeContT binding (I.bindingsTele bdgs_) (kont . O.Bindings)
 
 binding :: (Translate m, LocalTranslate m)
            => I.Binding

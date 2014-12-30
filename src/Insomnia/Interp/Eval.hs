@@ -9,10 +9,12 @@ import qualified Control.Monad.State.Lazy as LazyST
 import Insomnia.Except
 
 import qualified Data.Map as M
+import Data.Monoid (Endo(..))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.Literal
+import Insomnia.Common.Telescope
 import Insomnia.Interp.Lam
 
 import qualified Insomnia.Interp.PMonad as PM
@@ -139,10 +141,7 @@ evalBindings :: MonadEval m
                 => Bindings
                 -> m a
                 -> m a
-evalBindings NilBs kont = kont
-evalBindings (ConsBs bnd) kont =
-  let (bdg, bdgs) = U.unrebind bnd
-  in evalBinding bdg (evalBindings bdgs kont)
+evalBindings (Bindings t) = appEndo (foldMapTelescope (Endo . evalBinding) t) 
 
 evalBinding :: MonadEval m
                => Binding

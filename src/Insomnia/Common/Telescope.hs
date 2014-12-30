@@ -64,3 +64,4 @@ traverseTelescope f (ConsT rbnd) = let
 traverseTelescopeContT :: (Monad m, Alpha p, Alpha p') =>
                           (p -> (p' -> m r) -> m r) -> Telescope p -> (Telescope p' -> m r) -> m r
 traverseTelescopeContT f t kont = Cont.runContT (mapMOf traverseTelescope (\p -> Cont.ContT (f p)) t) kont
+

@@ -6,6 +6,7 @@ module Insomnia.Expr where
 
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Lens.Traversal
+import Control.Lens.Fold (anyOf)
 import Control.Lens.Plated
 import Control.Lens.Tuple (_2)
 import Control.Lens.Iso (iso)
@@ -17,6 +18,7 @@ import Unbound.Generics.LocallyNameless
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Common.Literal
+import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn (TypeDefn, TypeAlias, ValueConstructor)
@@ -50,9 +52,8 @@ newtype Annot = Annot (Maybe Type)
 
 -- | A sequence of bindings, each of which brings variables into scope in the
 -- RHSs of the rest.  (ie, let* from Scheme)
-data Bindings = NilBs
-              | ConsBs (Rebind Binding Bindings)
-                deriving (Show, Typeable, Generic)
+newtype Bindings = Bindings { bindingsTele :: Telescope Binding }
+                 deriving (Show, Typeable, Generic)
 
 -- | A single binding that binds the result of some kind of RHS to a variable.
 data Binding = ValB AnnVar (Embed Expr)
@@ -90,14 +91,10 @@ data Pattern = WildcardP
              | RecordP ![(Embed Label, Pattern)]
                deriving (Show, Typeable, Generic)
 
--- | @anyBindings f bs@ returns 'True' iff @f@ returns @True@ for any of the given @bs@
+-- | @anyBindings predicate bs@ returns 'True' iff @predicate@ returns
+-- @True@ for any of the given @bs@
 anyBindings :: (Binding -> Bool) -> Bindings -> Bool
-anyBindings f = go
-  where
-    go NilBs = False
-    go (ConsBs rbnd) =
-      let (b, bs) = unrebind rbnd
-      in f b || go bs
+anyBindings p = anyOf traverseTelescope p . bindingsTele
 
 -- | Return 'True' if the given binding is a SampleB or a TabB
 isStochasticBinding :: Binding -> Bool
@@ -262,9 +259,7 @@ instance TraverseExprs Clause Clause where
     in (Clause . bind pat) <$> f e
 
 instance TraverseExprs Bindings Bindings where
-  traverseExprs _ NilBs = pure NilBs
-  traverseExprs f (ConsBs (unrebind -> (b1,bs))) =
-    ConsBs <$> (rebind <$> traverseExprs f b1 <*> traverseExprs f bs)
+  traverseExprs = iso bindingsTele Bindings . traverseTelescope . traverseExprs
 
 instance TraverseExprs Binding Binding where
   traverseExprs f (ValB av (unembed -> e)) =
@@ -307,9 +302,7 @@ instance TraverseTypes Annot Annot where
   traverseTypes f (Annot (Just t)) = (Annot . Just) <$> f t
 
 instance TraverseTypes Bindings Bindings where
-  traverseTypes _ NilBs = pure NilBs
-  traverseTypes f (ConsBs (unrebind -> (b, bs))) =
-    ConsBs <$> (rebind <$> traverseTypes f b <*> traverseTypes f bs)
+  traverseTypes = iso bindingsTele Bindings . traverseTelescope . traverseTypes
 
 instance TraverseTypes Binding Binding where
   traverseTypes f (ValB (v, unembed -> ann) e) =

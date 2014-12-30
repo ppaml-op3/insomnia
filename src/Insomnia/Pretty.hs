@@ -132,9 +132,7 @@ instance Pretty TabSelector where
   pp (TabIndex v) = pp v
 
 bindingsToList :: Bindings -> [Binding]
-bindingsToList NilBs = []
-bindingsToList (ConsBs (U.unrebind -> (b1, bs))) =
-  b1 : bindingsToList bs
+bindingsToList = foldMapTelescope (\x -> [x]) . bindingsTele
 
 instance Pretty Expr where
   pp (V v) = pp v
