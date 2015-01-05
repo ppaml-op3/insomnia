@@ -10,7 +10,7 @@ import Control.Lens
 import Control.Monad (unless)
 import Control.Monad.Reader.Class (MonadReader(..))
 
-import Data.Monoid ((<>))
+import Data.Monoid (Monoid(..), (<>), Endo(..))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
@@ -27,6 +27,7 @@ import Insomnia.Module
 import Insomnia.Pretty (Pretty, PrettyShort(..))
 
 import Insomnia.Unify (Unifiable(..),
+                       applyCurrentSubstitution,
                        solveUnification,
                        UnificationResult(..))
 
@@ -210,51 +211,74 @@ naturalSignatureModelExpr (ModelStruct mdl) = do
 naturalSignatureModelExpr (ModelLocal _ mt) =
   signatureOfModuleType mt
 
+-- | After checking a declaration we get one or more declarations out
+-- (for example if we inferred a signature for a value binding that did not have one).
+type CheckedDecl = Endo [Decl]
+
+singleCheckedDecl :: Decl -> CheckedDecl
+singleCheckedDecl d = Endo (d :)
+
 -- | Typecheck the contents of a module.
 checkModule :: Path -> Stochasticity -> Module -> TC Module
 checkModule pmod stoch =
-  fmap Module . go . moduleDecls
+  fmap (Module . checkedDeclToDecls) . go . moduleDecls
   where
-    go :: [Decl] -> TC [Decl]
-    go [] = return []
+    checkedDeclToDecls :: CheckedDecl -> [Decl]
+    checkedDeclToDecls = flip appEndo mempty
+    go :: [Decl] -> TC CheckedDecl
+    go [] = return mempty
     go (decl:decls) = do
       decl' <- checkDecl pmod stoch decl
       decls' <- extendDCtx pmod decl' decls go
-      return (decl':decls')
+      return (decl' <> decls')
 
-checkDecl :: Path -> Stochasticity -> Decl -> TC Decl
+checkDecl :: Path -> Stochasticity -> Decl -> TC CheckedDecl
 checkDecl pmod stoch d =
   checkDecl' pmod stoch d
   <??@ "while checking " <> formatErr (PrettyShort d)
 
 -- | Given the path to the module, check the declarations.
-checkDecl' :: Path -> Stochasticity -> Decl -> TC Decl
+checkDecl' :: Path -> Stochasticity -> Decl -> TC CheckedDecl
 checkDecl' pmod stoch d =
   case d of
     TypeDefn fld td -> do
       let dcon = TCGlobal (TypePath pmod fld)
       guardDuplicateDConDecl dcon
       (td', _) <- checkTypeDefn (TCLocal $ U.s2n fld) td
-      return $ TypeDefn fld td'
+      return $ singleCheckedDecl $ TypeDefn fld td'
     TypeAliasDefn fld alias -> do
       let dcon = TCGlobal (TypePath pmod fld)
       guardDuplicateDConDecl dcon
       (alias', _) <- checkTypeAlias alias
-      return $ TypeAliasDefn fld alias'
+      return $ singleCheckedDecl $ TypeAliasDefn fld alias'
     ValueDecl fld vd ->
       let qfld = QVar pmod fld
-      in ValueDecl fld <$> checkValueDecl fld qfld vd
+      in checkedValueDecl fld <$> checkValueDecl fld qfld vd
     SubmoduleDefn fld moduleExpr -> do
       moduleExpr' <- inferModuleExpr (ProjP pmod fld) moduleExpr
                      (\moduleExpr' _sigV -> return moduleExpr')
-      return $ SubmoduleDefn fld moduleExpr'
+      return $ singleCheckedDecl $ SubmoduleDefn fld moduleExpr'
 
-checkValueDecl :: Field -> QVar -> ValueDecl -> TC ValueDecl
+type CheckedValueDecl = Endo [ValueDecl]
+
+checkedValueDecl :: Field -> CheckedValueDecl -> CheckedDecl
+checkedValueDecl fld cd =
+  -- hack
+  let vds = appEndo cd []
+  in Endo (map (ValueDecl fld) vds ++)
+  
+
+singleCheckedValueDecl :: ValueDecl -> CheckedValueDecl
+singleCheckedValueDecl vd = Endo (vd :)
+
+
+
+checkValueDecl :: Field -> QVar -> ValueDecl -> TC CheckedValueDecl
 checkValueDecl fld qlf vd =
   case vd of
     SigDecl stoch t -> do
       guardDuplicateValueDecl qlf
-      checkSigDecl stoch t
+      singleCheckedValueDecl <$> checkSigDecl stoch t
     FunDecl e -> do
       msig <- lookupGlobal qlf
       ensureNoDefn qlf
@@ -307,58 +331,97 @@ ensureExpStochasticity want =
    RandomVariable -> ensureRandomVariable
    DeterministicParam -> ensureParameter
 
-checkFunDecl :: Field -> Maybe Type -> Expr -> TC ValueDecl
+checkFunDecl :: Field -> Maybe Type -> Expr -> TC CheckedValueDecl
 checkFunDecl fname mty_ e = do
   res <- solveUnification $ do
     tu <- freshUVarT
-    openAbstract mty_ $ \mty -> do
+    e' <- openAbstract mty_ $ \mty -> do
       case mty of
         Just ty -> tu =?= ty
         Nothing -> return ()
       checkExpr e tu
+    let
+      funDecl = singleCheckedValueDecl $ FunDecl e'
+    sigDecl <- case mty_ of
+          Just _ -> return mempty
+          Nothing -> do
+            -- XXX TODO: generalize here.  Or else decree that
+            -- polymorphic functions must have a type signature.
+            tinf <- applyCurrentSubstitution tu
+            return $ singleCheckedValueDecl $ SigDecl DeterministicParam tinf
+    return (sigDecl <> funDecl)
   case res of
-    UOkay e' -> return $ FunDecl e'
+    UOkay ans -> return ans
     UFail err -> typeError ("when checking " <> formatErr fname
                             <> formatErr err)
 
 
 -- Note that for values, unlike functions we don't generalize
-checkValDecl :: Field -> Maybe Type -> Expr -> TC ValueDecl
-checkValDecl fld mty e = do
-  res <- solveUnification $ do
-    tu <- freshUVarT
-    case mty of
-      Just ty -> tu =?= ty
-      Nothing -> return ()
-    checkExpr e tu
-  case res of
-    UOkay e' -> return $ ValDecl e'
-    UFail err -> typeError ("when checking "<> formatErr fld
-                            <> formatErr err)
+checkValDecl :: Field -> Maybe Type -> Expr -> TC CheckedValueDecl
+checkValDecl fld _mty _e = do
+  typeError ("internal error - unexpected val decl "
+             <> "(should've been translated away to a SampleDecl) while checking "
+             <> formatErr fld)
+  -- res <- solveUnification $ do
+  --   tu <- freshUVarT
+  --   case mty of
+  --     Just ty -> tu =?= ty
+  --     Nothing -> return ()
+  --   e' <- checkExpr e tu
+  --   let
+  --     valDecl = singleCheckedValueDecl $ ValDecl e'
+  --   sigDecl <- case mty_ of
+  --         Just _ -> return mempty
+  --         Nothing -> do
+  --           tinf <- applyCurrentSubstitution tu
+  --           -- by this point, if val decls are always parameters, "val x = e" inside models
+  --           -- was turned into "val x ~ ireturn e" (ie a SampleDecl).
+  --           return $ singleCheckedValueDecl $ SigDecl DeterministicParam tinf
+  --   return (sigDecl <> valDecl)
+  -- case res of
+  --   UOkay ans -> return ans
+  --   UFail err -> typeError ("when checking "<> formatErr fld
+  --                           <> formatErr err)
 
-checkSampleDecl :: Field -> Maybe Type -> Expr -> TC ValueDecl
+checkSampleDecl :: Field -> Maybe Type -> Expr -> TC CheckedValueDecl
 checkSampleDecl fld mty e = do
   res <- solveUnification $ do
     tu <- freshUVarT
     case mty of
       Just ty -> tu =?= ty
       Nothing -> return ()
-    checkExpr e (distT tu)
+    e' <- checkExpr e (distT tu)
+    let
+      sampleDecl = singleCheckedValueDecl $ SampleDecl e'
+    sigDecl <- case mty of
+          Just _ -> return mempty
+          Nothing -> do
+            tinf <- applyCurrentSubstitution tu
+            return $ singleCheckedValueDecl $ SigDecl RandomVariable tinf
+    return (sigDecl <> sampleDecl)
   case res of
-    UOkay e' -> return $ SampleDecl e'
+    UOkay ans -> return ans
     UFail err -> typeError ("when checking " <> formatErr fld
                             <> formatErr err)
 
-checkParameterDecl :: Field -> Maybe Type -> Expr -> TC ValueDecl
+checkParameterDecl :: Field -> Maybe Type -> Expr -> TC CheckedValueDecl
 checkParameterDecl fld mty e = do
   res <- solveUnification $ do
     tu <- freshUVarT
     case mty of
      Just ty -> tu =?= ty
      Nothing -> return ()
-    checkExpr e tu
+    e' <- checkExpr e tu
+    let
+      paramDecl = singleCheckedValueDecl $ ParameterDecl e'
+    sigDecl <- case mty of
+          Just _ -> return mempty
+          Nothing -> do
+            tinf <- applyCurrentSubstitution tu
+            return $ singleCheckedValueDecl $ SigDecl DeterministicParam tinf
+    return (sigDecl <> paramDecl)
   case res of
-   UOkay e' -> return $ ParameterDecl e'
+   UOkay ans -> return ans
    UFail err -> typeError ("when checking " <> formatErr fld
                            <> formatErr err)
 
@@ -384,8 +447,15 @@ guardDuplicateValueDecl v = do
     (_, Just _) -> typeError (formatErr v <> " already has a definition")
 
 -- | Extend the environment by incorporating the given declaration.
-extendDCtx :: Path -> Decl -> [Decl] -> ([Decl] -> TC [Decl]) -> TC [Decl]
-extendDCtx pmod d =
+extendDCtx :: Path -> CheckedDecl -> [Decl] -> ([Decl] -> TC a) -> TC a
+extendDCtx pmod cd = go (appEndo cd mempty)
+  where
+    go :: [Decl] -> [Decl] -> ([Decl] -> TC a) -> TC a
+    go [] = \rest kont -> kont rest
+    go (d:ds) = \rest kont -> extendDCtxSingle pmod d rest (\rest' -> go ds rest' kont)
+
+extendDCtxSingle :: Path -> Decl -> [Decl] -> ([Decl] -> TC a) -> TC a
+extendDCtxSingle pmod d =
   case d of
     ValueDecl fld vd -> extendValueDeclCtx pmod fld vd
     TypeDefn fld td -> \rest kont -> do
@@ -418,7 +488,7 @@ extendDCtx pmod d =
        (SigV _ ModelMK) ->
          kont rest'
 
-extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC [Decl]) -> TC [Decl]
+extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC a) -> TC a
 extendValueDeclCtx pmod fld vd =
   let qvar = QVar pmod fld
   in case vd of
@@ -436,8 +506,8 @@ extendSigDeclCtx :: Field
                     -> QVar
                     -> Type
                     -> [Decl]
-                    -> ([Decl] -> TC [Decl])
-                    -> TC [Decl]
+                    -> ([Decl] -> TC a)
+                    -> TC a
 extendSigDeclCtx fld qvar t rest kont =
   let v = U.s2n fld :: Var
   in local (envGlobals . at qvar ?~ t)

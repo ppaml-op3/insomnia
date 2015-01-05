@@ -19,7 +19,7 @@ model N {
 
   infixl .+ 6
 
-  sig z :: Real
+  -- sig z :: Real
   val z = let
     p = { μ = 1.0, σ = 1.0 }
     q = p -- (just to check that let bindings scope correctly)

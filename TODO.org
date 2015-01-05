@@ -1,5 +1,5 @@
 * Tasks
-** TODO values fields without type sign aren't part of principal sig    :bug:
+** DONE values fields without type sign aren't part of principal sig    :bug:
    #+BEGIN_EXAMPLE
      module X {
        sig x : t1
@@ -56,11 +56,15 @@
    This is probably not too difficult internally now since value constructors are a separate datatype.
 ** TODO Pretty print entire Env in debugging type errors.
    [[file:src/Insomnia/Typecheck/Env.hs::--%20TODO:%20the%20rest%20of%20the%20env][file:src/Insomnia/Typecheck/Env.hs::-- TODO: the rest of the env]]
-** TODO Generalize let-bound values
+** TODO Generalize let-bound values and function declarations.
    [[file:src/Insomnia/Typecheck/Expr.hs::--%20XXX%20:%20TODO%20generalize%20uvars,%20or%20else%20freeze%20'em%20if%20we're%20going%20to][file:src/Insomnia/Typecheck/Expr.hs::-- XXX : TODO generalize uvars, or else freeze 'em if we're going to]]
+   [[file:src/Insomnia/Typecheck/Module.hs::--%20XXX%20TODO:%20generalize%20here.%20Or%20else%20decree%20that][file:src/Insomnia/Typecheck/Module.hs::-- XXX TODO: generalize here. Or else decree that]]
 
    But maybe not.  Folk wisdom is that programmers don't mind putting
    in type annotations for truly polymorphic local bindings.
+
+   The story is dodgier for toplevel bindings, but perhaps it's okay for these also to require a signature.
+
 ** TODO Ensure there are no duplicate fields in a module.
    [[file:src/Insomnia/Typecheck/ModuleType.hs::--%20TODO:%20actually%20check%20that%20the%20field%20names%20are%20unique.][file:src/Insomnia/Typecheck/ModuleType.hs::-- TODO: actually check that the field names are unique.]]
 ** TODO Add row polymorphism?
