@@ -76,11 +76,11 @@
 
    Use exact rationals for precedence, not integers!
 
-** TODO Tabled declaration ~for~ syntax
+** DONE Tabled declaration ~for~ syntax
 
    #+BEGIN_EXAMPLE
-   forall i : t1 
-     fun f i ~ e i
+   forall i : t1  in
+     f i ~ e i
    #+END_EXAMPLE
 
 ** TODO Analysis to rule out inductive data types.

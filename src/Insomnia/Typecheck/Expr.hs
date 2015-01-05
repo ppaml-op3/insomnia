@@ -191,9 +191,10 @@ checkBinding (SampleB (v, U.unembed -> ann) (U.unembed -> e)) kont =
         tannot <- applyCurrentSubstitution tsample
         kont $ SampleB (v, U.embed $ Annot $ Just tannot) (U.embed e')
 checkBinding (TabB y (U.unembed -> tf)) kont =
-  checkTabulatedFunction y tf kont
+  checkTabulatedFunction y tf $ \tf' _ty ->
+    kont $ TabB y (U.embed tf')
 
-checkTabulatedFunction :: Var -> TabulatedFun -> (Binding -> TC a) -> TC a
+checkTabulatedFunction :: Var -> TabulatedFun -> (TabulatedFun -> Type -> TC a) -> TC a
 checkTabulatedFunction y (TabulatedFun bnd) kont =
   U.lunbind bnd $ \(avs, TabSample sels e) -> do
     -- map each var to a uvar unified with the var's typing annotation
@@ -209,7 +210,7 @@ checkTabulatedFunction y (TabulatedFun bnd) kont =
     tsample <- unifyDistT tdist
     let tfun = functionT' selTys tsample
     extendLocalCtx y tfun
-      $ kont $ TabB y (U.embed $ TabulatedFun $ U.bind avs $ TabSample sels' e')
+      $ kont (TabulatedFun $ U.bind avs $ TabSample sels' e') tfun
 
 inferTabSelector :: TabSelector -> TC (TabSelector, Type)
 inferTabSelector (TabIndex v) = do

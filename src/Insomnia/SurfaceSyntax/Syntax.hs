@@ -102,6 +102,7 @@ data Decl = ValueDecl !Ident !ValueDecl
           | TypeAliasDefn !Ident !TypeAlias
           | SubmoduleDefn !Ident !ModuleKind !ModuleExpr
           | FixityDecl !Ident !Fixity
+          | TabulatedSampleDecl !TabulatedDecl
           deriving (Show)
 
 data ValueDecl =
@@ -169,8 +170,12 @@ data Pattern = PhraseP ![PatternAtom]
 data Binding = SigB !Ident !Type
              | ValB !Ident !Expr
              | SampleB !Ident !Expr
-             | TabB ![(Ident, Maybe Type)] [TabulatedFun]
+             | TabB !TabulatedDecl
              deriving (Show)
+
+-- "forall ids . tabfuns"
+data TabulatedDecl = TabulatedDecl ![(Ident, Maybe Type)] ![TabulatedFun]
+                   deriving (Show)
 
 data TabulatedFun = TabulatedFun !Ident !TabSample
                   deriving (Show)

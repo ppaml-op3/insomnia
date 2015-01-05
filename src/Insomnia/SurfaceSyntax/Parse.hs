@@ -390,6 +390,7 @@ decl = (valueDecl <?> "value declaration")
        <|> (typeDefn <?> "type definition")
        <|> (typeAliasDefn <?> "type alias definition")
        <|> (moduleDefn <?> "submodule definition")
+       <|> (tabulatedSampleDecl <?> "tabulated function definition")
 
 fixityDecl :: Parser Decl
 fixityDecl = uncurry FixityDecl <$> fixity
@@ -446,6 +447,10 @@ funDecl =
   <*> (reservedOp "=" *> expr)
   where
     mkFunDecl f xs e = (f, FunDecl (mkLams xs e))
+
+tabulatedSampleDecl :: Parser Decl
+tabulatedSampleDecl =
+  TabulatedSampleDecl <$> tabulatedDecl
 
 -- | Make a sequence of nested lambdas
 mkLams :: [(Ident, Maybe Type)] -> Expr -> Expr
@@ -675,18 +680,26 @@ simpleBinding = mkBinding
     mkBinding (v, _ty) op e = op v e -- TODO: use the type
 
 tabulatedFunB :: Parser Binding
-tabulatedFunB =
-  reserved "forall"
-  *> (mkTabB
-      <$> some annVar
-      <* reserved "in"
-      <*> variableIdentifier
+tabulatedFunB = TabB <$> tabulatedDecl
+
+tabulatedDecl :: Parser TabulatedDecl
+tabulatedDecl =
+  mkTabDecl
+  <$ reserved "forall"
+  <*> some annVar
+  <* reserved "in"
+  <*> some tabs
+  where
+    tabs =
+      mkTabulatedFun
+      <$> variableIdentifier
       <*> some tabSelector
       <* reservedOp "~"
-      <*> expr)
-  where
-    mkTabB avs y sels e =
-      TabB avs [TabulatedFun y $ TabSample sels e]
+      <*> expr
+    mkTabulatedFun y sels e =
+      TabulatedFun y $ TabSample sels e
+    mkTabDecl avs tfs =
+      TabulatedDecl avs tfs
 
 tabSelector :: Parser TabSelector
 tabSelector = (TabIndex <$> variableIdentifier)

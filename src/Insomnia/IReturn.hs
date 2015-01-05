@@ -34,6 +34,7 @@ valueDecl vd@(FunDecl {}) = vd
 valueDecl vd@(SampleDecl {}) = vd
 valueDecl vd@(SigDecl {}) = vd
 valueDecl vd@(ParameterDecl {}) = vd
+valueDecl vd@(TabulatedSampleDecl {}) = vd
 
 -- the rest are plumbing.
 

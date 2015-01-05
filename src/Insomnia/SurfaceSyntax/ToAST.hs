@@ -323,6 +323,12 @@ module' (Module decls) = I.Module <$> foldr go (return []) decls
          me' <- local (currentModuleKind .~ modK) (moduleExpr me)
          rest <- kont
          return (I.SubmoduleDefn f me' : rest)
+       TabulatedSampleDecl tabD -> do
+         let
+           mkD f tf = I.ValueDecl f $ I.TabulatedSampleDecl tf
+         tabulatedDecl tabD mkD $ \defs -> do
+           rest <- kont
+           return (defs ++ rest)
 
 typeSigDecl :: TypeSigDecl -> TA I.TypeSigDecl
 typeSigDecl (AbstractTypeSigDecl k) = I.AbstractTypeSigDecl <$> kind k
@@ -559,7 +565,13 @@ binding (SampleB ident e) kont = do
   e' <- expr e
   withValVar ident $ kont [I.SampleB (v, U.embed $ I.Annot Nothing)
                                      (U.embed e')]
-binding (TabB idtys tfs) kont = do
+binding (TabB tabD) kont = 
+  let mkB name tf = I.TabB (U.s2n name) (U.embed tf)
+  in tabulatedDecl tabD mkB kont
+
+
+tabulatedDecl :: TabulatedDecl -> (Ident -> I.TabulatedFun -> b) -> ([b] -> TA a) -> TA a
+tabulatedDecl (TabulatedDecl idtys tfs) mkB kont = do
   -- this one is a bit tricky because the surface syntax allows
   -- multiple tabulated functions to be defined within a single "for"
   -- block, but internally we separate them into individual tabulated
@@ -570,10 +582,7 @@ binding (TabB idtys tfs) kont = do
     return (v, U.embed $ I.Annot mty')
   namedtfs' <- withValVars (map fst idtys) $ traverse (tabulatedFun annvs) tfs
   let (names, bnds) =
-        unzip $ map (\(name, tf) -> let
-                        v = U.s2n name
-                        in (name,
-                            I.TabB v (U.embed tf))) namedtfs'
+        unzip $ map (\(name, tf) -> (name, mkB name tf)) namedtfs'
   withValVars names $ kont bnds
 
 tabulatedFun :: [I.AnnVar] -> TabulatedFun -> TA (Ident, I.TabulatedFun)

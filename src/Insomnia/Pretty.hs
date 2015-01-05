@@ -117,16 +117,26 @@ instance Pretty Binding where
   pp (SampleB av (U.unembed -> e)) =
     ppAnnVar av <+> indent "~" (pp e)
   pp (TabB y (U.unembed -> tf)) =
-    ppTabFun y tf
+    ppTabFun (pp y) tf
 
-ppTabFun :: Var -> TabulatedFun -> PM Doc
-ppTabFun y (TabulatedFun bnd) =
+ppTabFun :: PM Doc  -> TabulatedFun -> PM Doc
+ppTabFun ppVar (TabulatedFun bnd) =
   let (avs, TabSample sels e) = UU.unsafeUnbind bnd
   in
    fsep ["forall" <+> (nesting $ fsep $ map ppAnnVar avs)
         , "in"
-        , (fsep (pp y : map pp sels)) <+> indent "~" (pp e)
+        , (fsep (ppVar : map pp sels)) <+> indent "~" (pp e)
         ]
+
+ppShortTabFun :: PM Doc -> TabulatedFun -> PM Doc
+ppShortTabFun ppVar (TabulatedFun bnd) =
+  let (avs, TabSample sels _e) = UU.unsafeUnbind bnd
+  in
+   fsep ["forall" <+> (nesting $ fsep $ map ppAnnVar avs)
+        , "in"
+        , (fsep (ppVar : map pp sels)) <+> indent "~" elipsis
+        ]
+  
 
 instance Pretty TabSelector where
   pp (TabIndex v) = pp v
@@ -332,6 +342,7 @@ ppValueDecl v (FunDecl e) = ppFunDecl v e
 ppValueDecl v (ParameterDecl e) = "parameter" <+> pp v <+> "=" <+> pp e
 ppValueDecl v (ValDecl e) = ppValSampleDecl "=" v e
 ppValueDecl v (SampleDecl e) = ppValSampleDecl "~" v e
+ppValueDecl v (TabulatedSampleDecl tabfun) = ppTabFun (pp v) tabfun
 
 ppShortValueDecl :: Field -> ValueDecl -> PM Doc
 ppShortValueDecl v (SigDecl stoch t) = pp stoch <+> "sig" <+> pp v <+> indent coloncolon (pp t)
@@ -339,6 +350,7 @@ ppShortValueDecl f (FunDecl _e) = "fun" <+> pp f <+> elipsis <+> "=" <+> elipsis
 ppShortValueDecl f (ParameterDecl _e) = "parameter" <+> pp f <+> "=" <+> elipsis
 ppShortValueDecl f (ValDecl _e) = "val" <+> pp f <+> "=" <+> elipsis
 ppShortValueDecl f (SampleDecl _e) = "val" <+> pp f <+> "~" <+> elipsis
+ppShortValueDecl v (TabulatedSampleDecl tabfun) = ppShortTabFun (pp v) tabfun
 
 ppFunDecl :: Field -> Expr -> PM Doc
 ppFunDecl v e =

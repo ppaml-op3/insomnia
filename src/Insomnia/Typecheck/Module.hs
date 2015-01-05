@@ -20,7 +20,7 @@ import Insomnia.Common.Telescope
 import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
                        Type(..), freshUVarT)
-import Insomnia.Expr (Var, QVar(..), Expr(Q))
+import Insomnia.Expr (Var, QVar(..), Expr(Q), TabulatedFun)
 import Insomnia.ModuleType (ModuleType(..), Signature(..), TypeSigDecl(..),
                             SigV(..), sigVKind, sigVSig)
 import Insomnia.Module
@@ -33,7 +33,7 @@ import Insomnia.Unify (Unifiable(..),
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkType)
-import Insomnia.Typecheck.Expr (checkExpr)
+import Insomnia.Typecheck.Expr (checkExpr, checkTabulatedFunction)
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn,
                                     checkTypeAlias,
                                     extendTypeDefnCtx,
@@ -172,6 +172,7 @@ naturalSignature = go . moduleDecls
         ValueDecl _fld (ValDecl {}) -> kont
         ValueDecl _fld (SampleDecl {}) -> kont
         ValueDecl _fld (ParameterDecl {}) -> kont
+        ValueDecl _fld (TabulatedSampleDecl {}) -> kont
         ValueDecl fld (SigDecl _stoch ty) -> do
           sig' <- kont
           return (ValueSig fld ty sig')
@@ -303,6 +304,11 @@ checkValueDecl fld qlf vd =
       ensureNoDefn qlf
       let v = (U.s2n fld :: Var)
       U.avoid [U.AnyName v] $ checkParameterDecl fld msig e
+    TabulatedSampleDecl tf -> do
+      msig <- lookupGlobal qlf
+      ensureNoDefn qlf
+      let v = (U.s2n fld :: Var)
+      U.avoid [U.AnyName v] $ checkTabulatedSampleDecl v msig tf
 
 checkSigDecl :: Stochasticity -> Type -> TC ValueDecl
 checkSigDecl stoch t = do
@@ -425,6 +431,19 @@ checkParameterDecl fld mty e = do
    UFail err -> typeError ("when checking " <> formatErr fld
                            <> formatErr err)
 
+checkTabulatedSampleDecl :: Var -> Maybe Type -> TabulatedFun -> TC CheckedValueDecl
+checkTabulatedSampleDecl v mty tf = do
+   checkTabulatedFunction v tf $ \tf' tyInferred -> do
+     sigDecl <- case mty of
+                 Just tySpec -> do
+                   (tySpec =?= tyInferred)
+                     <??@ ("while checking tabulated function definition " <> formatErr v)
+                   return mempty
+                 Nothing -> return $ singleCheckedValueDecl $ SigDecl RandomVariable tyInferred
+     let
+       tabFunDecl = singleCheckedValueDecl $ TabulatedSampleDecl tf'
+     return (sigDecl <> tabFunDecl)
+
 -- | Given a type ∀ α1∷K1 ⋯ αN∷KN . τ, freshen αᵢ and add them to the
 -- local type context in the given continuation which is passed
 -- τ[αfresh/α]
@@ -497,6 +516,7 @@ extendValueDeclCtx pmod fld vd =
     ValDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
     SampleDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
     ParameterDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
+    TabulatedSampleDecl _tf -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
 
 -- | @extendSigDecl fld qvar ty decls checkRest@ adds the global
 -- binding of @qvar@ to type @ty@, and replaces any free appearances

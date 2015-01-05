@@ -1,0 +1,77 @@
+module type S_SIG {
+  type T :: *
+}
+
+module type PRELUDE {
+  data Bool = True | False
+  -- type Bool :: *
+  type Bool2 = Bool
+
+  module S :: {
+     module S2 :: S_SIG
+  }
+
+  parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
+
+  data Proxy (a :: *) = Proxy
+  parameter sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
+  parameter sig flip :: Real -> Dist Bool
+}
+
+module Prelude :: PRELUDE {
+
+   module S {
+      module S2 {
+         type T = Int
+      }
+      type W = Int
+   }
+
+   data Bool = False | True
+
+   type Bool2 = Bool
+
+   parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
+   fun cond b t f =
+       case b of
+         True -> t
+         False -> f
+
+   data Proxy (a :: *) = Proxy
+
+   parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
+   parameter sig flip :: Real -> Dist Bool
+
+   parameter sig foo :: S.W -> S.S2.T
+   fun foo x = x
+}
+
+module Raining {
+
+  parameter sig double :: Real -> Real
+
+  enum T 10
+
+  parameter sig pointOne :: Real
+  parameter pointOne = 0.1
+
+  parameter sig pointNine :: Real
+  parameter pointNine = 0.9
+
+  model ModelTest  {
+    sig raining :: Prelude.Bool2
+    val raining ~ (Prelude.uniform Prelude.Proxy)
+
+    sig x :: Real
+    val x ~ Prelude.uniform Prelude.Proxy
+
+    sig y :: Real
+    val y = double x 
+
+    -- sig thinksRain :: T -> Prelude.Bool
+
+    forall (x :: T) in
+      thinksRain x ~ Prelude.cond raining (Prelude.flip pointNine) (Prelude.flip pointOne)
+  }
+
+}
