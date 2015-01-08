@@ -13,7 +13,7 @@ model type POISSONL {
 module PoissonL =
   model
   local
-    H ~ Q
+    module H ~ Q
   in {
     type N = H.N
     sig x :: H.N

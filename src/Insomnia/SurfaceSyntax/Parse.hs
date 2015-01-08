@@ -326,9 +326,12 @@ modelTypeExpr =
   <|> (SigMT <$> braces signature <?> "module signature in braces")
 
 
+declList :: Parser [Decl]
+declList = localIndentation Ge $ many $ absoluteIndentation decl
+
 moduleLiteral :: Parser Module
 moduleLiteral =
-  Module <$> braces (localIndentation Ge $ many $ absoluteIndentation decl)
+  Module <$> braces declList
 
 moduleExprLiteral :: Parser ModuleExpr
 moduleExprLiteral = ModuleStruct <$> moduleLiteral
@@ -366,29 +369,26 @@ modelLocalExpr :: Parser ModelExpr
 modelLocalExpr =
   ModelLocal
   <$ reserved "local"
-  <*> many modelLocalBind
+  <*> (Module <$> declList)
   <* reserved "in"
   <*> modelExpr
   <* classify
   <*> modelTypeExpr
 
-modelLocalBind :: Parser ModelLocalBind
-modelLocalBind =
-  sampleLocalBind <?> "module sampling declaration"
-
-sampleLocalBind :: Parser ModelLocalBind
-sampleLocalBind =
-  try (SampleMLB
-       <$> modelIdentifier
+sampleModuleDefn :: Parser Decl
+sampleModuleDefn =
+  try (SampleModuleDefn
+       <$ reservedOp "module"
+       <*> modelIdentifier
        <* reservedOp "~")
   <*> moduleExpr
-
 
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
        <|> (fixityDecl <?> "fixity declaration")
        <|> (typeDefn <?> "type definition")
        <|> (typeAliasDefn <?> "type alias definition")
+       <|> (sampleModuleDefn <?> "submodule sampled from model")
        <|> (moduleDefn <?> "submodule definition")
        <|> (tabulatedSampleDecl <?> "tabulated function definition")
 

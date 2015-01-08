@@ -48,7 +48,7 @@ import Insomnia.Typecheck.MayAscribe (mayAscribeV)
 -- | Infer the signature of the given module expression
 inferModuleExpr :: Path -> ModuleExpr -> (ModuleExpr -> SigV Signature -> TC a) -> TC a
 inferModuleExpr pmod (ModuleStruct mdl) kont = do
-  mdl' <- checkModule pmod DeterministicParam mdl
+  mdl' <- checkModule pmod DeterministicParam mdl return
             <??@ "while checking module " <> formatErr pmod
   msig <- naturalSignature mdl
   kont (ModuleStruct mdl') (SigV msig ModuleMK)
@@ -90,35 +90,20 @@ checkModelExpr pmod mexpr =
       (SigV _msig ModelMK) -> typeError ("model path " <> formatErr p
                                          <> " cannot be used in a model expression.")
    ModelStruct mdl -> do
-     mdl' <- checkModule pmod RandomVariable mdl
+     mdl' <- checkModule pmod RandomVariable mdl return
              <??@ "while checking model " <> formatErr pmod
      msig <- naturalSignature mdl
      return (ModelStruct mdl', msig)
-   ModelLocal bnd mty -> do
+   ModelLocal modHidden body mty -> do
      (mty', sigvAscribed) <- checkModuleType mty
-     U.lunbind bnd $ \(binds, body) ->
-       traverseTelescopeContT (checkLocalModelBind pmod) binds $ \binds' -> do
-         (body', sigInferred) <- checkModelExpr pmod body
-         sigvSealed' <- mayAscribeV (SigV sigInferred ModelMK) sigvAscribed
-                        <??@ ("while checking validity of signature ascription to body of local model in "
-                              <> formatErr pmod)
-         return (ModelLocal (U.bind binds' body') mty', sigvSealed'^.sigVSig)
+     checkModule pmod RandomVariable modHidden $ \modHidden' -> do
+       (body', sigInferred) <- checkModelExpr pmod body
+       sigvSealed' <- mayAscribeV (SigV sigInferred ModelMK) sigvAscribed
+                      <??@ ("while checking validity of signature ascription to body of local model in "
+                            <> formatErr pmod)
+       return (ModelLocal modHidden' body' mty', sigvSealed'^.sigVSig)
 
 
-checkLocalModelBind :: Path -> ModelLocalBind -> (ModelLocalBind -> TC a) -> TC a
-checkLocalModelBind pmod (SampleMLB modId (U.unembed -> mdl)) kont =
-  inferModuleExpr (IdP modId) mdl $ \mdl' sigv -> do
-    unless (sigv^.sigVKind == ModelMK) $
-      typeError ("local model sample binding "
-                 <> formatErr modId <>
-                 " in definition of " <> formatErr pmod
-                 <> " is a module, not a model")
-    -- N.B.: in the local binding, we bind the identifier to a module,
-    -- not a model.
-    selfSig <- selfifySignature (IdP modId) (sigv^.sigVSig)
-    extendModuleSigCtx modId (sigv & sigVKind .~ ModuleMK)
-      $ extendModuleCtx selfSig
-      $ kont (SampleMLB modId (U.embed mdl'))
 
 lookupModuleSigPath :: Path -> TC (SigV Signature)
 lookupModuleSigPath (IdP ident) = lookupModuleSig ident
@@ -192,7 +177,19 @@ naturalSignature = go . moduleDecls
           let ident = U.s2n fld
               moduleTy = SigMT subSigV
           return $ SubmoduleSig fld (U.bind (ident, U.embed moduleTy) sig')
-            
+        SampleModuleDefn fld moduleExpr -> do
+          subSigV <- naturalSignatureModuleExpr moduleExpr
+          case subSigV of
+           (SigV subSig ModelMK) -> do
+             sig' <- kont
+             let ident = U.s2n fld
+                 moduleTy = SigMT (SigV subSig ModuleMK)
+             return $ SubmoduleSig fld (U.bind (ident, U.embed moduleTy) sig')
+           (SigV _ ModuleMK) ->
+             typeError ("(internal error?) submodule " <> formatErr fld
+                        <> " unexpectedly sampled from a module, not a model")
+              
+
 naturalSignatureModuleExpr :: ModuleExpr -> TC (SigV Signature)
 naturalSignatureModuleExpr (ModuleStruct mdl) = do
   modSig <- naturalSignature mdl
@@ -209,7 +206,7 @@ naturalSignatureModelExpr (ModelId p) = do
 naturalSignatureModelExpr (ModelStruct mdl) = do
   modSig <- naturalSignature mdl
   return (SigV modSig ModelMK)
-naturalSignatureModelExpr (ModelLocal _ mt) =
+naturalSignatureModelExpr (ModelLocal _ _ mt) =
   signatureOfModuleType mt
 
 -- | After checking a declaration we get one or more declarations out
@@ -220,18 +217,20 @@ singleCheckedDecl :: Decl -> CheckedDecl
 singleCheckedDecl d = Endo (d :)
 
 -- | Typecheck the contents of a module.
-checkModule :: Path -> Stochasticity -> Module -> TC Module
-checkModule pmod stoch =
-  fmap (Module . checkedDeclToDecls) . go . moduleDecls
+checkModule :: Path -> Stochasticity -> Module -> (Module -> TC r) -> TC r
+checkModule pmod stoch (Module ds) kont =
+  go ds $ \cd ->
+  kont (Module $ checkedDeclToDecls cd)
   where
     checkedDeclToDecls :: CheckedDecl -> [Decl]
     checkedDeclToDecls = flip appEndo mempty
-    go :: [Decl] -> TC CheckedDecl
-    go [] = return mempty
-    go (decl:decls) = do
+    go :: [Decl] -> (CheckedDecl -> TC r) -> TC r
+    go [] kont = kont mempty
+    go (decl:decls) kont = do
       decl' <- checkDecl pmod stoch decl
-      decls' <- extendDCtx pmod decl' decls go
-      return (decl' <> decls')
+      extendDCtx pmod decl' decls $ \decls' ->
+        go decls' $ \decls'' ->
+        kont (decl' <> decls'')
 
 checkDecl :: Path -> Stochasticity -> Decl -> TC CheckedDecl
 checkDecl pmod stoch d =
@@ -259,6 +258,16 @@ checkDecl' pmod stoch d =
       moduleExpr' <- inferModuleExpr (ProjP pmod fld) moduleExpr
                      (\moduleExpr' _sigV -> return moduleExpr')
       return $ singleCheckedDecl $ SubmoduleDefn fld moduleExpr'
+    SampleModuleDefn fld moduleExpr -> do
+      let modExprPath = undefined -- XXX what goes here?
+      moduleExpr' <- inferModuleExpr modExprPath moduleExpr
+                     (\moduleExpr' sigV ->
+                       case sigV of
+                        (SigV _sig ModelMK) -> return moduleExpr'
+                        (SigV _sig ModuleMK) ->
+                          typeError ("submodule " <> formatErr (ProjP pmod fld)
+                                     <> " is sampled from a module, not a model"))
+      return $ singleCheckedDecl $ SampleModuleDefn fld moduleExpr'
 
 type CheckedValueDecl = Endo [ValueDecl]
 
@@ -506,6 +515,21 @@ extendDCtxSingle pmod d =
          extendModuleCtx subSelfSig $ kont rest'
        (SigV _ ModelMK) ->
          kont rest'
+    SampleModuleDefn fld moduleExpr -> \rest kont -> do
+      let pSubMod = ProjP pmod fld
+          shortIdent = U.s2n fld
+          substitution = [(shortIdent, pSubMod)]
+          rest' = U.substs substitution rest
+      subSigV <- naturalSignatureModuleExpr moduleExpr
+      case subSigV of
+       (SigV subSig ModelMK) -> do
+         subSelfSig <- selfifySignature pSubMod subSig
+         -- XXX: not necessary since we did the substitution?
+         extendModuleSigCtx shortIdent (SigV subSig ModuleMK)
+           $ extendModuleCtx subSelfSig $ kont rest'
+       (SigV _subSig ModuleMK) ->
+         typeError ("expected a model on RHS of module sampling, but got a module, when defining "
+                    <> formatErr pSubMod)
 
 extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC a) -> TC a
 extendValueDeclCtx pmod fld vd =

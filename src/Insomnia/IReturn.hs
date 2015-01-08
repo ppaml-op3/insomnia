@@ -48,11 +48,14 @@ toplevelItem (ToplevelModule ident me) = ToplevelModule ident (moduleExpr me)
 moduleExpr :: ModuleExpr -> ModuleExpr
 moduleExpr (ModuleStruct mdl) = ModuleStruct (module' mdl)
 moduleExpr (ModuleModel mdl) = ModuleModel (modelExpr mdl)
-moduleExpr me = me
+moduleExpr (ModuleSeal me mt) = ModuleSeal (moduleExpr me) mt
+moduleExpr me@(ModuleAssume {}) = me
+moduleExpr me@(ModuleId {}) = me
 
 modelExpr :: ModelExpr -> ModelExpr
 modelExpr (ModelStruct mdl) = ModelStruct (module' mdl)
-modelExpr me = me
+modelExpr m@(ModelId {}) = m
+modelExpr (ModelLocal m me mt) = ModelLocal (module' m) (modelExpr me) mt
 
 module' :: Module -> Module
 module' (Module ds) = Module (map decl ds)
@@ -60,5 +63,7 @@ module' (Module ds) = Module (map decl ds)
 decl :: Decl -> Decl
 decl (ValueDecl f vd) = ValueDecl f (valueDecl vd)
 decl (SubmoduleDefn f me) = SubmoduleDefn f (moduleExpr me)
-decl d = d
+decl (SampleModuleDefn f me) = SampleModuleDefn f (moduleExpr me)
+decl d@(TypeDefn {}) = d
+decl d@(TypeAliasDefn {}) = d
 

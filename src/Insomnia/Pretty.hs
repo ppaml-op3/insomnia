@@ -302,6 +302,7 @@ instance Pretty Decl where
   pp (ValueDecl f vd) = ppValueDecl f vd
   pp (TypeAliasDefn f a) = ppTypeAlias f a
   pp (SubmoduleDefn f m) = ppModule (pp f) m
+  pp (SampleModuleDefn f m) = fsep ["module", pp f, indent "~" (pp m)]
 
 instance Pretty (PrettyShort Decl) where
   pp (PrettyShort (TypeDefn c td)) = ppShortTypeDefn c td
@@ -310,6 +311,8 @@ instance Pretty (PrettyShort Decl) where
     "type" <+> pp f <+> "=" <+> elipsis
   pp (PrettyShort (SubmoduleDefn f _m)) =
     "module" <+> pp f <+> "=" <+> elipsis
+  pp (PrettyShort (SampleModuleDefn f _m)) =
+    "module" <+> pp f <+> "~" <+> elipsis
     
 instance Pretty (PrettyField TypeDefn) where
   pp (PrettyField fld defn) = ppTypeDefn fld defn
@@ -401,16 +404,11 @@ instance Pretty ModuleExpr where
 instance Pretty ModelExpr where
   pp (ModelId p) = pp p
   pp (ModelStruct mdl) = pp mdl
-  pp (ModelLocal bnd ty) =
-    let (bnds, body) = UU.unsafeUnbind bnd
-    in fsep ["local",
-             nesting (fsep $ ppTelescope pp bnds),
-             "in",
-             nesting (fsep [pp body, indent coloncolon (pp ty)])]
-
-instance Pretty ModelLocalBind where
-  pp (SampleMLB ident (U.unembed -> mdl)) =
-    fsep [pp ident, indent "~" (pp mdl)]
+  pp (ModelLocal (Module hid) body ty) =
+    fsep ["local",
+          nesting (fsep $ map pp hid),
+          "in",
+          nesting (fsep [pp body, indent coloncolon (pp ty)])]
 
 instance Pretty ModuleType where
   pp (SigMT sigv) = pp sigv

@@ -10,7 +10,6 @@ import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
 
-import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn
@@ -35,11 +34,7 @@ data ModelExpr =
     -- try to naively infer a principal signature and issue an error
     -- if X is mentioned, but in general there does not exist a most
     -- general signature for M' that doesn't mention X.
-  | ModelLocal !(Bind (Telescope ModelLocalBind) ModelExpr) !ModuleType -- must annotate with sig.
-  deriving (Show, Typeable, Generic)
-
-data ModelLocalBind =
-  SampleMLB !Identifier !(Embed ModuleExpr)
+  | ModelLocal !Module !ModelExpr !ModuleType -- must annotate with sig.
   deriving (Show, Typeable, Generic)
 
 -- A single module.
@@ -52,6 +47,7 @@ data Decl =
   | TypeDefn !Field !TypeDefn   -- ^ generative construction of new types
   | TypeAliasDefn !Field !TypeAlias -- ^ a type alias definition
   | SubmoduleDefn !Field !ModuleExpr -- ^ a nested module definition
+  | SampleModuleDefn !Field !ModuleExpr -- ^ sample a module from a model
   deriving (Show, Typeable, Generic)
 
 data ValueDecl =
@@ -65,35 +61,30 @@ data ValueDecl =
 
 instance Alpha ModuleExpr
 instance Alpha ModelExpr
-instance Alpha ModelLocalBind
 instance Alpha Module
 instance Alpha Decl
 instance Alpha ValueDecl
 
 instance Subst Path ModuleExpr
 instance Subst Path ModelExpr
-instance Subst Path ModelLocalBind
 instance Subst Path Module
 instance Subst Path Decl
 instance Subst Path ValueDecl
 
 instance Subst TypeConstructor ModuleExpr
 instance Subst TypeConstructor ModelExpr
-instance Subst TypeConstructor ModelLocalBind
 instance Subst TypeConstructor Module
 instance Subst TypeConstructor Decl
 instance Subst TypeConstructor ValueDecl
 
 instance Subst ValueConstructor ModuleExpr
 instance Subst ValueConstructor ModelExpr
-instance Subst ValueConstructor ModelLocalBind
 instance Subst ValueConstructor Module
 instance Subst ValueConstructor Decl
 instance Subst ValueConstructor ValueDecl
 
 instance Subst Expr ModuleExpr
 instance Subst Expr ModelExpr
-instance Subst Expr ModelLocalBind
 instance Subst Expr Module
 instance Subst Expr Decl
 instance Subst Expr ValueDecl

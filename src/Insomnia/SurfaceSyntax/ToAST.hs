@@ -226,7 +226,7 @@ moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
 moduleExpr :: ModuleExpr -> TA I.ModuleExpr
 moduleExpr (ModuleStruct mdl) =
-  I.ModuleStruct <$> module' mdl
+  I.ModuleStruct <$> runCTA (module' mdl) return
 moduleExpr (ModuleSeal me mt) =
   I.ModuleSeal <$> moduleExpr me <*> moduleType mt
 moduleExpr (ModuleAssume mt) =
@@ -238,26 +238,12 @@ moduleExpr (ModuleModel mdl) =
 modelExpr :: ModelExpr -> TA I.ModelExpr
 modelExpr (ModelId qid) = return $ I.ModelId (qualifiedIdPath qid)
 modelExpr (ModelStruct mdl) = 
-  I.ModelStruct <$> module' mdl
-modelExpr (ModelLocal binds body mt) = do
+  I.ModelStruct <$> runCTA (module' mdl) return
+modelExpr (ModelLocal hiddenMod body mt) = do
   mt' <- moduleType mt
-  go binds $ \binds' -> do
+  runCTA (module' hiddenMod) $ \hiddenMod' -> do
     body' <- modelExpr body
-    return (I.ModelLocal (U.bind binds' body') mt')
-  where
-    go :: [ModelLocalBind] -> (Telescope I.ModelLocalBind -> TA a) -> TA a
-    go [] kont = kont NilT
-    go (b:bs) kont = 
-      modelLocalBind b $ \b' ->
-      go bs $ \bs' ->
-      kont (ConsT (U.rebind b' bs'))
-
-modelLocalBind :: ModelLocalBind -> (I.ModelLocalBind -> TA a ) -> TA a
-modelLocalBind (SampleMLB ident mdl) kont = do
-  ident' <- identifier ident
-  mdl' <- moduleExpr mdl
-  kont (I.SampleMLB ident' (U.embed mdl'))
-  
+    return (I.ModelLocal hiddenMod' body' mt')
 
 signature :: Signature -> TA I.Signature
 signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
@@ -294,41 +280,44 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
          rest <- kont
          return $ I.SubmoduleSig f (U.bind (ident', U.embed mt') rest)
 
-module' :: Module -> TA I.Module
-module' (Module decls) = I.Module <$> foldr go (return []) decls
+module' :: Module -> CTA I.Module 
+module' (Module decls) =
+  (I.Module . concat) <$> mapM declC decls
   where
-    go decl kont =
-      case decl of
-       ValueDecl ident vd -> do
-         f <- valueField ident
-         vd' <- valueDecl vd
-         rest <- withValVar ident $ kont
-         return (I.ValueDecl f vd' : rest)
-       TypeDefn ident td -> do
-         (f, _) <- typeField ident
-         let con = Con $ QId [] ident
-         (td', idents) <- withTyCon con Nothing $ typeDefn td
-         rest <- withValCons idents $ withTyCon con Nothing $ kont
-         return (I.TypeDefn f td' : rest)
-       TypeAliasDefn ident alias -> do
-         (f, _) <- typeField ident
-         alias' <- typeAlias alias
-         let con = Con $ QId [] ident
-         rest <- withTyCon con Nothing $ kont
-         return (I.TypeAliasDefn f alias' : rest)
-       FixityDecl ident fixity ->
-         updateWithFixity ident fixity $ kont
-       SubmoduleDefn ident modK me -> do
-         (f, _) <- moduleField ident
-         me' <- local (currentModuleKind .~ modK) (moduleExpr me)
-         rest <- kont
-         return (I.SubmoduleDefn f me' : rest)
-       TabulatedSampleDecl tabD -> do
-         let
-           mkD f tf = I.ValueDecl f $ I.TabulatedSampleDecl tf
-         tabulatedDecl tabD mkD $ \defs -> do
-           rest <- kont
-           return (defs ++ rest)
+    declC :: Decl -> CTA [I.Decl]
+    declC d = CTA (decl d)
+
+decl :: Decl -> ([I.Decl] -> TA res) -> TA res
+decl d kont =
+  case d of
+   ValueDecl ident vd -> do
+     f <- valueField ident
+     vd' <- valueDecl vd
+     withValVar ident $ kont [I.ValueDecl f vd']
+   TypeDefn ident td -> do
+     (f, _) <- typeField ident
+     let con = Con $ QId [] ident
+     (td', idents) <- withTyCon con Nothing $ typeDefn td
+     withValCons idents $ withTyCon con Nothing $ kont [I.TypeDefn f td']
+   TypeAliasDefn ident alias -> do
+     (f, _) <- typeField ident
+     alias' <- typeAlias alias
+     let con = Con $ QId [] ident
+     withTyCon con Nothing $ kont [I.TypeAliasDefn f alias']
+   FixityDecl ident fixity ->
+     updateWithFixity ident fixity $ kont []
+   SubmoduleDefn ident modK me -> do
+     (f, _) <- moduleField ident
+     me' <- local (currentModuleKind .~ modK) (moduleExpr me)
+     kont [I.SubmoduleDefn f me']
+   TabulatedSampleDecl tabD -> do
+     let
+       mkD f tf = I.ValueDecl f $ I.TabulatedSampleDecl tf
+     tabulatedDecl tabD mkD kont
+   SampleModuleDefn ident me -> do
+     (f,_) <- moduleField ident
+     me' <- moduleExpr me
+     kont [I.SampleModuleDefn f me']
 
 typeSigDecl :: TypeSigDecl -> TA I.TypeSigDecl
 typeSigDecl (AbstractTypeSigDecl k) = I.AbstractTypeSigDecl <$> kind k
