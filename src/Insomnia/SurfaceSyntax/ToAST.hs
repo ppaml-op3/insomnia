@@ -509,10 +509,7 @@ patternAtom (ConP ncon) = do
   let con = dropNotation ncon
       qid = unCon con
   mii <- use (valIdInfo . at qid)
-  case mii of
-   Just (ValConII _fix) -> (PartialPP . I.ConP . U.embed) <$> liftCTA (valueConstructor con)
-   _ -> error ("in pattern expected a constructor, but got variable "
-               ++ show con)
+  (PartialPP . I.ConP . U.embed) <$> liftCTA (valueConstructor con)
   where
     dropNotation (InfixN x) = x
     dropNotation (PrefixN x) = x

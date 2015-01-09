@@ -209,12 +209,19 @@ toplevelModule =
   mkToplevelModule
   <$> (try kindAndId)
   <*> optional (IdentMT <$ classify <*> moduleTypeIdentifier)
-  <*> ((reservedOp "=" *> moduleExpr)
-       <|> literalModuleShorthand)
+  <*> ((Left <$ reservedOp "=" <*> moduleExpr)
+       <|> (Right <$> literalModuleShorthand))
   where
     kindAndId = ((,) <$> moduleKind <*> modelIdentifier)
-    literalModuleShorthand = moduleExprLiteral
-    mkToplevelModule (modK, modId) = ToplevelModule modK modId
+    literalModuleShorthand = moduleLiteral
+    mkToplevelModule (modK, modId) modTy m =
+      let
+        mRHS = case m of
+          Left me -> me
+          Right mlit -> (case modK of
+                          ModuleMK -> ModuleStruct mlit
+                          ModelMK -> ModuleModel (ModelStruct mlit))
+      in ToplevelModule modK modId modTy mRHS
 
 moduleKind :: Parser ModuleKind
 moduleKind =
@@ -247,9 +254,10 @@ submodelSig =
   mkSubmoduleSig
   <$> moduleKind
   <*> modelIdentifier
-  <* classify
-  <*> modelTypeExpr
+  <*> (shorthandModelSig
+       <|> (classify *> modelTypeExpr))
   where
+    shorthandModelSig = literalModuleType
     mkSubmoduleSig modK modId modTyExp =
       SubmoduleSig modId modTyExp modK 
 
@@ -320,10 +328,14 @@ fixity =
 
     
 
+literalModuleType :: Parser ModuleType
+literalModuleType =
+  SigMT <$> braces signature <?> "module signature in braces"
+
 modelTypeExpr :: Parser ModuleType
 modelTypeExpr =
   (IdentMT <$> moduleTypeIdentifier <?> "module type identifier")
-  <|> (SigMT <$> braces signature <?> "module signature in braces")
+  <|> literalModuleType
 
 
 declList :: Parser [Decl]
@@ -427,8 +439,8 @@ moduleDefn :: Parser Decl
 moduleDefn =
   mkModuleDefn <$> moduleKind
   <*> modelIdentifier
-  <*> optional (classify *> moduleTypeIdentifier)
-  <*> ((reservedOp "=" *> moduleExpr)
+  <*> optional (try (classify *> moduleTypeIdentifier))
+  <*> (try (reservedOp "=" *> moduleExpr)
        <|> literalModuleShorthand)
   where
     literalModuleShorthand = moduleExprLiteral
