@@ -105,8 +105,8 @@ data Env = Env {
   , _envCCons :: M.Map ValueConstructor AlgConstructor
     -- | declared global vars
   , _envGlobals :: M.Map QVar Type
-    -- | defined global vars
-  , _envGlobalDefns :: M.Map QVar ()
+    -- | defined vars in the current module
+  , _envGlobalDefns :: M.Map Var ()
     -- | local type variables
   , _envTys :: M.Map TyVar Kind
     -- | local value variables
@@ -152,7 +152,8 @@ instance Pretty Env where
                 , "dcons", pp (env^.envDCons)
                 , "ccons", pp (env^.envCCons)
                 , "globals", pp (env^.envGlobals)
-                , "global defns", pp (env^.envGlobalDefns)
+                , "locals", pp (env^.envLocals)
+                , "defnitions", pp (env^.envGlobalDefns)
                                   -- TODO: the rest of the env
                 ]
 
@@ -338,7 +339,7 @@ extendConstructorsCtx :: MonadReader Env m => [(ValueConstructor, AlgConstructor
 extendConstructorsCtx cconstrs =
   local (envCCons %~ M.union (M.fromList cconstrs))
 
-extendValueDefinitionCtx :: QVar -> TC a -> TC a
+extendValueDefinitionCtx :: Var -> TC a -> TC a
 extendValueDefinitionCtx v =
   local (envGlobalDefns %~ M.insert v ())
 
@@ -391,7 +392,7 @@ guardDuplicateCConDecl ccon = do
                          <> formatErr ccon
                          <> " is already defined")
 
-ensureNoDefn :: QVar -> TC ()
+ensureNoDefn :: Var -> TC ()
 ensureNoDefn v = do
   m <- view (envGlobalDefns . at v)
   case m of

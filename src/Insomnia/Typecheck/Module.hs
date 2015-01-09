@@ -228,9 +228,9 @@ checkModule pmod stoch (Module ds) kont =
     go [] kont = kont mempty
     go (decl:decls) kont = do
       decl' <- checkDecl pmod stoch decl
-      extendDCtx pmod decl' decls $ \decls' ->
-        go decls' $ \decls'' ->
-        kont (decl' <> decls'')
+      extendDCtx pmod decl' $
+        go decls $ \decls' ->
+        kont (decl' <> decls')
 
 checkDecl :: Path -> Stochasticity -> Decl -> TC CheckedDecl
 checkDecl pmod stoch d =
@@ -252,8 +252,8 @@ checkDecl' pmod stoch d =
       (alias', _) <- checkTypeAlias alias
       return $ singleCheckedDecl $ TypeAliasDefn fld alias'
     ValueDecl fld vd ->
-      let qfld = QVar pmod fld
-      in checkedValueDecl fld <$> checkValueDecl fld qfld vd
+      let v = U.s2n fld
+      in checkedValueDecl fld <$> checkValueDecl fld v vd
     SubmoduleDefn fld moduleExpr -> do
       moduleExpr' <- inferModuleExpr (ProjP pmod fld) moduleExpr
                      (\moduleExpr' _sigV -> return moduleExpr')
@@ -283,40 +283,32 @@ singleCheckedValueDecl vd = Endo (vd :)
 
 
 
-checkValueDecl :: Field -> QVar -> ValueDecl -> TC CheckedValueDecl
-checkValueDecl fld qlf vd =
+checkValueDecl :: Field -> Var -> ValueDecl -> TC CheckedValueDecl
+checkValueDecl fld v vd =
   case vd of
     SigDecl stoch t -> do
-      guardDuplicateValueDecl qlf
+      guardDuplicateValueDecl v
       singleCheckedValueDecl <$> checkSigDecl stoch t
-    FunDecl e -> do
-      msig <- lookupGlobal qlf
-      ensureNoDefn qlf
-      let v = (U.s2n fld :: Var)
-          -- capture any unbound references to "fld" in the body
-          -- and replace them with the fully qualified name of this
-          -- function.
-          body = U.subst v (Q qlf) e
+    FunDecl body -> do
+      msig <- lookupLocal v
+      ensureNoDefn v
       U.avoid [U.AnyName v] $ checkFunDecl fld msig body
     ValDecl e -> do
-      msig <- lookupGlobal qlf
-      ensureNoDefn qlf
-      let v = (U.s2n fld :: Var)
+      msig <- lookupLocal v
+      ensureNoDefn v
       U.avoid [U.AnyName v] $ checkValDecl fld msig e
     SampleDecl e -> do
-      msig <- lookupGlobal qlf
-      ensureNoDefn qlf
-      let v = (U.s2n fld :: Var)
+      msig <- lookupLocal v
+      ensureNoDefn v
       U.avoid [U.AnyName v] $ checkSampleDecl fld msig e
     ParameterDecl e -> do
-      msig <- lookupGlobal qlf
-      ensureNoDefn qlf
+      msig <- lookupLocal v
+      ensureNoDefn v
       let v = (U.s2n fld :: Var)
       U.avoid [U.AnyName v] $ checkParameterDecl fld msig e
     TabulatedSampleDecl tf -> do
-      msig <- lookupGlobal qlf
-      ensureNoDefn qlf
-      let v = (U.s2n fld :: Var)
+      msig <- lookupLocal v
+      ensureNoDefn v
       U.avoid [U.AnyName v] $ checkTabulatedSampleDecl v msig tf
 
 checkSigDecl :: Stochasticity -> Type -> TC ValueDecl
@@ -465,9 +457,9 @@ openAbstract (Just ty) kont =
     _ -> kont (Just ty)
 
 
-guardDuplicateValueDecl :: QVar -> TC ()
+guardDuplicateValueDecl :: Var -> TC ()
 guardDuplicateValueDecl v = do
-  msig <- view (envGlobals . at v)
+  msig <- view (envLocals . at v)
   mdef <- view (envGlobalDefns . at v)
   case (msig, mdef) of
     (Nothing, Nothing) -> return ()
@@ -475,86 +467,64 @@ guardDuplicateValueDecl v = do
     (_, Just _) -> typeError (formatErr v <> " already has a definition")
 
 -- | Extend the environment by incorporating the given declaration.
-extendDCtx :: Path -> CheckedDecl -> [Decl] -> ([Decl] -> TC a) -> TC a
+extendDCtx :: Path -> CheckedDecl -> TC a -> TC a
 extendDCtx pmod cd = go (appEndo cd mempty)
   where
-    go :: [Decl] -> [Decl] -> ([Decl] -> TC a) -> TC a
-    go [] = \rest kont -> kont rest
-    go (d:ds) = \rest kont -> extendDCtxSingle pmod d rest (\rest' -> go ds rest' kont)
+    go :: [Decl] -> TC a -> TC a
+    go [] m = m
+    go (d:ds) m = extendDCtxSingle pmod d $ go ds m
 
-extendDCtxSingle :: Path -> Decl -> [Decl] -> ([Decl] -> TC a) -> TC a
-extendDCtxSingle pmod d =
+extendDCtxSingle :: Path -> Decl -> TC a -> TC a
+extendDCtxSingle pmod d kont =
   case d of
-    ValueDecl fld vd -> extendValueDeclCtx pmod fld vd
-    TypeDefn fld td -> \rest kont -> do
-      let p = TypePath pmod fld
-          shortIdent = U.s2n fld
-          substVCons = selfifyTypeDefn pmod td
-          substTyCon = [(shortIdent, TCGlobal p)]
-          -- replace short name occurrences by the qualified name
-          td' = U.substs substTyCon $ U.substs substVCons td
-          rest' = U.substs substTyCon $ U.substs substVCons rest
-      extendTypeDefnCtx (TCGlobal p) td' (kont rest')
-    TypeAliasDefn fld alias -> \rest kont -> do
-      let p = TypePath pmod fld
-          shortIdent = U.s2n fld
-          substitution = [(shortIdent, TCGlobal p)]
-          -- don't need to substitute into 'alias' because type
-          -- aliases are not allowed to be recursive.
-          rest' = U.substs substitution rest
-      extendTypeAliasCtx (TCGlobal p) alias (kont rest')
-    SubmoduleDefn fld moduleExpr -> \rest kont -> do
-      let pSubMod = ProjP pmod fld
-          shortIdent = U.s2n fld
-          substitution = [(shortIdent, pSubMod)]
-          rest' = U.substs substitution rest
+    ValueDecl fld vd -> extendValueDeclCtx pmod fld vd kont
+    TypeDefn fld td -> do
+      let shortIdent = U.s2n fld
+      extendTypeDefnCtx (TCLocal shortIdent) td kont
+    TypeAliasDefn fld alias -> do
+      let shortIdent = U.s2n fld
+      extendTypeAliasCtx (TCLocal shortIdent) alias kont
+    SubmoduleDefn fld moduleExpr -> do
+      let shortIdent = U.s2n fld
       subSigV <- naturalSignatureModuleExpr moduleExpr
-      case subSigV of
-       (SigV subSig ModuleMK) -> do
-         subSelfSig <- selfifySignature pSubMod subSig
-         extendModuleCtx subSelfSig $ kont rest'
-       (SigV _ ModelMK) ->
-         kont rest'
-    SampleModuleDefn fld moduleExpr -> \rest kont -> do
-      let pSubMod = ProjP pmod fld
-          shortIdent = U.s2n fld
-          substitution = [(shortIdent, pSubMod)]
-          rest' = U.substs substitution rest
+      extendModuleSigCtx shortIdent subSigV $ case subSigV of
+        (SigV subSig ModuleMK) -> do
+          subSelfSig <- selfifySignature (IdP shortIdent) subSig
+          extendModuleCtx subSelfSig $ kont
+        (SigV _ ModelMK) -> kont
+    SampleModuleDefn fld moduleExpr -> do
+      let shortIdent = U.s2n fld
       subSigV <- naturalSignatureModuleExpr moduleExpr
       case subSigV of
        (SigV subSig ModelMK) -> do
-         subSelfSig <- selfifySignature pSubMod subSig
-         -- XXX: not necessary since we did the substitution?
+         subSelfSig <- selfifySignature (IdP shortIdent) subSig
          extendModuleSigCtx shortIdent (SigV subSig ModuleMK)
-           $ extendModuleCtx subSelfSig $ kont rest'
+           $ extendModuleCtx subSelfSig $ kont
        (SigV _subSig ModuleMK) ->
          typeError ("expected a model on RHS of module sampling, but got a module, when defining "
-                    <> formatErr pSubMod)
+                    <> formatErr shortIdent
+                    <> " in " <> formatErr pmod)
 
-extendValueDeclCtx :: Path -> Field -> ValueDecl -> [Decl] -> ([Decl] -> TC a) -> TC a
-extendValueDeclCtx pmod fld vd =
-  let qvar = QVar pmod fld
+extendValueDeclCtx :: Path -> Field -> ValueDecl -> TC a -> TC a
+extendValueDeclCtx pmod fld vd kont =
+  let v = U.s2n fld :: Var
   in case vd of
-    SigDecl _stoch t -> extendSigDeclCtx fld qvar t
-    FunDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
-    ValDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
-    SampleDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
-    ParameterDecl _e -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
-    TabulatedSampleDecl _tf -> \rest kont -> extendValueDefinitionCtx qvar (kont rest)
+    SigDecl _stoch t -> extendSigDeclCtx v t kont
+    FunDecl _e -> extendValueDefinitionCtx v kont
+    ValDecl _e -> extendValueDefinitionCtx v kont
+    SampleDecl _e -> extendValueDefinitionCtx v kont
+    ParameterDecl _e -> extendValueDefinitionCtx v kont
+    TabulatedSampleDecl _tf -> extendValueDefinitionCtx v kont
 
 -- | @extendSigDecl fld qvar ty decls checkRest@ adds the global
 -- binding of @qvar@ to type @ty@, and replaces any free appearances
 -- of @fld@ by @qvar@ in @decls@ before checking them using
 -- @checkRest@.
-extendSigDeclCtx :: Field
-                    -> QVar
+extendSigDeclCtx :: Var
                     -> Type
-                    -> [Decl]
-                    -> ([Decl] -> TC a)
                     -> TC a
-extendSigDeclCtx fld qvar t rest kont =
-  let v = U.s2n fld :: Var
-  in local (envGlobals . at qvar ?~ t)
-     . U.avoid [U.AnyName v]
-     . kont
-     $ U.subst v (Q qvar) rest
+                    -> TC a
+extendSigDeclCtx v t kont =
+  local (envLocals . at v ?~ t)
+  . U.avoid [U.AnyName v]
+  $ kont
