@@ -1,0 +1,147 @@
+-- basics
+module type PRELUDE {
+
+  data Bool = True | False
+
+  sig (+) :: Int -> Int -> Int
+  sig (-) :: Int -> Int -> Int
+
+  sig isZero :: Int -> Bool
+
+  data List (a :: *) = Nil | Cons a (List a)
+
+  module ListFunctor {
+    sig map :: forall (a :: *) (b :: *) . (a -> b) -> List a -> List b
+  }
+
+}
+
+-- assume the prelude exists
+module Prelude = assume PRELUDE
+
+-- a collection of standard distributions
+module type DISTS {
+
+  sig uniformInt :: { lo :: Int ; hi :: Int } -> Dist Int
+
+}
+
+module Dists = assume DISTS
+
+-- interesting utilities about dice
+module Dice {
+
+  data Die = D4 | D6 | D8 | D10 | D12 | D20
+
+  sig rollDie :: Die -> Dist Int
+  fun rollDie d =
+    case d of
+      D4  -> Dists.uniformInt { lo = 1 , hi = 4}
+      D6  -> Dists.uniformInt { lo = 1 , hi = 6}
+      D8  -> Dists.uniformInt { lo = 1 , hi = 8}
+      D10 -> Dists.uniformInt { lo = 1 , hi = 10}
+      D12 -> Dists.uniformInt { lo = 1 , hi = 12}
+      D20 -> Dists.uniformInt { lo = 1 , hi = 20}
+}
+
+module type DICE_WORLD {
+
+  -- a bag of dice represented by how one ought to draw a die from it
+  type Bag = Dist Dice.Die
+
+  -- a standard bag of dice
+  sig stdBag :: Bag
+
+}
+
+module DiceWorld = assume DICE_WORLD
+
+module DiceUtil {
+
+  sig draw :: DiceWorld.Bag -> Int -> Dist (Prelude.List Dice.Die)
+  fun draw bag n =
+    case Prelude.isZero n of
+      Prelude.True -> return Prelude.Nil
+      Prelude.False -> let
+                 d ~ bag
+                 ds ~ draw bag (n Prelude.- 1)
+               in
+                 return (Prelude.Cons d ds)
+
+  sig rollDice :: Prelude.List Dice.Die -> Dist (Prelude.List Int)
+  fun rollDice dice =
+    case dice of
+      Prelude.Nil -> return Prelude.Nil
+      (Prelude.Cons d ds) -> let
+        x ~ Dice.rollDie d
+        xs ~ rollDice ds
+        in return (Prelude.Cons x xs)
+
+  sig sumRolls :: Prelude.List Int -> Int
+  fun sumRolls rs_ =
+    case rs_ of
+      Prelude.Nil -> 0
+      (Prelude.Cons r rs) -> r Prelude.+ sumRolls rs
+
+  type Joint = { numDice :: Int ; diceTotals :: Int }
+
+}
+
+-- model drawing a slip of paper from a bag
+model Slip {
+
+  sig n :: Int
+  val n ~ Dists.uniformInt { lo = 1 , hi = 5 }
+}
+
+-- The dice experiment model contains a dice experiment value which
+-- performs a new experiment (distribution of dice and dice rolls)
+-- each time that it is sampled.  But note that the number of dice is
+-- fixed upfront when the dice experiment model itself is sampled.
+model type DIE_EXPERIMENT {
+  sig diceExperiment :: Dist DiceUtil.Joint
+}
+
+model DiceExperiment =
+  model
+  local
+    module S ~ Slip
+  in {
+
+  sig diceExperiment :: Dist DiceUtil.Joint
+  val diceExperiment ~ return (let
+    n = S.n
+    dice ~ DiceUtil.draw DiceWorld.stdBag n
+    outcomes ~ DiceUtil.rollDice dice
+    tot = DiceUtil.sumRolls outcomes
+   in return { numDice = n, diceTotals = tot })
+
+  } :: DIE_EXPERIMENT
+
+model type ONE_ROLL_EXPERIMENT {
+  sig outcome :: DiceUtil.Joint
+}
+
+model OneRollExperiment = model
+  local
+    module E ~ DiceExperiment
+  in {
+    sig outcome :: DiceUtil.Joint
+    val outcome ~ E.diceExperiment
+  } :: ONE_ROLL_EXPERIMENT
+
+model type TWO_ROLL_EXPERIMENT {
+  sig outcome1 :: DiceUtil.Joint
+  sig outcome2 :: DiceUtil.Joint
+}
+
+model TwoRollExperiment = model
+  local
+    module E ~ DiceExperiment
+  in {
+    sig outcome1 :: DiceUtil.Joint
+    val outcome1 ~ E.diceExperiment
+
+    sig outcome2 :: DiceUtil.Joint
+    val outcome2 ~ E.diceExperiment
+  } :: TWO_ROLL_EXPERIMENT
