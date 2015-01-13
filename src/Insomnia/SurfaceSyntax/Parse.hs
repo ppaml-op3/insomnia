@@ -56,7 +56,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   , identLetter = alphaNum <|> char '_'
   , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
-  , reservedNames = ["model", "module", "local",
+  , reservedNames = ["model", "module", "local", "import",
                      "forall", "∀",
                      "⋆", "∷",
                      "infix", "infixr", "infixl",
@@ -397,6 +397,7 @@ sampleModuleDefn =
 
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
+       <|> (importDecl <?> "import declaration")
        <|> (fixityDecl <?> "fixity declaration")
        <|> (typeDefn <?> "type definition")
        <|> (typeAliasDefn <?> "type alias definition")
@@ -407,6 +408,14 @@ decl = (valueDecl <?> "value declaration")
 fixityDecl :: Parser Decl
 fixityDecl = uncurry FixityDecl <$> fixity
 
+importDecl :: Parser Decl
+importDecl =
+  mkImportDecl
+  <$ reserved "import"
+  <*> modelId
+  where
+    mkImportDecl = ImportDecl
+    
 valueDecl :: Parser Decl
 valueDecl =
   mkValueDecl <$> ((funDecl <?> "function definition")

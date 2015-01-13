@@ -294,6 +294,8 @@ decl d kont =
      f <- valueField ident
      vd' <- valueDecl vd
      withValVar ident $ kont [I.ValueDecl f vd']
+   ImportDecl qid -> do
+     kont [I.ImportDecl $  qualifiedIdPath qid]
    TypeDefn ident td -> do
      (f, _) <- typeField ident
      let con = Con $ QId [] ident

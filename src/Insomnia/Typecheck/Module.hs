@@ -43,6 +43,8 @@ import Insomnia.Typecheck.Selfify (selfifyTypeDefn, selfifySignature)
 import Insomnia.Typecheck.ClarifySignature (clarifySignatureV)
 import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtxV, extendModuleCtx)
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
+import Insomnia.Typecheck.LookupModuleSigPath (lookupModuleSigPath)
+import Insomnia.Typecheck.ConstructImportDefinitions (constructImportDefinitions)
 import Insomnia.Typecheck.MayAscribe (mayAscribeV)
 
 -- | Infer the signature of the given module expression
@@ -50,7 +52,7 @@ inferModuleExpr :: Path -> ModuleExpr -> (ModuleExpr -> SigV Signature -> TC a) 
 inferModuleExpr pmod (ModuleStruct mdl) kont = do
   mdl' <- checkModule pmod DeterministicParam mdl return
             <??@ "while checking module " <> formatErr pmod
-  msig <- naturalSignature mdl
+  msig <- naturalSignature mdl'
   kont (ModuleStruct mdl') (SigV msig ModuleMK)
 inferModuleExpr pmod (ModuleModel mdl) kont = do
   (mdl', msig) <- checkModelExpr pmod mdl
@@ -92,7 +94,7 @@ checkModelExpr pmod mexpr =
    ModelStruct mdl -> do
      mdl' <- checkModule pmod RandomVariable mdl return
              <??@ "while checking model " <> formatErr pmod
-     msig <- naturalSignature mdl
+     msig <- naturalSignature mdl'
      return (ModelStruct mdl', msig)
    ModelLocal modHidden body mty -> do
      (mty', sigvAscribed) <- checkModuleType mty
@@ -103,42 +105,6 @@ checkModelExpr pmod mexpr =
                             <> formatErr pmod)
        return (ModelLocal modHidden' body' mty', sigvSealed'^.sigVSig)
 
-
-
-lookupModuleSigPath :: Path -> TC (SigV Signature)
-lookupModuleSigPath (IdP ident) = lookupModuleSig ident
-lookupModuleSigPath (ProjP pmod fieldName) = do
-  sigV <- lookupModuleSigPath pmod
-  projectModuleField pmod fieldName sigV
-
-projectModuleField :: Path -> Field -> (SigV Signature) -> TC (SigV Signature)
-projectModuleField pmod fieldName = go
-  where
-    go :: SigV Signature -> TC (SigV Signature)
-    go =  go' . view sigVSig
-    go' :: Signature -> TC (SigV Signature)
-    go' UnitSig = typeError ("The module " <> formatErr pmod
-                            <> " does not have a submodule named "
-                            <> formatErr fieldName)
-    go' (ValueSig _ _ mrest) = go' mrest
-    go' (TypeSig fld' bnd) =
-      U.lunbind bnd $ \((tycon', _), mrest_) ->
-      -- slightly tricky - we have to replace the tycon' in the rest
-      -- of the module by the selfified name of the component so that
-      -- once we finally find the signature that we need, it will
-      -- refer to earlier components of its parent module by the
-      -- correct name.
-      let mrest = U.subst tycon' (TCGlobal $ TypePath pmod fld') mrest_
-      in go' mrest
-    go' (SubmoduleSig fld' bnd) =
-      if fieldName /= fld'
-      then
-        U.lunbind bnd $ \((ident', _), mrest_) ->
-        let mrest = U.subst ident' (ProjP pmod fld') mrest_
-        in go' mrest
-      else
-        U.lunbind bnd $ \((_, U.unembed -> modTy), _) ->
-        signatureOfModuleType modTy
 
 -- | Returns the "natural" signature of a module.
 -- This is a signature in which all type equations are preserved, all
@@ -246,6 +212,8 @@ checkDecl' pmod stoch d =
       guardDuplicateDConDecl dcon
       (td', _) <- checkTypeDefn (TCLocal $ U.s2n fld) td
       return $ singleCheckedDecl $ TypeDefn fld td'
+    ImportDecl impPath ->
+      checkImportDecl pmod stoch impPath
     TypeAliasDefn fld alias -> do
       let dcon = TCGlobal (TypePath pmod fld)
       guardDuplicateDConDecl dcon
@@ -270,6 +238,22 @@ checkDecl' pmod stoch d =
       return $ singleCheckedDecl $ SampleModuleDefn fld moduleExpr'
 
 type CheckedValueDecl = Endo [ValueDecl]
+
+checkImportDecl :: Path -> Stochasticity -> Path -> TC CheckedDecl
+checkImportDecl pmod stoch impPath = do
+  impSigV <- lookupModuleSigPath impPath
+  case impSigV of
+   (SigV msig ModuleMK) -> do
+     selfSig <- selfifySignature impPath msig
+     importDefns <- constructImportDefinitions selfSig
+     return importDefns
+   (SigV _ ModelMK) ->
+     typeError ("cannot import model " <> formatErr impPath <> " into "
+                <> (case stoch of
+                     RandomVariable -> " model "
+                     DeterministicParam -> " module ")
+                <> formatErr pmod)
+                
 
 checkedValueDecl :: Field -> CheckedValueDecl -> CheckedDecl
 checkedValueDecl fld cd =

@@ -58,7 +58,11 @@ module DiceWorld = assume DICE_WORLD
 
 module DiceUtil {
 
-  sig draw :: DiceWorld.Bag -> Int -> Dist (Prelude.List Dice.Die)
+  import Prelude
+  import Dice
+  import DiceWorld
+
+  sig draw :: Bag -> Int -> Dist (List Die)
   fun draw bag n =
     case Prelude.isZero n of
       Prelude.True -> return Prelude.Nil
@@ -68,7 +72,7 @@ module DiceUtil {
                in
                  return (Prelude.Cons d ds)
 
-  sig rollDice :: Prelude.List Dice.Die -> Dist (Prelude.List Int)
+  sig rollDice :: List Die -> Dist (List Int)
   fun rollDice dice =
     case dice of
       Prelude.Nil -> return Prelude.Nil
@@ -77,11 +81,11 @@ module DiceUtil {
         xs ~ rollDice ds
         in return (Prelude.Cons x xs)
 
-  sig sumRolls :: Prelude.List Int -> Int
+  sig sumRolls :: List Int -> Int
   fun sumRolls rs_ =
     case rs_ of
       Prelude.Nil -> 0
-      (Prelude.Cons r rs) -> r Prelude.+ sumRolls rs
+      (Prelude.Cons r rs) -> r + sumRolls rs
 
   type Joint = { numDice :: Int ; diceTotals :: Int }
 
@@ -105,15 +109,19 @@ model type DIE_EXPERIMENT {
 model DiceExperiment =
   model
   local
+    import Prelude
+    import Dice
+    import DiceUtil
+    
     module S ~ Slip
   in {
 
-  sig diceExperiment :: Dist DiceUtil.Joint
+  sig diceExperiment :: Dist Joint
   val diceExperiment ~ return (let
     n = S.n
-    dice ~ DiceUtil.draw DiceWorld.stdBag n
-    outcomes ~ DiceUtil.rollDice dice
-    tot = DiceUtil.sumRolls outcomes
+    dice ~ draw stdBag n
+    outcomes ~ rollDice dice
+    tot = sumRolls outcomes
    in return { numDice = n, diceTotals = tot })
 
   } :: DIE_EXPERIMENT
@@ -124,9 +132,10 @@ model type ONE_ROLL_EXPERIMENT {
 
 model OneRollExperiment = model
   local
+    import DiceUtil
     module E ~ DiceExperiment
   in {
-    sig outcome :: DiceUtil.Joint
+    sig outcome :: Joint
     val outcome ~ E.diceExperiment
   } :: ONE_ROLL_EXPERIMENT
 
@@ -137,11 +146,12 @@ model type TWO_ROLL_EXPERIMENT {
 
 model TwoRollExperiment = model
   local
+    import DiceUtil
     module E ~ DiceExperiment
   in {
-    sig outcome1 :: DiceUtil.Joint
+    sig outcome1 :: Joint
     val outcome1 ~ E.diceExperiment
 
-    sig outcome2 :: DiceUtil.Joint
+    sig outcome2 :: Joint
     val outcome2 ~ E.diceExperiment
   } :: TWO_ROLL_EXPERIMENT

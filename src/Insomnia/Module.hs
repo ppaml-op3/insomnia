@@ -44,6 +44,7 @@ data Module = Module { moduleDecls :: [Decl] }
 -- | A declaration
 data Decl =
   ValueDecl !Field !ValueDecl -- ^ declaration of a value
+  | ImportDecl !Path          -- ^ import definitions from the given path
   | TypeDefn !Field !TypeDefn   -- ^ generative construction of new types
   | TypeAliasDefn !Field !TypeAlias -- ^ a type alias definition
   | SubmoduleDefn !Field !ModuleExpr -- ^ a nested module definition

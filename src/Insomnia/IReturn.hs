@@ -64,6 +64,7 @@ decl :: Decl -> Decl
 decl (ValueDecl f vd) = ValueDecl f (valueDecl vd)
 decl (SubmoduleDefn f me) = SubmoduleDefn f (moduleExpr me)
 decl (SampleModuleDefn f me) = SampleModuleDefn f (moduleExpr me)
+decl d@(ImportDecl {}) = d
 decl d@(TypeDefn {}) = d
 decl d@(TypeAliasDefn {}) = d
 

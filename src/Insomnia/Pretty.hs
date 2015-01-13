@@ -300,12 +300,14 @@ ppTyVarBindings = fsep . map ppTyVarBinding
 instance Pretty Decl where
   pp (TypeDefn c td) = ppTypeDefn c td
   pp (ValueDecl f vd) = ppValueDecl f vd
+  pp (ImportDecl p) = ppImportDecl p
   pp (TypeAliasDefn f a) = ppTypeAlias f a
   pp (SubmoduleDefn f m) = ppModule (pp f) m
   pp (SampleModuleDefn f m) = fsep ["module", pp f, indent "~" (pp m)]
 
 instance Pretty (PrettyShort Decl) where
   pp (PrettyShort (TypeDefn c td)) = ppShortTypeDefn c td
+  pp (PrettyShort (ImportDecl p)) = ppImportDecl p
   pp (PrettyShort (ValueDecl f vd)) = ppShortValueDecl f vd
   pp (PrettyShort (TypeAliasDefn f _a)) =
     "type" <+> pp f <+> "=" <+> elipsis
@@ -319,6 +321,9 @@ instance Pretty (PrettyField TypeDefn) where
 
 instance Pretty (PrettyField TypeAlias) where
   pp (PrettyField fld alias) = ppTypeAlias fld alias
+
+ppImportDecl :: Path -> PM Doc
+ppImportDecl p = fsep ["import", pp p]
 
 ppTypeDefn :: Field -> TypeDefn -> PM Doc
 ppTypeDefn c (DataDefn d) = ppDataDefn c d

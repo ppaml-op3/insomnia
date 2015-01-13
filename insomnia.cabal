@@ -66,6 +66,9 @@ library
                        --
                        Insomnia.Typecheck.MayAscribe
                        --
+                       Insomnia.Typecheck.LookupModuleSigPath
+                       Insomnia.Typecheck.ConstructImportDefinitions
+                       --
                        Insomnia.Typecheck.Module
                        Insomnia.Typecheck
                        --

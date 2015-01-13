@@ -94,6 +94,7 @@ data Module = Module ![Decl]
            deriving (Show)
 
 data Decl = ValueDecl !Ident !ValueDecl
+          | ImportDecl !QualifiedIdent
           | TypeDefn !Ident !TypeDefn
           | TypeAliasDefn !Ident !TypeAlias
           | SubmoduleDefn !Ident !ModuleKind !ModuleExpr
