@@ -109,7 +109,7 @@ instance Pretty Clause where
   pp (Clause bnd) =
     let (pat, e) = UU.unsafeUnbind bnd
     in withPrec 0 AssocNone
-       $ Left $ pp pat <+> indent "->" (pp e)
+       $ Left $ pp pat <+> indent rightArrow (pp e)
 
 instance Pretty Binding where
   pp (ValB av (U.unembed -> e)) =
@@ -149,7 +149,7 @@ instance Pretty Expr where
   pp (C c) = pp c
   pp (Q q) = pp q
   pp (L l) = pp l
-  pp (App e1 e2) = infixOp 10 mempty mempty AssocLeft (pp e1) (pp e2)
+  pp (App e1 e2) = infixOp 10 mempty AssocLeft (pp e1) (pp e2)
   pp (Lam bnd) =
     let (av, e) = UU.unsafeUnbind bnd
     in precParens 1
@@ -178,7 +178,7 @@ instance Pretty Expr where
        , "in"
        , nesting (pp e)
        ]
-  pp (Return e) = infixOp 10 mempty mempty AssocLeft "return" (pp e)
+  pp (Return e) = infixOp 10 mempty AssocLeft "return" (pp e)
 
 ppAnnVar :: AnnVar -> PM Doc
 ppAnnVar (v, U.unembed -> (Annot mt)) =
@@ -208,7 +208,7 @@ instance Pretty ValConPath where
 
 instance Pretty Kind where
   pp KType = onUnicode "⋆" "*"
-  pp (KArr k1 k2) = infixOp 1 "→" "->" AssocRight (pp k1) (pp k2)
+  pp (KArr k1 k2) = infixOp 1 rightArrow AssocRight (pp k1) (pp k2)
 
 instance Pretty ValueConstructor where
   pp (VCLocal n) = pp n
@@ -230,8 +230,8 @@ instance Pretty Type where
        t1)
       t2) =
     -- hack
-    infixOp 1 "→" "->" AssocRight (pp t1) (pp t2)
-  pp (TApp t1 t2) = infixOp 2 mempty mempty AssocLeft (pp t1) (pp t2)
+    infixOp 1 rightArrow AssocRight (pp t1) (pp t2)
+  pp (TApp t1 t2) = infixOp 2 mempty AssocLeft (pp t1) (pp t2)
   pp (TC c) = pp c
   pp (TAnn t k) = parens $ fsep [pp t, nesting $ coloncolon <+> pp k]
   pp (TForall bnd) =
@@ -405,6 +405,8 @@ instance Pretty ModuleExpr where
     parens (fsep [pp mdl, indent coloncolon (pp moduleSig)])
   pp (ModuleAssume mtype) = fsep ["assume", nesting (pp mtype)]
   pp (ModuleId modPath) = pp modPath
+  pp (ModuleApp pfun args) =
+    fsep [pp pfun, parens $ fsep $ punctuate "," $ map pp args]
 
 instance Pretty ModelExpr where
   pp (ModelId p) = pp p
@@ -417,7 +419,20 @@ instance Pretty ModelExpr where
 
 instance Pretty ModuleType where
   pp (SigMT sigv) = pp sigv
+  pp (FunMT bnd) =
+    let (tele, body) = UU.unsafeUnbind bnd
+    in fsep [parens (fsep $ ppTelescope pp tele), indent rightArrow (pp body)]
   pp (IdentMT ident) = pp ident
+
+instance Pretty ModuleTypeNF where
+  pp (SigMTNF sigv) = pp sigv
+  pp (FunMTNF bnd) =
+    let (tele, body) = UU.unsafeUnbind bnd
+    in fsep [parens (fsep $ ppTelescope pp tele), indent rightArrow (pp body)]
+
+instance Pretty a => Pretty (FunctorArgument a) where
+  pp (FunctorArgument ident (U.unembed -> modK) (U.unembed -> t)) =
+    fsep [pp modK, pp ident, indent coloncolon (pp t)]
 
 instance Pretty a => Pretty (SigV a) where
   pp (SigV x modK) = fsep [pp modK, "{", pp x, "}" ]
@@ -460,7 +475,7 @@ instance Pretty a => Pretty (UnificationFailure TypeUnificationError a) where
     
 
 -- | @ppTelescope pelem t@ pretty prints the 'Telescope' @t@
--- using @psep@ to separate the elements and @pelem@ to print each element.
+-- using @pelem@ to print each element.
 ppTelescope :: U.Alpha p => (p -> PM Doc) -> Telescope p -> [PM Doc]
 ppTelescope pelem t =
   foldMapTelescope (\x -> [pelem x]) t
@@ -475,19 +490,21 @@ onUnicode yes no = do
   inUnicode <- view pcUnicode
   if inUnicode then yes else no
 
+rightArrow :: PM Doc
+rightArrow = onUnicode "→" "->"
+
 -- ============================================================
 -- Precedence
 
 infixOp :: Precedence -- ^ precedence of the operator
-           -> PM Doc -- ^ operator as unicode
-           -> PM Doc -- ^ operator as ascii
+           -> PM Doc -- ^ operator
            -> Associativity -- ^ operator associativity
            -> PM Doc -- ^ lhs pretty printer
            -> PM Doc -- ^ rhs pretty printer
            -> PM Doc
-infixOp precOp opUni opAscii assoc lhs rhs =
+infixOp precOp opr assoc lhs rhs =
   precParens precOp $ fsep [ withPrec precOp assoc (Left lhs),
-                             onUnicode opUni opAscii,
+                             opr,
                              nesting $ withPrec precOp assoc (Right rhs)]
 
 precParens :: Precedence -> PM Doc -> PM Doc

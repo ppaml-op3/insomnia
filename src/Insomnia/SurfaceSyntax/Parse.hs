@@ -118,11 +118,11 @@ moduleTypeIdentifier :: Parser Ident
 moduleTypeIdentifier = tyconIdentifier
 
 tyconIdentifier :: Parser Ident
-tyconIdentifier = try $ do
+tyconIdentifier = (try $ do
   i <- identifier
   let c = head i
   guard (isUpper c)
-  return i
+  return i) <?> "type identifier"
 
 infixIdent :: Parser Ident
 infixIdent = operator
@@ -140,11 +140,11 @@ qualifiedName p =
             (ss, x) <- components
             return (s:ss, x)
           Right x -> return ([], x)
-      component = do
+      component = (do
         c <- identStart insomniaLang
         guard (isUpper c)
         cs <- many (identLetter insomniaLang)
-        return (c:cs)
+        return (c:cs)) <?> "module path component"
   in lexeme $ components
 
 qualifiedInfixIdent :: Parser QualifiedIdent
@@ -161,14 +161,16 @@ infixConId =
 
 -- | X.Y.Z -- all components initial-uppercase
 conId :: Parser Con
-conId = (Con . mkQId) <$> qualifiedName tyconIdentifier
+conId = ((Con . mkQId) <$> qualifiedName tyconIdentifier)
+        <?> "(possibly qualifieD) constructor identifier"
   where
     mkQId (path,ident) = QId path ident
 
 
 -- | X.Y.Z.v -- all components except the last are initial-uppsercase
 qvarId :: Parser QVar
-qvarId = (QVar . mkQId) <$> qualifiedName variableIdentifier
+qvarId = ((QVar . mkQId) <$> qualifiedName variableIdentifier)
+         <?> "possibly qualified value identifier"
   where
     mkQId (path,ident) = QId path ident
 
@@ -179,7 +181,8 @@ tvarId :: Parser TyVar
 tvarId = TyVar <$> variableIdentifier
 
 modelId :: Parser QualifiedIdent
-modelId = mkQId <$> qualifiedName modelIdentifier
+modelId = (mkQId <$> qualifiedName modelIdentifier)
+          <?> "possibly qualified module identifier"
   where mkQId = uncurry QId
 
 ----------------------------------------
@@ -234,9 +237,12 @@ toplevelModuleType :: Parser ToplevelItem
 toplevelModuleType =
   mkToplevelModuleType
   <$> (try ((,) <$> moduleKind <* reserved "type" <*> moduleTypeIdentifier))
-  <*> braces signature
+  <*> ((Left <$ reservedOp "=" <*> moduleTypeExpr)
+       <|> (Right <$> braces signature))
   where
-    mkToplevelModuleType (modK, ident) sig =
+    mkToplevelModuleType (modK, ident) (Left mt) =
+      ToplevelModuleType modK ident mt
+    mkToplevelModuleType (modK, ident) (Right sig) =
       ToplevelModuleType modK ident (SigMT sig)
 
 signature :: Parser Signature
@@ -245,10 +251,10 @@ signature =
 
 sigDecl :: Parser SigDecl
 sigDecl =
-  submodelSig
-  <|> valueSig
-  <|> typeSig
-  <|> fixitySig
+  (submodelSig <?> "submodule declaration")
+  <|> (valueSig <?> "value signature declaration")
+  <|> (typeSig <?> "type signature or type alias definition")
+  <|> (fixitySig <?> "fixity declaration")
 
 submodelSig :: Parser SigDecl
 submodelSig =
@@ -256,7 +262,7 @@ submodelSig =
   <$> moduleKind
   <*> modelIdentifier
   <*> (shorthandModelSig
-       <|> (classify *> modelTypeExpr))
+       <|> (classify *> moduleTypeExpr))
   where
     shorthandModelSig = literalModuleType
     mkSubmoduleSig modK modId modTyExp =
@@ -281,7 +287,7 @@ optStochasticity =
 typeSig :: Parser SigDecl
 typeSig =
   mkTypeSig
-  <$> (manifestTypeSigDecl <$> (dataDefn <|> enumDefn)
+  <$> ((manifestTypeSigDecl <$> (dataDefn <|> enumDefn))
        <|> abstractDeclOrAliasDefn)
   where
     mkTypeSig (ident, tySigDecl) = TypeSig ident tySigDecl
@@ -333,11 +339,20 @@ literalModuleType :: Parser ModuleType
 literalModuleType =
   SigMT <$> braces signature <?> "module signature in braces"
 
-modelTypeExpr :: Parser ModuleType
-modelTypeExpr =
+moduleTypeExpr :: Parser ModuleType
+moduleTypeExpr =
   (IdentMT <$> moduleTypeIdentifier <?> "module type identifier")
   <|> literalModuleType
+  <|> functorModuleType
 
+functorModuleType :: Parser ModuleType
+functorModuleType =
+  FunMT
+  <$> parens (many namedSigComponent <?> "zero or more module/model modId : SIG elements") 
+  <* reservedOp "->"
+  <*> moduleTypeExpr
+  where
+    namedSigComponent = (,,) <$> moduleKind <*> moduleTypeIdentifier <* classify <*> moduleTypeExpr
 
 declList :: Parser [Decl]
 declList = localIndentation Ge $ many $ absoluteIndentation decl
@@ -357,18 +372,27 @@ moduleExpr =
   (moduleExprLiteral <?> "braced module definition")
   <|> (moduleAssume <?> "module postulate (\"assume\")")
   <|> (nestedModule <?> "module sealed with a signature")
-  <|> (modulePath <?> "qualified module name")
+  <|> modulePathOrApp
   <|> (reserved "model" *> (ModuleModel <$> modelExpr) <?> "model expression")
   where
     moduleAssume =  (ModuleAssume . IdentMT)
                     <$> (reserved "assume" *> moduleTypeIdentifier)
     nestedModule = parens (mkNestedModuleExpr
                            <$> moduleExpr
-                           <*> optional (classify *> modelTypeExpr))
-    modulePath = ModuleId <$> modelId
+                           <*> optional (classify *> moduleTypeExpr))
 
     mkNestedModuleExpr modExpr Nothing = modExpr
     mkNestedModuleExpr modExpr (Just modTy) = ModuleSeal modExpr modTy
+
+modulePathOrApp :: Parser ModuleExpr
+modulePathOrApp =
+  mkAppOrPath
+  <$> modulePath
+  <*> optional (parens $ commaSep modulePath)
+  where
+    modulePath = modelId
+    mkAppOrPath pmod Nothing = ModuleId pmod
+    mkAppOrPath pmod (Just args) = ModuleApp pmod args
 
 modelExpr :: Parser ModelExpr
 modelExpr =
@@ -386,7 +410,7 @@ modelLocalExpr =
   <* reserved "in"
   <*> modelExpr
   <* classify
-  <*> modelTypeExpr
+  <*> moduleTypeExpr
 
 sampleModuleDefn :: Parser Decl
 sampleModuleDefn =

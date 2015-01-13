@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ViewPatterns, OverloadedStrings #-}
 module Insomnia.Typecheck.Selfify
        ( selfifySignature
        , selfifyTypeDefn
@@ -10,14 +10,15 @@ import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Common.ModuleKind
-import Insomnia.Identifier (Path(..), lastOfPath)
+import Insomnia.Identifier (Path(..))
 import Insomnia.Types (TypeConstructor(..), TypePath(..))
 import Insomnia.Expr (QVar(..))
 import Insomnia.TypeDefn (TypeDefn(..), ValConName,
                           ValConPath(..), ValueConstructor(..),
                           ConstructorDef(..))
-import Insomnia.ModuleType (ModuleType(..), Signature(..),
+import Insomnia.ModuleType (Signature(..),
                             SigV(..),
+                            ModuleTypeNF(..),
                             TypeSigDecl(..))
 
 import Insomnia.Typecheck.Env
@@ -54,39 +55,16 @@ selfifySignature pmod msig_ =
         let p = ProjP pmod fld
         subSigV <- signatureOfModuleType modTy
         case subSigV of
-         (SigV subSig ModuleMK) -> do
+         (SigMTNF (SigV subSig ModuleMK)) -> do
            subSelfSig <- selfifySignature p subSig
            let msig' = U.subst modId p msig
            selfSig' <- selfifySignature pmod msig'
            return $ SubmoduleSelfSig p subSelfSig selfSig'
-         (SigV subSig ModelMK) -> do
+         (SigMTNF (SigV subSig ModelMK)) -> do
            let msig' = U.subst modId p msig
            selfSig' <- selfifySignature pmod msig'
            return $ SubmodelSelfSig p subSig selfSig'
-
-selfSigToSignature :: SelfSig -> TC Signature
-selfSigToSignature UnitSelfSig = return UnitSig
-selfSigToSignature (ValueSelfSig (QVar _modulePath fieldName) ty selfSig) = do
-  sig <- selfSigToSignature selfSig
-  return $ ValueSig fieldName ty sig
-selfSigToSignature (TypeSelfSig typePath tsd selfSig) = do
-  let (TypePath _ fieldName) = typePath
-  freshId <- U.lfresh (U.s2n fieldName)
-  sig <- selfSigToSignature selfSig
-  return $ TypeSig fieldName (U.bind (freshId, U.embed tsd) sig)
-selfSigToSignature (SubmoduleSelfSig path subSelfSig selfSig) = do
-  let fieldName = lastOfPath path
-  freshId <- U.lfresh (U.s2n fieldName)
-  subSig <- selfSigToSignature subSelfSig
-  sig <- selfSigToSignature selfSig
-  let subModTy = SigMT (SigV subSig ModuleMK)
-  return $ SubmoduleSig fieldName (U.bind (freshId, U.embed subModTy) sig)
-selfSigToSignature (SubmodelSelfSig path subSig selfSig) = do
-  let fieldName = lastOfPath path
-  freshId <- U.lfresh (U.s2n fieldName)
-  sig <- selfSigToSignature selfSig
-  let subModTy = SigMT (SigV subSig ModelMK)
-  return $ SubmoduleSig fieldName (U.bind (freshId, U.embed subModTy) sig)
+         (FunMTNF {}) -> typeError "unimplemented selfified functors"
 
 selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(ValConName, ValueConstructor)]
 selfifyTypeSigDecl pmod tsd =

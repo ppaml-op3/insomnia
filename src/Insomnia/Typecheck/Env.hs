@@ -28,7 +28,7 @@ import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn (TypeAlias(..), ValueConstructor(..))
 import Insomnia.Expr (Var, QVar)
-import Insomnia.ModuleType (Signature, SigV(..))
+import Insomnia.ModuleType (ModuleTypeNF(..))
 
 import Insomnia.Unify (MonadUnificationExcept(..),
                        UVar,
@@ -94,11 +94,10 @@ data TypeAliasClosure = TypeAliasClosure !Env !TypeAlias
 -- | Typechecking environment
 data Env = Env {
   -- | signatures
-  _envSigs :: M.Map SigIdentifier (SigV Signature)
+  _envSigs :: M.Map SigIdentifier ModuleTypeNF
     -- | modules' unselfified signatures (invariant: their selfified
-    -- contents have been added to DCons and Globals iff their kind is
-    -- ModuleMK)
-  , _envModuleSigs :: M.Map Identifier (SigV Signature)
+    -- contents have been added to DCons and Globals iff their are a SigMTNF (SigV _ ModuleK)
+  , _envModuleSigs :: M.Map Identifier ModuleTypeNF
     -- | type constructor descriptors
   , _envDCons :: M.Map TypeConstructor TyConDesc
     -- | value constructors
@@ -268,7 +267,7 @@ mkConstructorType constr =
     go t (tvk:tvks) = go (TForall (U.bind tvk t)) tvks
 
 -- | Lookup info about a (toplevel) module.
-lookupModuleSig :: Identifier -> TC (SigV Signature)
+lookupModuleSig :: Identifier -> TC ModuleTypeNF
 lookupModuleSig ident = do
   m <- view (envModuleSigs . at ident)
   case m of
@@ -306,7 +305,7 @@ lookupLocal v = view (envLocals . at v)
 
 -- | Checks tht the given identifier is bound in the context to a
 -- signature.
-lookupModuleType :: SigIdentifier -> TC (SigV Signature)
+lookupModuleType :: SigIdentifier -> TC ModuleTypeNF
 lookupModuleType ident = do
   mmsig <- view (envSigs . at ident)
   case mmsig of
@@ -318,14 +317,14 @@ lookupModuleType ident = do
 -- module.  Invariant - the selfified types, constructors and terms
 -- should be added separately using extendDConCtx, etc.
 extendModuleSigCtx :: MonadReader Env m
-                      => Identifier -> SigV Signature -> m a -> m a
+                      => Identifier -> ModuleTypeNF -> m a -> m a
 extendModuleSigCtx ident sigv =
   local (envModuleSigs . at ident ?~ sigv)
 
 -- | Extend the type signatures environment by adding the given
 -- signature.
 extendModuleTypeCtx :: MonadReader Env m
-                       => SigIdentifier -> SigV Signature -> m a -> m a
+                       => SigIdentifier -> ModuleTypeNF -> m a -> m a
 extendModuleTypeCtx ident sigv =
   local (envSigs . at ident ?~ sigv)
 

@@ -1,0 +1,18 @@
+
+module type T1 {
+  type T :: *
+  sig f :: T -> T
+  sig v :: T
+}
+
+module X1 :: T1 {
+  type T = Int
+  fun f x = (x :: Int)
+  val v = 0
+}
+
+module type FT = (module X :: T1) -> T1
+
+module F = assume FT
+
+module X2 = F (X1)

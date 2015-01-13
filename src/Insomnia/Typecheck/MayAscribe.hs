@@ -1,54 +1,41 @@
 {-# LANGUAGE ViewPatterns, OverloadedStrings #-}
 -- | Signature ascription.
-module Insomnia.Typecheck.MayAscribe (mayAscribeV) where
+module Insomnia.Typecheck.MayAscribe (mayAscribeNF) where
 
-import Control.Applicative ((<$>))
-import Control.Lens
 import Control.Monad (unless)
 import Data.Monoid ((<>))
-import Data.Foldable (traverse_)
 
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.ModuleKind
+import Insomnia.Common.Telescope
 import Insomnia.Identifier (Identifier, Path(..), Field)
 import Insomnia.Types (TypeConstructor(..), TypePath(..), TyConName,
                        Type, Kind(..))
 import Insomnia.TypeDefn
-import Insomnia.ModuleType (ModuleType, Signature(..), TypeSigDecl(..),
-                            SigV(..), sigVKind, sigVSig)
+import Insomnia.ModuleType (ModuleType, ModuleTypeNF(..),
+                            Signature(..), TypeSigDecl(..),
+                            FunctorArgument(..),
+                            SigV(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
-import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtx)
-import Insomnia.Typecheck.Selfify (selfifySignature)
+import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtxNF)
 
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
 import Insomnia.Typecheck.Equiv.Types (equivTypes)
 import Insomnia.Typecheck.Equiv.TypeDefn (equivTypeDefn)
 import Insomnia.Typecheck.Equiv.TypeAlias (equivTypeAlias)
 
-mayAscribeV :: SigV Signature -> SigV Signature -> TC (SigV Signature)
-mayAscribeV sigv1 sigv2 =
-  case (sigv1, sigv2) of
-   (SigV msig1 ModelMK, SigV msig2 ModelMK) ->
-     flip SigV ModelMK <$> mayAscribe msig1 msig2
-   (SigV msig1 ModuleMK, SigV msig2 ModuleMK) ->
-     flip SigV ModuleMK <$> mayAscribe msig1 msig2
-   (SigV _ modK1, SigV _ modK2) ->
-     typeError ("cannot ascribe a " <> formatErr modK2
-                <> " type signature to a "
-                <> formatErr modK1)
-
--- | @msig1 `mayAscribe` msig2@ succeeds if it is okay to
+-- | @msig1 `mayAscribeNF` msig2@ succeeds if it is okay to
 -- ascribe @msig2@ to any module whose type is @msig1@.  That is,
 -- @msig2@ is more general than @msig1@.  Returns the second
 -- signature.
-mayAscribe :: Signature -> Signature -> TC Signature
-mayAscribe msig1 msig2 = do
+mayAscribeNF :: ModuleTypeNF -> ModuleTypeNF -> TC ModuleTypeNF
+mayAscribeNF mod1 mod2 = do
   modId <- U.lfresh (U.s2n "<unnamed module>")
-  checkSignature (IdP modId) (TailPreSig msig1) msig2
-  return msig2
+  checkModuleTypeNF (IdP modId) mod1 mod2
+  return mod2
 
 -- | The signature matching algorithm is essentially O(n^2) in the
 -- number of signature components, because we repeatedly scan the more
@@ -75,12 +62,48 @@ data PrefixedSignature
   = TailPreSig Signature
   | ValuePreSig Field Type PrefixedSignature
   | TypePreSig Field TypeSigDecl PrefixedSignature
-  | SubmodulePreSig Field (SigV Signature) PrefixedSignature
+  | SubmodulePreSig Field ModuleTypeNF PrefixedSignature
 
 
-checkSigV :: Path -> PrefixedSignature -> SigV Signature -> TC ()
-checkSigV pmod presig1 = traverse_ (checkSignature pmod presig1)
+checkSigV :: Path -> SigV Signature -> SigV Signature -> TC ()
+checkSigV pmod sigv1 sigv2 = 
+    case (sigv1, sigv2) of
+   (SigV msig1 ModelMK, SigV msig2 ModelMK) ->
+     checkSignature pmod (TailPreSig msig1) msig2
+   (SigV msig1 ModuleMK, SigV msig2 ModuleMK) ->
+     checkSignature pmod (TailPreSig msig1) msig2
+   (SigV _ modK1, SigV _ modK2) ->
+     typeError ("cannot ascribe a " <> formatErr modK2
+                <> " type signature to a "
+                <> formatErr modK1)
 
+checkModuleTypeNF :: Path -> ModuleTypeNF
+                     -> ModuleTypeNF
+                     -> TC ()
+checkModuleTypeNF pmod mod1 mod2 =
+  case (mod1, mod2) of
+   (SigMTNF sigv1, SigMTNF sigv2) -> checkSigV pmod sigv1 sigv2
+   (FunMTNF bnd1, FunMTNF bnd2) ->
+     U.lunbind2 bnd1 bnd2 $ \ m ->
+     case m of
+      Just (tele1, body1, tele2, body2) -> do
+        checkTelescopeNF pmod tele1 tele2 $ do
+          _body' <- mayAscribeNF body1 body2
+                   <??@ "when checking functor signature result"
+          return ()
+      Nothing ->
+        typeError ("functor signatures " <> formatErr mod1
+                   <> " and "
+                   <> formatErr mod2
+                   <> " are not comparable (different number of arguments?)")
+   (_, _) -> typeError ("cannot ascribe signature " <> formatErr mod2
+                        <> " to something of signature " <> formatErr mod1)
+
+checkTelescopeNF :: Path -> Telescope (FunctorArgument ModuleTypeNF)
+                    -> Telescope (FunctorArgument ModuleTypeNF)
+                    -> TC r
+                    -> TC r
+checkTelescopeNF = undefined
 
 -- | @checkSignature pmod msig1 msig2@ checks that @msig2@ is less general
 -- than @msig1@.
@@ -141,14 +164,9 @@ checkValueFieldTail pmod fld ty msig1 =
       U.lunbind bnd $ \((ident1, U.unembed -> moduleTy), mrest1_) -> do
         let pdefn = ProjP pmod fld'
             mrest1 = U.subst ident1 pdefn mrest1_
-        subSigV <- signatureOfModuleType moduleTy
-        case subSigV of
-         (SigV subSig ModuleMK) -> do
-           subSelf <- selfifySignature pdefn subSig
-           extendModuleCtx subSelf $
-             checkValueFieldTail pmod fld ty mrest1
-         (SigV _subSig ModelMK) -> do
-           checkValueFieldTail pmod fld ty mrest1
+        subSigNF <- signatureOfModuleType moduleTy
+        extendModuleCtxNF pdefn subSigNF
+          $ checkValueFieldTail pmod fld ty mrest1
     TypeSig fld' bnd ->
       U.lunbind bnd $ \((tycon1, U.unembed -> tsd_), mrest1_) -> do
         let pdefn = TypePath pmod fld'
@@ -207,16 +225,11 @@ checkTypeFieldTail pmod fld bnd msig1 kont =
       checkTypeFieldTail pmod fld bnd mrest1 (kont . ValuePreSig fld' ty')
     SubmoduleSig fld' bnd' ->
       U.lunbind bnd' $ \((ident1, U.unembed -> moduleTy), mrest1_) -> do
-        subSigV <- signatureOfModuleType moduleTy
+        subSigNF <- signatureOfModuleType moduleTy
         let pSubmod = ProjP pmod fld'
             mrest1 = U.subst ident1 pSubmod mrest1_
-        case subSigV of
-         (SigV subSig ModuleMK) -> do
-           selfSig <- selfifySignature pSubmod subSig
-           extendModuleCtx selfSig $
-             checkTypeFieldTail pmod fld bnd mrest1 (kont . SubmodulePreSig fld' subSigV)
-         (SigV _subSig ModelMK) -> do
-           checkTypeFieldTail pmod fld bnd mrest1 (kont . SubmodulePreSig fld' subSigV)
+        extendModuleCtxNF pSubmod subSigNF
+          $ checkTypeFieldTail pmod fld bnd mrest1 (kont . SubmodulePreSig fld' subSigNF)
     TypeSig fld' bnd' ->
       if fld /= fld'
       then 
@@ -351,13 +364,7 @@ checkSubmoduleField pmod fld bnd msig1 kont =
           sigV2 <- signatureOfModuleType moduleTy2
           let
             pSubmod = ProjP pmod fld
-            modK1 = sigV1 ^. sigVKind
-            modK2 = sigV2 ^. sigVKind
-          unless (modK1 == modK2) $
-            typeError ("The sub-" <> formatErr modK1 <> " " <> formatErr pSubmod
-                       <> " cannot be ascribed a "
-                       <> formatErr modK1 <>" signature")
-          checkSigV pSubmod (TailPreSig $ sigV1^.sigVSig) sigV2
+          checkModuleTypeNF pSubmod sigV1 sigV2
           -- when mrest2 talks about this submodule, it should actually
           -- talk about the selfified version from sig1 which is just
           -- the projection of this submodule field from the current
@@ -410,42 +417,27 @@ checkSubmoduleFieldTail pmod fld bnd msig1 kont =
       -}
       if fld /= fld'
       then U.lunbind bnd' $ \((ident1, U.unembed -> moduleTy1), mrest1_) -> do
-        sigV1 <- signatureOfModuleType moduleTy1
+        sigNF1 <- signatureOfModuleType moduleTy1
         let pSubmod = ProjP pmod fld'
             mrest1 = U.subst ident1 pSubmod mrest1_
-        case sigV1 of
-         (SigV sig1 ModuleMK) -> do
-           selfSig1 <- selfifySignature pSubmod sig1
-           extendModuleCtx selfSig1 $
-             checkSubmoduleFieldTail pmod fld bnd mrest1 $ \mrest1' ->
-             kont (SubmodulePreSig fld' sigV1 mrest1')
-         (SigV _ ModelMK) -> do
-           checkSubmoduleFieldTail pmod fld bnd mrest1 $ \mrest1' ->
-             kont (SubmodulePreSig fld' sigV1 mrest1')
+        extendModuleCtxNF pSubmod sigNF1
+          $ checkSubmoduleFieldTail pmod fld bnd mrest1
+          $ \mrest1' ->
+             kont (SubmodulePreSig fld' sigNF1 mrest1')
       else U.lunbind2 bnd bnd' $ \res ->
       case res of
         Nothing -> fail ("checkSubmoduleField internal error. "
                          <> " Did not expect lunbind2 to return Nothing")
         Just ((ident2, U.unembed -> moduleTy2), mrest2_,
               (ident1, U.unembed -> moduleTy1), mrest1_) -> do
-          (sigv1) <- signatureOfModuleType moduleTy1
-          (sigv2) <- signatureOfModuleType moduleTy2
+          (sigNF1) <- signatureOfModuleType moduleTy1
+          (sigNF2) <- signatureOfModuleType moduleTy2
           let
             pSubmod = ProjP pmod fld
-            modK1 = sigv1^.sigVKind
-            modK2 = sigv2^.sigVKind
-          unless (modK1 == modK2) $
-            typeError ("The sub-" <> formatErr modK1 <> " " <> formatErr pSubmod
-                       <> " cannot be ascribed a "
-                       <> formatErr modK2 <>" signature")
-          checkSigV pSubmod (TailPreSig $ sigv1 ^. sigVSig) sigv2
+          checkModuleTypeNF pSubmod sigNF1 sigNF2
           let
             mrest1 = U.subst ident1 pSubmod mrest1_
             mrest2 = U.subst ident2 pSubmod mrest2_
-          case sigv1 of
-           (SigV sig1 ModuleMK) -> do
-             selfSig1 <- selfifySignature pSubmod sig1
-             extendModuleCtx selfSig1 $
-               kont (SubmodulePreSig fld' sigv1 (TailPreSig mrest1)) mrest2
-           (SigV _ ModelMK) ->
-             kont (SubmodulePreSig fld' sigv1 (TailPreSig mrest1)) mrest2
+          extendModuleCtxNF pSubmod sigNF1
+            $ kont (SubmodulePreSig fld' sigNF1 (TailPreSig mrest1)) mrest2
+

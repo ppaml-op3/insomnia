@@ -24,6 +24,7 @@ data ModuleExpr =
   | ModuleSeal !ModuleExpr !ModuleType -- generative sealing
   | ModuleAssume !ModuleType    -- module assumed to exist.
   | ModuleId !Path       -- previously named module
+  | ModuleApp !Path ![Path] -- functor application
   deriving (Show, Typeable, Generic)
 
 data ModelExpr =

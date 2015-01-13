@@ -7,24 +7,27 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier
-import Insomnia.ModuleType (SigV(..), sigVSig, Signature(..))
+import Insomnia.ModuleType (ModuleTypeNF(..), SigV(..), sigVSig, Signature(..))
 import Insomnia.Types (TypeConstructor(..), TypePath(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
 
-lookupModuleSigPath :: Path -> TC (SigV Signature)
+lookupModuleSigPath :: Path -> TC ModuleTypeNF
 lookupModuleSigPath (IdP ident) = lookupModuleSig ident
 lookupModuleSigPath (ProjP pmod fieldName) = do
-  sigV <- lookupModuleSigPath pmod
-  projectModuleField pmod fieldName sigV
+  modnf <- lookupModuleSigPath pmod
+  case modnf of
+   SigMTNF sigV -> projectModuleField pmod fieldName sigV
+   FunMTNF {} -> typeError ("unexpected functor when projecting " <> formatErr fieldName
+                            <> " from " <> formatErr pmod)
 
-projectModuleField :: Path -> Field -> (SigV Signature) -> TC (SigV Signature)
+projectModuleField :: Path -> Field -> (SigV Signature) -> TC ModuleTypeNF
 projectModuleField pmod fieldName = go
   where
-    go :: SigV Signature -> TC (SigV Signature)
+    go :: SigV Signature -> TC ModuleTypeNF
     go =  go' . view sigVSig
-    go' :: Signature -> TC (SigV Signature)
+    go' :: Signature -> TC ModuleTypeNF
     go' UnitSig = typeError ("The module " <> formatErr pmod
                             <> " does not have a submodule named "
                             <> formatErr fieldName)

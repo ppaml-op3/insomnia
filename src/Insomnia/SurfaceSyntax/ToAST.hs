@@ -222,11 +222,35 @@ moduleType (SigMT sig) = do
   modK <- view currentModuleKind
   let mkSig s = I.SigMT (I.SigV s modK)
   mkSig <$> (signature sig)
+moduleType (FunMT args result) = do
+  functorSignature args $ \args' -> do
+    result' <- moduleType result
+    return (I.FunMT $ U.bind args' result')
 moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
+
+functorSignature :: [(ModuleKind, Ident, ModuleType)]
+                    -> (Telescope (I.FunctorArgument I.ModuleType) -> TA a)
+                    -> TA a
+functorSignature [] kont = kont NilT
+functorSignature (arg:args) kont =
+  functorArgument arg $ \arg' ->
+  functorSignature args $ \args' ->
+  kont (ConsT $ U.rebind arg' args')
+
+functorArgument :: (ModuleKind, Ident, ModuleType)
+                   -> (I.FunctorArgument I.ModuleType -> TA a)
+                   -> TA a
+functorArgument (modK, ident, mt) kont = do
+  ident' <- identifier ident
+  mt' <- local (currentModuleKind .~ modK) (moduleType mt)
+  kont $ I.FunctorArgument ident' (U.embed modK) (U.embed mt')
+                       
 
 moduleExpr :: ModuleExpr -> TA I.ModuleExpr
 moduleExpr (ModuleStruct mdl) =
   I.ModuleStruct <$> runCTA (module' mdl) return
+moduleExpr (ModuleApp qid qids) =
+  return $ I.ModuleApp (qualifiedIdPath qid) (map qualifiedIdPath qids)
 moduleExpr (ModuleSeal me mt) =
   I.ModuleSeal <$> moduleExpr me <*> moduleType mt
 moduleExpr (ModuleAssume mt) =
@@ -248,10 +272,10 @@ modelExpr (ModelLocal hiddenMod body mt) = do
 signature :: Signature -> TA I.Signature
 signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
   where
-    go decl kont =
-      case decl of
-       ValueSig mstoch ident ty -> do
-         stoch <- contextualStochasticity mstoch
+    go dcl kont =
+      case dcl of
+       ValueSig _mstoch ident ty -> do
+         -- stoch <- contextualStochasticity mstoch
          -- TODO: allow models to contain parameters
          -- and desugar from
          --   model { params ; vals ~ es }
@@ -509,8 +533,6 @@ patternAtom :: PatternAtom -> CTA PartialPattern
 patternAtom (VarP v) = (CompletePP . I.VarP) <$> liftCTA (unqualifiedVar v)
 patternAtom (ConP ncon) = do
   let con = dropNotation ncon
-      qid = unCon con
-  mii <- use (valIdInfo . at qid)
   (PartialPP . I.ConP . U.embed) <$> liftCTA (valueConstructor con)
   where
     dropNotation (InfixN x) = x
@@ -532,7 +554,7 @@ pattern (PhraseP atms) = do
 
 
 bindings :: [Binding] -> (I.Bindings -> TA a) -> TA a
-bindings bnds kont = go bnds (kont . I.Bindings)
+bindings bnds_ kont = go bnds_ (kont . I.Bindings)
   where
     go [] k = k NilT
     go (bnd:bnds) k =

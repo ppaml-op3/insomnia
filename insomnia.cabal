@@ -69,7 +69,9 @@ library
                        Insomnia.Typecheck.LookupModuleSigPath
                        Insomnia.Typecheck.ConstructImportDefinitions
                        --
+                       Insomnia.Typecheck.FunctorApplication
                        Insomnia.Typecheck.Module
+                       Insomnia.Typecheck.Toplevel
                        Insomnia.Typecheck
                        --
                        Insomnia.Interp.Lam

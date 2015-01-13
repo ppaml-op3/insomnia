@@ -2,11 +2,12 @@
 -- | Typecheck "module type" and "module type" expressions.
 module Insomnia.Typecheck.ModuleType where
 
-import qualified Unbound.Generics.LocallyNameless as U
-
 import Control.Applicative ((<$>))
 
+import qualified Unbound.Generics.LocallyNameless as U
+
 import Insomnia.Common.ModuleKind
+import Insomnia.Common.Telescope
 import Insomnia.Identifier (Field, Path(..))
 import Insomnia.Types (TypeConstructor(..), Kind(..))
 import Insomnia.ModuleType
@@ -14,19 +15,47 @@ import Insomnia.ModuleType
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType)
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
-import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtx)
-import Insomnia.Typecheck.Selfify (selfifySignature)
+import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtxNF)
 
 -- | Check that the given module type expression is well-formed, and
 -- return both the module type expression and the signature that it
 -- "evaluates" to.
-checkModuleType :: ModuleType -> TC (ModuleType, SigV Signature)
+checkModuleType :: ModuleType -> TC (ModuleType, ModuleTypeNF)
 checkModuleType (SigMT sigv) = do
   sigv' <- checkSigV Nothing sigv
-  return (SigMT sigv', sigv')
+  return (SigMT sigv', SigMTNF sigv')
+checkModuleType (FunMT bnd) =
+  U.lunbind bnd $ \(args, body) ->
+  checkFunctorArgs args $ \args' argsnf -> do
+    (body', bodynf) <- checkModuleType body
+    return (FunMT $ U.bind args' body',
+            FunMTNF $ U.bind argsnf bodynf)
 checkModuleType (IdentMT ident) = do
-  sigv <- lookupModuleType ident
-  return (IdentMT ident, sigv)
+  mtnf <- lookupModuleType ident
+  return (IdentMT ident, mtnf)
+
+checkFunctorArgs :: Telescope (FunctorArgument ModuleType)
+                    -> (Telescope (FunctorArgument ModuleType)
+                        -> Telescope (FunctorArgument ModuleTypeNF)
+                        -> TC a)
+                    -> TC a
+checkFunctorArgs tele kont =
+  case tele of
+   NilT -> kont NilT NilT
+   ConsT (U.unrebind -> (arg, tele')) ->
+     checkFunctorArg arg $ \arg' argNF ->
+     checkFunctorArgs tele' $ \tele'' teleNF ->
+     kont (ConsT $ U.rebind arg' tele'') (ConsT $ U.rebind argNF teleNF)
+  
+checkFunctorArg :: FunctorArgument ModuleType
+                   -> (FunctorArgument ModuleType
+                       -> FunctorArgument ModuleTypeNF
+                       -> TC a)
+                   -> TC a
+checkFunctorArg (FunctorArgument ident modK (U.unembed -> modTy)) kont = do
+  (modTy', nf) <- checkModuleType modTy
+  extendModuleCtxNF (IdP ident) nf
+    $ kont (FunctorArgument ident modK (U.embed modTy')) (FunctorArgument ident modK (U.embed nf))
 
 checkSigV :: Maybe Path -> SigV Signature -> TC (SigV Signature)
 checkSigV mpath (SigV msig modK) = flip SigV modK <$> checkSignature mpath modK msig
@@ -57,25 +86,12 @@ checkSignature mpath_ _modK = flip (checkSignature' mpath_) ensureNoDuplicateFie
     checkSignature' mpath (SubmoduleSig fld bnd) kont =
       U.lunbind bnd $ \((modIdent, U.unembed -> modTy), sig) -> do
         let modPath = mpathAppend mpath fld
-        (modTy', modSigV) <- checkModuleType modTy
+        (modTy', modSigNF) <- checkModuleType modTy
         let sig' = U.subst modIdent modPath sig
-        case modSigV of
-         (SigV modSig ModuleMK) -> do
-           selfSig <- selfifySignature modPath modSig
-           extendModuleCtx selfSig
-             $ checkSignature' mpath sig'
-             $ \(sig'', flds) ->
-                kont (SubmoduleSig fld $ U.bind (modIdent, U.embed modTy') sig'', fld:flds)
-         (SigV _modSig ModelMK) -> do
-           -- N.B. We don't add modSig to the environment because in
-           -- fact there's nothing that can be done with it in a
-           -- signature!  you can't project out of a model, so its
-           -- type components aren't useful, and you can't sample the
-           -- submodel in the signature because sampling only happens
-           -- in modules, not module types!
-           checkSignature' mpath sig'
-           $ \(sig'', flds) ->
-              kont (SubmoduleSig fld $ U.bind (modIdent, U.embed modTy') sig'', fld:flds)
+        extendModuleCtxNF modPath modSigNF
+          $ checkSignature' mpath sig'
+          $ \(sig'', flds) ->
+             kont (SubmoduleSig fld $ U.bind (modIdent, U.embed modTy') sig'', fld:flds)
 
 mpathAppend :: Maybe Path -> Field -> Path
 mpathAppend Nothing fld = IdP (U.s2n fld)

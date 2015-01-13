@@ -51,6 +51,7 @@ moduleExpr (ModuleModel mdl) = ModuleModel (modelExpr mdl)
 moduleExpr (ModuleSeal me mt) = ModuleSeal (moduleExpr me) mt
 moduleExpr me@(ModuleAssume {}) = me
 moduleExpr me@(ModuleId {}) = me
+moduleExpr m@(ModuleApp {}) = m -- p (p1, ..., pK) - there is nothing to recurse into
 
 modelExpr :: ModelExpr -> ModelExpr
 modelExpr (ModelStruct mdl) = ModelStruct (module' mdl)

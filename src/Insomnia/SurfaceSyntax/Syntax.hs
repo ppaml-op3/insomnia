@@ -42,6 +42,7 @@ data ToplevelItem =
 
 data ModuleExpr =
   ModuleStruct !Module
+  | ModuleApp !QualifiedIdent ![QualifiedIdent]
   | ModuleSeal !ModuleExpr !ModuleType
   | ModuleAssume !ModuleType
   | ModuleId !QualifiedIdent
@@ -57,6 +58,7 @@ data ModelExpr =
 data ModuleType =
   SigMT !Signature
   | IdentMT !Ident
+  | FunMT ![(ModuleKind, Ident, ModuleType)] !ModuleType
     deriving (Show)
 
 data Signature = Sig ![SigDecl]

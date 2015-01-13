@@ -54,7 +54,7 @@ importValue q@(QVar _ f) ty = do
   return (dSig <> dVal)
 
 importType :: TypePath -> TypeSigDecl -> TC Decls
-importType tp@(TypePath _ f) tsd = do
+importType tp@(TypePath _ f) _tsd = do
   -- TODO: import constructors
   -- TODO: for polymorphic types this doesn't kindcheck.
   return $ singleDecl $ TypeAliasDefn f $ TypeAlias $ U.bind [] (TC (TCGlobal tp))

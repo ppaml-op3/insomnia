@@ -1,5 +1,7 @@
-{-# LANGUAGE ViewPatterns #-}
-module Insomnia.Typecheck.ClarifySignature (clarifySignatureV) where
+{-# LANGUAGE ViewPatterns, OverloadedStrings #-}
+module Insomnia.Typecheck.ClarifySignature (clarifySignatureV, clarifySignatureNF) where
+
+import Control.Applicative
 
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
@@ -11,7 +13,10 @@ import Insomnia.Types (Kind(..), Type(..),
                        TypePath(..),
                        KindedTVar, kArrs)
 import Insomnia.TypeDefn (TypeAlias(..), TypeDefn(..))
-import Insomnia.ModuleType (Signature(..), ModuleType(..), TypeSigDecl(..), SigV(..))
+import Insomnia.ModuleType (Signature(..), ModuleType(..),
+                            ModuleTypeNF(..),
+                            TypeSigDecl(..), SigV(..),
+                            moduleTypeNormalFormEmbed)
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
@@ -21,6 +26,10 @@ import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
 -- the projections from the corresponding fields of the given module path.
 -- But note that for /model/-types we do not do this: a model signature does not refer to a
 -- module until it has been sampled.
+clarifySignatureNF :: Path -> ModuleTypeNF -> TC ModuleTypeNF
+clarifySignatureNF pmod (SigMTNF s) = SigMTNF <$> clarifySignatureV pmod s
+clarifySignatureNF _pmod (FunMTNF {}) = typeError ("unimplemented: clarifySignatureNF") -- TODO XXX
+
 clarifySignatureV :: Path -> SigV Signature -> TC (SigV Signature)
 clarifySignatureV pmod (SigV msig ModuleMK) = do
   clearSig <- clarifySignature pmod msig
@@ -103,7 +112,7 @@ clarifyTypeSigDecl pmod f tycon tsd rest =
           tvks' = (tv,kdom) : tvks
           ty' = TApp ty (TV tv)
       in (tvks', ty')
-    
+
 clarifySubmodule :: Path
                    -> Field
                    -> Identifier
@@ -111,7 +120,7 @@ clarifySubmodule :: Path
                    -> Signature
                    -> TC Signature
 clarifySubmodule pmod f ident subModTy rest = do
-  subSigV <- signatureOfModuleType subModTy
-  clearSubSigV <- clarifySignatureV (ProjP pmod f) subSigV
+  subSigNF <- signatureOfModuleType subModTy
+  clearSubSigNF <- clarifySignatureNF (ProjP pmod f) subSigNF
   rest' <- clarifySignature pmod rest
-  return $ SubmoduleSig f $ U.bind (ident, U.embed (SigMT clearSubSigV)) rest'
+  return $ SubmoduleSig f $ U.bind (ident, U.embed (moduleTypeNormalFormEmbed clearSubSigNF)) rest'
