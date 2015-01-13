@@ -24,6 +24,7 @@ import Text.Parsec.Indentation (IndentStream, mkIndentStream,
                                 localIndentation,
                                 infIndentation)
 import Text.Parsec.Indentation.Char (CharIndentStream, mkCharIndentStream)
+import Text.Parsec.Text () -- parsec < 3.1.7 Text Stream instances are here.
 
 import Data.Format (Format(..), WrapShow(..))
 
