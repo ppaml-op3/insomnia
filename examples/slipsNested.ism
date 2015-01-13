@@ -1,7 +1,8 @@
--- * Slip example (distribution version)
+-- * Slip example (model version)
 
--- This version uses nested distributions,
+-- This version uses nested models, instead of nested distributions,
 --   to describe hypothetical experiment outcomes.
+
 
 -- basics
 module type PRELUDE {
@@ -103,12 +104,17 @@ model Slip {
   val n ~ Dists.uniformInt { lo = 1 , hi = 5 }
 }
 
+-- The outcome of running an experiment will be a pair of the number of dice and the dice total.
+model type EXPERIMENT_OUTCOME {
+  sig outcome :: DiceUtil.Joint
+}
+
 -- The dice experiment model contains a dice experiment value which
 -- performs a new experiment (distribution of dice and dice rolls)
 -- each time that it is sampled.  But note that the number of dice is
 -- fixed upfront when the dice experiment model itself is sampled.
 model type DIE_EXPERIMENT {
-  sig diceExperiment :: Dist DiceUtil.Joint
+  model Outcomes :: EXPERIMENT_OUTCOME
 }
 
 model DiceExperiment =
@@ -121,14 +127,15 @@ model DiceExperiment =
     module S ~ Slip
   in {
 
-  sig diceExperiment :: Dist Joint
-  val diceExperiment ~ return (let
-    n = S.n
-    dice ~ draw stdBag n
-    outcomes ~ rollDice dice
-    tot = sumRolls outcomes
-   in return { numDice = n, diceTotals = tot })
-
+    model Outcomes = model {
+      sig outcome :: Joint
+      val outcome ~ let
+        n = S.n
+        dice ~ draw stdBag n
+        outcomes ~ rollDice dice
+        tot = sumRolls outcomes
+       in return { numDice = n, diceTotals = tot }
+    }
   } :: DIE_EXPERIMENT
 
 model type ONE_ROLL_EXPERIMENT {
@@ -138,10 +145,12 @@ model type ONE_ROLL_EXPERIMENT {
 model OneRollExperiment = model
   local
     import DiceUtil
-    module E ~ DiceExperiment
+    module Experiment ~ DiceExperiment
   in {
+    module O ~ Experiment.Outcomes
+    
     sig outcome :: Joint
-    val outcome ~ E.diceExperiment
+    val outcome = O.outcome
   } :: ONE_ROLL_EXPERIMENT
 
 model type TWO_ROLL_EXPERIMENT {
@@ -152,13 +161,15 @@ model type TWO_ROLL_EXPERIMENT {
 model TwoRollExperiment = model
   local
     import DiceUtil
-    module E ~ DiceExperiment
+    module Experiment ~ DiceExperiment
   in {
+    module O1 ~ Experiment.Outcomes
     sig outcome1 :: Joint
-    val outcome1 ~ E.diceExperiment
+    val outcome1 = O1.outcome
 
+    module O2 ~ Experiment.Outcomes
     sig outcome2 :: Joint
-    val outcome2 ~ E.diceExperiment
+    val outcome2 = O2.outcome
 
     -- outcome1.n == outcome2.n  by construction of DiceExperiment
   } :: TWO_ROLL_EXPERIMENT
