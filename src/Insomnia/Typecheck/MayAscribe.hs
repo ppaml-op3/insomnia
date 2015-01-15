@@ -99,11 +99,38 @@ checkModuleTypeNF pmod mod1 mod2 =
    (_, _) -> typeError ("cannot ascribe signature " <> formatErr mod2
                         <> " to something of signature " <> formatErr mod1)
 
-checkTelescopeNF :: Path -> Telescope (FunctorArgument ModuleTypeNF)
+-- invariant: the functor argument telescopes came from the same lunbind2, so the argIds match
+checkTelescopeNF :: Path
+                    -> Telescope (FunctorArgument ModuleTypeNF)
                     -> Telescope (FunctorArgument ModuleTypeNF)
                     -> TC r
                     -> TC r
-checkTelescopeNF = undefined
+checkTelescopeNF pmod tele1 tele2 kont =
+  case (tele1, tele2) of
+   (NilT, NilT) -> kont
+   (ConsT (U.unrebind -> (arg1, tele1')),
+    ConsT (U.unrebind -> (arg2, tele2'))) ->
+     checkFunctorArgument arg1 arg2
+     $ checkTelescopeNF pmod tele1' tele2'
+     $ kont
+   (_, _) -> fail "internal error: MayAscribe.checkTelescopeNF with different number of arguments"
+
+-- invariant: the functor arguments came from the same lunbind2, so the argIds match
+checkFunctorArgument :: FunctorArgument ModuleTypeNF
+                        -> FunctorArgument ModuleTypeNF
+                        -> TC r
+                        -> TC r
+checkFunctorArgument (FunctorArgument argId _modK1 emb1) (FunctorArgument _argId _modK2 emb2) kont = do
+  let
+    argTy1 = U.unembed emb1
+    argTy2 = U.unembed emb2
+  -- N.B. contravariant:   module X2 :: { type T = Int } <: module X1 :: {type T :: * }
+  -- so that
+  --   (module X1 :: {type T :: *}) -> {type T = X1.T }
+  --     <: (module X2 :: {type T = Int}) -> {type T :: * }
+  -- ie, you can use the left functor in situations where the right functor is expected.
+  checkModuleTypeNF (IdP argId) argTy2 argTy1
+  extendModuleCtxNF (IdP argId) argTy2 $ kont
 
 -- | @checkSignature pmod msig1 msig2@ checks that @msig2@ is less general
 -- than @msig1@.

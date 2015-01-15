@@ -154,7 +154,7 @@ instance Pretty Expr where
     let (av, e) = UU.unsafeUnbind bnd
     in precParens 1
        $ withPrec 0 AssocNone
-       $ Left $ ppCollapseLam (onUnicode "λ" "\\") (Endo (av:)) "." e
+       $ Left $ ppCollapseLam lambda (Endo (av:)) "." e
   pp (Ann e t) = parens $ withPrec 1 AssocNone (Left $ pp e <+> indent coloncolon (pp t))
   pp (Record les) = braces $ fsep $ punctuate "," (map ppLabeledAssign les)
   pp (Case e clauses) =
@@ -390,6 +390,8 @@ ppModule ppName moduleExpr =
            , indent coloncolon (pp moduleSig)
            , nesting (pp moduleExpr')
            ]
+    ModuleFun bnd ->
+      fsep ["module", ppName, ppFunctor "=" bnd]
     _ ->
       fsep ["module", ppName, indent "=" (pp moduleExpr)]
 
@@ -405,8 +407,18 @@ instance Pretty ModuleExpr where
     parens (fsep [pp mdl, indent coloncolon (pp moduleSig)])
   pp (ModuleAssume mtype) = fsep ["assume", nesting (pp mtype)]
   pp (ModuleId modPath) = pp modPath
+  pp (ModuleFun bnd) = ppFunctor rightArrow bnd
   pp (ModuleApp pfun args) =
     fsep [pp pfun, parens $ fsep $ punctuate "," $ map pp args]
+
+ppFunctor :: (U.Alpha a, Pretty a)
+             => PM Doc
+             -> U.Bind (Telescope (FunctorArgument ModuleType)) a
+             -> PM Doc
+ppFunctor sym bnd =
+    let (argsTele, body) = UU.unsafeUnbind bnd
+    in fsep [parens (fsep $ ppTelescope pp argsTele), indent sym (pp body)]
+  
 
 instance Pretty ModelExpr where
   pp (ModelId p) = pp p
@@ -489,6 +501,9 @@ onUnicode :: PM a -> PM a -> PM a
 onUnicode yes no = do
   inUnicode <- view pcUnicode
   if inUnicode then yes else no
+
+lambda :: PM Doc
+lambda = onUnicode "λ" "\\"
 
 rightArrow :: PM Doc
 rightArrow = onUnicode "→" "->"

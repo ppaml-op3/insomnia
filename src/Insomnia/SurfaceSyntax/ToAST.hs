@@ -223,18 +223,18 @@ moduleType (SigMT sig) = do
   let mkSig s = I.SigMT (I.SigV s modK)
   mkSig <$> (signature sig)
 moduleType (FunMT args result) = do
-  functorSignature args $ \args' -> do
+  functorArguments args $ \args' -> do
     result' <- moduleType result
     return (I.FunMT $ U.bind args' result')
 moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
-functorSignature :: [(ModuleKind, Ident, ModuleType)]
+functorArguments :: [(ModuleKind, Ident, ModuleType)]
                     -> (Telescope (I.FunctorArgument I.ModuleType) -> TA a)
                     -> TA a
-functorSignature [] kont = kont NilT
-functorSignature (arg:args) kont =
+functorArguments [] kont = kont NilT
+functorArguments (arg:args) kont =
   functorArgument arg $ \arg' ->
-  functorSignature args $ \args' ->
+  functorArguments args $ \args' ->
   kont (ConsT $ U.rebind arg' args')
 
 functorArgument :: (ModuleKind, Ident, ModuleType)
@@ -249,6 +249,10 @@ functorArgument (modK, ident, mt) kont = do
 moduleExpr :: ModuleExpr -> TA I.ModuleExpr
 moduleExpr (ModuleStruct mdl) =
   I.ModuleStruct <$> runCTA (module' mdl) return
+moduleExpr (ModuleFun args body) = 
+  functorArguments args $ \args' -> do
+    body' <- moduleExpr body
+    return (I.ModuleFun $ U.bind args' body')
 moduleExpr (ModuleApp qid qids) =
   return $ I.ModuleApp (qualifiedIdPath qid) (map qualifiedIdPath qids)
 moduleExpr (ModuleSeal me mt) =

@@ -28,7 +28,7 @@ import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
 -- module until it has been sampled.
 clarifySignatureNF :: Path -> ModuleTypeNF -> TC ModuleTypeNF
 clarifySignatureNF pmod (SigMTNF s) = SigMTNF <$> clarifySignatureV pmod s
-clarifySignatureNF _pmod (FunMTNF {}) = typeError ("unimplemented: clarifySignatureNF") -- TODO XXX
+clarifySignatureNF _pmod fn@(FunMTNF bnd) = return fn
 
 clarifySignatureV :: Path -> SigV Signature -> TC (SigV Signature)
 clarifySignatureV pmod (SigV msig ModuleMK) = do

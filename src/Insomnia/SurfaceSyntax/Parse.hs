@@ -212,20 +212,29 @@ toplevelModule :: Parser ToplevelItem
 toplevelModule =
   mkToplevelModule
   <$> (try kindAndId)
+  <*> optional functorArguments
   <*> optional (IdentMT <$ classify <*> moduleTypeIdentifier)
   <*> ((Left <$ reservedOp "=" <*> moduleExpr)
        <|> (Right <$> literalModuleShorthand))
   where
     kindAndId = ((,) <$> moduleKind <*> modelIdentifier)
     literalModuleShorthand = moduleLiteral
-    mkToplevelModule (modK, modId) modTy m =
+    mkToplevelModule (modK, modId) mArgs mTy m =
       let
         mRHS = case m of
           Left me -> me
           Right mlit -> (case modK of
                           ModuleMK -> ModuleStruct mlit
                           ModelMK -> ModuleModel (ModelStruct mlit))
-      in ToplevelModule modK modId modTy mRHS
+        top = case mArgs of
+          Nothing ->
+            ToplevelModule modK modId mTy mRHS
+          Just args ->
+            ToplevelModule modK modId Nothing
+                       (ModuleFun args (case mTy of
+                                         Nothing -> mRHS
+                                         Just modTy -> ModuleSeal mRHS modTy))
+      in top
 
 moduleKind :: Parser ModuleKind
 moduleKind =
@@ -348,9 +357,14 @@ moduleTypeExpr =
 functorModuleType :: Parser ModuleType
 functorModuleType =
   FunMT
-  <$> parens (many namedSigComponent <?> "zero or more module/model modId : SIG elements") 
+  <$> functorArguments
   <* reservedOp "->"
   <*> moduleTypeExpr
+
+
+functorArguments :: Parser [(ModuleKind, Ident, ModuleType)]
+functorArguments =
+  parens (many namedSigComponent <?> "zero or more module/model modId : SIG elements") 
   where
     namedSigComponent = (,,) <$> moduleKind <*> moduleTypeIdentifier <* classify <*> moduleTypeExpr
 

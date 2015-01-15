@@ -148,7 +148,6 @@ model type ONE_ROLL_EXPERIMENT {
 
 model OneRollExperiment = model
   local
-    import DiceUtil
     module Experiment ~ DiceExperiment
   in {
     module Outcome ~ Experiment.Outcomes
@@ -161,7 +160,6 @@ model type TWO_ROLL_EXPERIMENT {
 
 model TwoRollExperiment = model
   local
-    import DiceUtil
     module Experiment ~ DiceExperiment
   in {
     module Outcome1 ~ Experiment.Outcomes

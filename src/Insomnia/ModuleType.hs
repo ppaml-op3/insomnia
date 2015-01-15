@@ -116,7 +116,10 @@ instance Subst TypeConstructor a => Subst TypeConstructor (FunctorArgument a)
 instance Subst TypeConstructor TypeSigDecl
 instance Subst TypeConstructor a => Subst TypeConstructor (SigV a)
 
+
 -- model types do not have expressions in them.
 instance Subst Expr ModuleType where
   subst _ _ = id
   substs _ = id
+
+instance Subst Expr a => Subst Expr (FunctorArgument a)

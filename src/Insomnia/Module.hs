@@ -1,5 +1,5 @@
 {-# LANGUAGE
-      MultiParamTypeClasses, 
+      MultiParamTypeClasses, FlexibleContexts,
       ViewPatterns,
       DeriveDataTypeable, DeriveGeneric
   #-}
@@ -16,6 +16,7 @@ import Insomnia.TypeDefn
 import Insomnia.ModuleType
 
 import Insomnia.Common.Stochasticity
+import Insomnia.Common.Telescope
 import Insomnia.Expr (TabulatedFun, Expr)
 
 data ModuleExpr =
@@ -24,6 +25,7 @@ data ModuleExpr =
   | ModuleSeal !ModuleExpr !ModuleType -- generative sealing
   | ModuleAssume !ModuleType    -- module assumed to exist.
   | ModuleId !Path       -- previously named module
+  | ModuleFun (Bind (Telescope (FunctorArgument ModuleType)) ModuleExpr)
   | ModuleApp !Path ![Path] -- functor application
   deriving (Show, Typeable, Generic)
 

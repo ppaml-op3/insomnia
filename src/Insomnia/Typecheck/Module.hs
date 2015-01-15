@@ -84,6 +84,12 @@ inferModuleExpr pmod (ModuleApp pfun pargs) kont = do
   sigNF <- checkFunctorApplication pfun pargs
            <??@ ("while checking functor application definiing " <> formatErr pmod)
   kont (ModuleApp pfun pargs) sigNF
+inferModuleExpr pmod (ModuleFun bnd) kont =
+  U.lunbind bnd $ \(teleArgs, body) ->
+  checkFunctorArgs pmod teleArgs $ \teleArgs' teleArgsNF -> do
+    bodyName <- U.lfresh (U.s2n "<functor body>")
+    inferModuleExpr (IdP bodyName) body $ \body' bodyNF ->
+      kont (ModuleFun $ U.bind teleArgs' body') (FunMTNF $ U.bind teleArgsNF bodyNF)
 
 checkModelExpr :: Path -> ModelExpr -> TC (ModelExpr, Signature)
 checkModelExpr pmod mexpr =
@@ -115,7 +121,6 @@ checkModelExpr pmod mexpr =
                           _ -> error ("internal error: mtnfInferred may be ascribed mtnfAscribed,"
                                       ++ " but the ascribed module type isn't a model sig.")
        return (ModelLocal modHidden' body' mty', sigAscribed)
-
 
 -- | Returns the "natural" signature of a module.
 -- This is a signature in which all type equations are preserved, all
@@ -239,12 +244,38 @@ naturalSignatureModelExpr (ModelLocal _ _ mt) = do
    SigMTNF sigv -> return sigv
    FunMTNF {} -> typeError ("model is ascribed a functor type " <> formatErr mt)
 
+
+checkFunctorArgs :: Path -> Telescope (FunctorArgument ModuleType)
+                 -> (Telescope (FunctorArgument ModuleType)
+                     -> Telescope (FunctorArgument ModuleTypeNF)
+                     -> TC a)
+                  -> TC a
+checkFunctorArgs pmod tele kont =
+  case tele of
+   NilT -> kont NilT NilT
+   ConsT (U.unrebind -> (arg, tele')) ->
+     checkFunctorArg pmod arg $ \arg' argNF ->
+     checkFunctorArgs pmod tele' $ \tele'' teleNF ->
+     kont (ConsT $ U.rebind arg' tele'') (ConsT $ U.rebind argNF teleNF)
+
+checkFunctorArg :: Path
+                   -> FunctorArgument ModuleType
+                   -> (FunctorArgument ModuleType
+                       -> FunctorArgument ModuleTypeNF
+                       -> TC a)
+                   -> TC a
+checkFunctorArg pmod (FunctorArgument argId modK (U.unembed -> argTy)) kont = do
+  (argTy', argNF) <- checkModuleType argTy
+  extendModuleCtxNF (IdP argId) argNF
+    $ kont (FunctorArgument argId modK (U.embed argTy')) (FunctorArgument argId modK (U.embed argNF))
+
 -- | After checking a declaration we get one or more declarations out
 -- (for example if we inferred a signature for a value binding that did not have one).
 type CheckedDecl = Endo [Decl]
 
 singleCheckedDecl :: Decl -> CheckedDecl
 singleCheckedDecl d = Endo (d :)
+
 
 -- | Typecheck the contents of a module.
 checkModule :: Path -> Stochasticity -> Module -> (Module -> TC r) -> TC r
@@ -292,7 +323,8 @@ checkDecl' pmod stoch d =
                      (\moduleExpr' _sigV -> return moduleExpr')
       return $ singleCheckedDecl $ SubmoduleDefn fld moduleExpr'
     SampleModuleDefn fld moduleExpr -> do
-      let modExprPath = undefined -- XXX what goes here?
+      modExprId <- U.lfresh (U.s2n "<sampled model>")
+      let modExprPath = IdP modExprId
       moduleExpr' <- inferModuleExpr modExprPath moduleExpr
                      (\moduleExpr' sigV ->
                        case sigV of

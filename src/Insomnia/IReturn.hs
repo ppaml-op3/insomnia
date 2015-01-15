@@ -49,6 +49,9 @@ moduleExpr :: ModuleExpr -> ModuleExpr
 moduleExpr (ModuleStruct mdl) = ModuleStruct (module' mdl)
 moduleExpr (ModuleModel mdl) = ModuleModel (modelExpr mdl)
 moduleExpr (ModuleSeal me mt) = ModuleSeal (moduleExpr me) mt
+moduleExpr (ModuleFun bnd) =
+  let (tele, body) = UU.unsafeUnbind bnd
+  in ModuleFun $ U.bind tele $ moduleExpr body
 moduleExpr me@(ModuleAssume {}) = me
 moduleExpr me@(ModuleId {}) = me
 moduleExpr m@(ModuleApp {}) = m -- p (p1, ..., pK) - there is nothing to recurse into

@@ -42,6 +42,7 @@ data ToplevelItem =
 
 data ModuleExpr =
   ModuleStruct !Module
+  | ModuleFun ![(ModuleKind, Ident, ModuleType)] !ModuleExpr
   | ModuleApp !QualifiedIdent ![QualifiedIdent]
   | ModuleSeal !ModuleExpr !ModuleType
   | ModuleAssume !ModuleType
