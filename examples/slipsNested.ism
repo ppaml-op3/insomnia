@@ -105,7 +105,11 @@ model Slip {
 }
 
 -- The outcome of running an experiment will be a pair of the number of dice and the dice total.
-model type EXPERIMENT_OUTCOME {
+model type EXPERIMENT_OUTCOME_MDL {
+  sig outcome :: DiceUtil.Joint
+}
+
+module type EXPERIMENT_OUTCOME {
   sig outcome :: DiceUtil.Joint
 }
 
@@ -114,7 +118,7 @@ model type EXPERIMENT_OUTCOME {
 -- each time that it is sampled.  But note that the number of dice is
 -- fixed upfront when the dice experiment model itself is sampled.
 model type DIE_EXPERIMENT {
-  model Outcomes :: EXPERIMENT_OUTCOME
+  model Outcomes :: EXPERIMENT_OUTCOME_MDL
 }
 
 model DiceExperiment =
@@ -139,7 +143,7 @@ model DiceExperiment =
   } :: DIE_EXPERIMENT
 
 model type ONE_ROLL_EXPERIMENT {
-  sig outcome :: DiceUtil.Joint
+  module Outcome :: EXPERIMENT_OUTCOME
 }
 
 model OneRollExperiment = model
@@ -147,15 +151,12 @@ model OneRollExperiment = model
     import DiceUtil
     module Experiment ~ DiceExperiment
   in {
-    module O ~ Experiment.Outcomes
-    
-    sig outcome :: Joint
-    val outcome = O.outcome
+    module Outcome ~ Experiment.Outcomes
   } :: ONE_ROLL_EXPERIMENT
 
 model type TWO_ROLL_EXPERIMENT {
-  sig outcome1 :: DiceUtil.Joint
-  sig outcome2 :: DiceUtil.Joint
+  module Outcome1 :: EXPERIMENT_OUTCOME
+  module Outcome2 :: EXPERIMENT_OUTCOME
 }
 
 model TwoRollExperiment = model
@@ -163,13 +164,7 @@ model TwoRollExperiment = model
     import DiceUtil
     module Experiment ~ DiceExperiment
   in {
-    module O1 ~ Experiment.Outcomes
-    sig outcome1 :: Joint
-    val outcome1 = O1.outcome
-
-    module O2 ~ Experiment.Outcomes
-    sig outcome2 :: Joint
-    val outcome2 = O2.outcome
-
-    -- outcome1.n == outcome2.n  by construction of DiceExperiment
+    module Outcome1 ~ Experiment.Outcomes
+    module Outcome2 ~ Experiment.Outcomes
+    -- Outcome1.outcome.n == Outcome2.outcome.n  by construction of DiceExperiment
   } :: TWO_ROLL_EXPERIMENT
