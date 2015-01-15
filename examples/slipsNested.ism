@@ -34,8 +34,16 @@ module type DISTS {
 
 module Dists = assume DISTS
 
+module type DICE {
+  data Die = D4 | D6 | D8 | D10 | D12 | D20
+
+  -- given a die, return a distribution of rolls of that die
+  sig rollDie :: Die -> Dist Int
+
+}
+
 -- interesting utilities about dice
-module Dice {
+module Dice :: DICE {
 
   data Die = D4 | D6 | D8 | D10 | D12 | D20
 
@@ -62,7 +70,17 @@ module type DICE_WORLD {
 
 module DiceWorld = assume DICE_WORLD
 
-module DiceUtil {
+module type DICE_UTIL {
+  sig draw :: DiceWorld.Bag -> Int -> Dist (Prelude.List Dice.Die)
+
+  sig rollDice :: Prelude.List Dice.Die -> Dist (Prelude.List Int)
+
+  sig sumRolls :: Prelude.List Int -> Int
+
+  type Joint = { numDice :: Int ; diceTotals :: Int }
+}
+
+module DiceUtil :: DICE_UTIL {
 
   import Prelude
   import Dice
@@ -97,15 +115,19 @@ module DiceUtil {
 
 }
 
+model type SLIP {
+  sig n :: Int
+}
+
 -- model drawing a slip of paper from a hat
-model Slip {
+model Slip :: SLIP {
 
   sig n :: Int
   val n ~ Dists.uniformInt { lo = 1 , hi = 5 }
 }
 
 -- The outcome of running an experiment will be a pair of the number of dice and the dice total.
-model type EXPERIMENT_OUTCOME_MDL {
+model type EXPERIMENT_OUTCOME_MODEL {
   sig outcome :: DiceUtil.Joint
 }
 
@@ -113,23 +135,21 @@ module type EXPERIMENT_OUTCOME {
   sig outcome :: DiceUtil.Joint
 }
 
--- The dice experiment model contains a dice experiment value which
--- performs a new experiment (distribution of dice and dice rolls)
--- each time that it is sampled.  But note that the number of dice is
--- fixed upfront when the dice experiment model itself is sampled.
+-- The dice experiment model contains a model for generating
+-- experiment outcomes (distribution of dice and dice rolls) each time
+-- that it is sampled.  But note that the number of dice is fixed
+-- upfront when the dice experiment model itself is sampled.
 model type DIE_EXPERIMENT {
-  model Outcomes :: EXPERIMENT_OUTCOME_MDL
+  model Outcomes :: EXPERIMENT_OUTCOME_MODEL
 }
 
 model DiceExperiment =
   model
   local
-    import Prelude
-    import Dice
-    import DiceUtil
-    
     module S ~ Slip
   in {
+    import DiceWorld
+    import DiceUtil
 
     model Outcomes = model {
       sig outcome :: Joint
@@ -146,17 +166,17 @@ model type ONE_ROLL_EXPERIMENT {
   module Outcome :: EXPERIMENT_OUTCOME
 }
 
+model type TWO_ROLL_EXPERIMENT {
+  module Outcome1 :: EXPERIMENT_OUTCOME
+  module Outcome2 :: EXPERIMENT_OUTCOME
+}
+
 model OneRollExperiment = model
   local
     module Experiment ~ DiceExperiment
   in {
     module Outcome ~ Experiment.Outcomes
   } :: ONE_ROLL_EXPERIMENT
-
-model type TWO_ROLL_EXPERIMENT {
-  module Outcome1 :: EXPERIMENT_OUTCOME
-  module Outcome2 :: EXPERIMENT_OUTCOME
-}
 
 model TwoRollExperiment = model
   local
@@ -166,3 +186,24 @@ model TwoRollExperiment = model
     module Outcome2 ~ Experiment.Outcomes
     -- Outcome1.outcome.n == Outcome2.outcome.n  by construction of DiceExperiment
   } :: TWO_ROLL_EXPERIMENT
+
+
+--
+-- Below here are some fictional syntax that doesn't work yet.
+--
+
+-- model type ENUMERATIVE_EXPERIMENT {
+--   enum type N
+--   module Outcome :: (val i :: N) -> EXPERIMENT_OUTCOME
+-- }
+
+-- model EnumerativeExperiment (enum type N) =
+--   local
+--     module Experiment ~ DiceExperiment
+--   in {
+--     type N = N
+--     
+--     forall (i :: N) in
+--       module Outcome i ~ Experiment.Outcomes
+--
+--   } :: ENUMERATIVE_EXPERIMENT
