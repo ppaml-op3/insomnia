@@ -23,4 +23,28 @@ module F2 (module P :: T1) :: T1 {
   val v = P.v
 }
 
-module F3 :: FT = F
+module F_A :: FT = F
+
+module type T1_TRANSPARENT {
+  type T = Int
+  sig f :: T -> T
+  sig v :: T
+}
+
+module type FT_SUB = (module P :: T1_TRANSPARENT) -> T1
+
+module F_B :: FT_SUB = F
+
+module F3 (module P :: T1_TRANSPARENT) :: T1 {
+  type T = Int
+  sig f :: T -> T
+  fun f x = 0
+  val v = 0
+}
+
+module F_C :: FT_SUB = F3
+
+-- next one is an error because functors are contravariant in their
+-- arguments.
+
+-- module F_C :: FT_SUB = F3
