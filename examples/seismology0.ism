@@ -1,0 +1,125 @@
+module type STD_DIST {
+  type R = Real
+  type Rp = Real -- positive
+  type Normal_inverse_gamma_params = { μ :: R ; λ_ :: Rp ; α :: Rp ; β :: Rp }
+  type Gamma_params                = { α :: Rp ; β :: Rp }
+  type Gaussian_params             = { μ :: R ; σ² :: Rp }
+}
+
+module type LIST {
+  data List (a :: *) = Nil | Cons a (List a)
+}
+
+module StdDist = assume STD_DIST
+
+module List :: LIST {
+  data List (a :: *) = Nil | Cons a (List a)
+}
+
+module type SEISMIC {
+  type Probability = Real -- [0.0 .. 1.0]
+  type R = Real
+  type Rp = Real -- positive
+  
+  -----------------------------------------------
+  --   things to do with the earth in motion
+  --
+
+  sig gamma_params :: StdDist.Gamma_params
+  sig λ₀ :: Rp  -- rate of event occurrence
+
+  sig velocity_parameters :: StdDist.Gamma_params -- #3
+  sig v₀ :: R                             -- #3
+
+  sig absorptivitity_parameters :: StdDist.Gaussian_params -- #4
+  sig α₀ :: Rp
+
+  enum Station 5
+
+  -- First, model parameters to do with stations, from parts #2 and #5--#8
+
+  -- #2
+  sig noise_parameters :: StdDist.Gamma_params
+  sig false_alarm_parameters :: StdDist.Gamma_params
+
+  data Direction = Left | Right
+
+  -- Second, latent varibles that give properties of each station
+  model M {
+
+    sig station_parameters ::         -- parameters underlying #5–#8
+      { detection       :: { fst :: StdDist.Gaussian_params ; snd :: StdDist.Gamma_params }
+      ; arrival_time    :: StdDist.Normal_inverse_gamma_params
+      ; amplitude_error :: StdDist.Normal_inverse_gamma_params
+      ; noise_amplitude :: StdDist.Normal_inverse_gamma_params
+      }
+
+    sig noise                :: Station -> Rp    -- #2's capital N
+    sig false_alarm          :: Station -> Rp    -- #2's capital F
+    sig detection_capability :: Station -> StdDist.Gaussian_params   -- #5
+    sig arrival_time_error   :: Station -> StdDist.Gaussian_params   -- #6
+    sig amplitude_error      :: Station -> StdDist.Gaussian_params   -- #7
+    sig noise_amplitude      :: Station -> StdDist.Gaussian_params   -- #8
+
+    -- Note: we've chosen deliberately to put the parameter sets from
+    -- #5-8 into a record with four components, but the latent variables
+    -- are represented as a group of four functions.  The latent
+    -- variables could equally well have been represented as a single
+    -- function that returns a record of four components.  For an
+    -- example of that kind of structure, look at the definitions for
+    -- `detection` and `episodes` below.
+
+    -----------------------------------------------
+    --   things to do with each (real event)
+    --
+    type Event =
+      { location  :: R -- [0..1]
+      ; time      :: R -- [0..1]
+      ; magnitude :: R -- [2..]
+      ; log_amplitude :: Station -> R
+      ; detection_probability :: Station -> Probability
+      }
+
+    -----------------------------------------------------
+    --   things to do with each detection (true or false)
+    --
+
+    type Detection =
+      { time :: R
+      ; measured_log_amplitude :: R
+      ; arrival_direction :: Direction
+      }
+
+    -----------------------------------------------------
+    --   things to do with episodes
+    --
+    type Episode = Station -> List.List Detection
+
+    sig episodes :: Dist Episode
+  }
+}
+
+module type SEISMOLOGY {
+  type R = Real
+
+  type Station :: *
+
+  type Direction :: *
+
+  model M {
+  
+    type Detection =
+      { time :: R
+      ; measured_log_amplitude :: R
+      ; arrival_direction :: Direction
+      }
+
+    type Episode = Station -> List.List Detection
+
+    sig episodes :: Dist Episode
+  }
+}
+
+module Seismic = assume SEISMIC
+
+module Seismology = (Seismic :: SEISMOLOGY)
