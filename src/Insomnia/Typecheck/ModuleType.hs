@@ -26,7 +26,7 @@ checkModuleType (SigMT sigv) = do
   return (SigMT sigv', SigMTNF sigv')
 checkModuleType (FunMT bnd) =
   U.lunbind bnd $ \(args, body) ->
-  checkFunctorArgs args $ \args' argsnf -> do
+  extendModuleCtxFunctorArgs args $ \args' argsnf -> do
     (body', bodynf) <- checkModuleType body
     return (FunMT $ U.bind args' body',
             FunMTNF $ U.bind argsnf bodynf)
@@ -34,25 +34,28 @@ checkModuleType (IdentMT ident) = do
   mtnf <- lookupModuleType ident
   return (IdentMT ident, mtnf)
 
-checkFunctorArgs :: Telescope (FunctorArgument ModuleType)
+-- | Given a telescope of functor arguments (id : Mt1, ..., id : Mtn)
+-- extend the context of the continuation with the corresponding
+-- identifiers.
+extendModuleCtxFunctorArgs :: Telescope (FunctorArgument ModuleType)
                     -> (Telescope (FunctorArgument ModuleType)
                         -> Telescope (FunctorArgument ModuleTypeNF)
                         -> TC a)
                     -> TC a
-checkFunctorArgs tele kont =
+extendModuleCtxFunctorArgs tele kont =
   case tele of
    NilT -> kont NilT NilT
    ConsT (U.unrebind -> (arg, tele')) ->
-     checkFunctorArg arg $ \arg' argNF ->
-     checkFunctorArgs tele' $ \tele'' teleNF ->
+     extendModuleCtxFunctorArg arg $ \arg' argNF ->
+     extendModuleCtxFunctorArgs tele' $ \tele'' teleNF ->
      kont (ConsT $ U.rebind arg' tele'') (ConsT $ U.rebind argNF teleNF)
   
-checkFunctorArg :: FunctorArgument ModuleType
-                   -> (FunctorArgument ModuleType
-                       -> FunctorArgument ModuleTypeNF
-                       -> TC a)
-                   -> TC a
-checkFunctorArg (FunctorArgument ident modK (U.unembed -> modTy)) kont = do
+extendModuleCtxFunctorArg :: FunctorArgument ModuleType
+                          -> (FunctorArgument ModuleType
+                              -> FunctorArgument ModuleTypeNF
+                              -> TC a)
+                          -> TC a
+extendModuleCtxFunctorArg (FunctorArgument ident modK (U.unembed -> modTy)) kont = do
   (modTy', nf) <- checkModuleType modTy
   extendModuleCtxNF (IdP ident) nf
     $ kont (FunctorArgument ident modK (U.embed modTy')) (FunctorArgument ident modK (U.embed nf))

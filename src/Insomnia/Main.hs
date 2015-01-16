@@ -57,7 +57,7 @@ parsing = Stage {
   , performStage = \fp -> do
      result <- P.parseFile fp
      case result of
-       Left err -> showErrorAndDie "alternate Parser" err
+       Left err -> showErrorAndDie "parsing" err
        Right surfaceAst -> return (ToAST.toAST surfaceAst)
   , formatStage = F.format . ppDefault 
   }
