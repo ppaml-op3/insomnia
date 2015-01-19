@@ -33,7 +33,7 @@ constructImportDefinitions (SubmoduleSelfSig p _ rest) = do
   d <- importSubmodule p
   ds <- constructImportDefinitions rest
   return (d <> ds)
-constructImportDefinitions (SubmodelSelfSig p _ rest) = do
+constructImportDefinitions (GenerativeSelfSig p _ rest) = do
   d <- importSubmodule p
   ds <- constructImportDefinitions rest
   return (d <> ds)

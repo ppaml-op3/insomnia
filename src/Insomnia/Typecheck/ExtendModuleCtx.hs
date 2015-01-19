@@ -54,5 +54,5 @@ extendModuleCtx (TypeSelfSig p tsd msig) =
 extendModuleCtx (SubmoduleSelfSig _path subSig msig) =
   extendModuleCtx subSig
   . extendModuleCtx msig
-extendModuleCtx (SubmodelSelfSig _path _subSig msig) =
+extendModuleCtx (GenerativeSelfSig _path _subSig msig) =
   extendModuleCtx msig

@@ -9,7 +9,7 @@ module Insomnia.Typecheck.SelfSig where
 import Insomnia.Identifier (Path)
 import Insomnia.Types (Type, TypePath)
 import Insomnia.Expr (QVar)
-import Insomnia.ModuleType (TypeSigDecl, Signature)
+import Insomnia.ModuleType (TypeSigDecl, ModuleTypeNF)
 
 -- | A selfified signature.  After selfification, all references to
 -- declared types and values within the module are referenced
@@ -19,7 +19,7 @@ data SelfSig =
   | ValueSelfSig QVar Type SelfSig
   | TypeSelfSig TypePath TypeSigDecl SelfSig
   | SubmoduleSelfSig Path SelfSig SelfSig
-  | SubmodelSelfSig Path Signature SelfSig -- models aren't selfified
+  | GenerativeSelfSig Path ModuleTypeNF SelfSig -- non-projectable (generative) subcomponents aren't selfified
 
   
 

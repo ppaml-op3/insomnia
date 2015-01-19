@@ -60,11 +60,14 @@ selfifySignature pmod msig_ =
            let msig' = U.subst modId p msig
            selfSig' <- selfifySignature pmod msig'
            return $ SubmoduleSelfSig p subSelfSig selfSig'
-         (SigMTNF (SigV subSig ModelMK)) -> do
+         (SigMTNF (SigV _ ModelMK)) -> do
            let msig' = U.subst modId p msig
            selfSig' <- selfifySignature pmod msig'
-           return $ SubmodelSelfSig p subSig selfSig'
-         (FunMTNF {}) -> typeError "unimplemented selfified functors"
+           return $ GenerativeSelfSig p subSigV selfSig'
+         (FunMTNF {}) -> do
+           let msig' = U.subst modId p msig
+           selfSig' <- selfifySignature pmod msig'
+           return $ GenerativeSelfSig p subSigV selfSig'
 
 selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(ValConName, ValueConstructor)]
 selfifyTypeSigDecl pmod tsd =
