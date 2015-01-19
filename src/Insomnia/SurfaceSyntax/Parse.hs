@@ -359,6 +359,8 @@ functorModuleType =
   FunMT
   <$> functorArguments
   <* reservedOp "->"
+  <*> ((reservedOp "model" *> pure ModelMK)
+       <|> pure ModuleMK)
   <*> moduleTypeExpr
 
 
@@ -487,16 +489,25 @@ moduleDefn :: Parser Decl
 moduleDefn =
   mkModuleDefn <$> moduleKind
   <*> modelIdentifier
+  <*> optional functorArguments
   <*> optional (try (classify *> moduleTypeIdentifier))
-  <*> (try (reservedOp "=" *> moduleExpr)
-       <|> literalModuleShorthand)
+  <*> (try (Left <$ reservedOp "=" <*> moduleExpr)
+       <|> (Right <$> literalModuleShorthand))
   where
-    literalModuleShorthand = moduleExprLiteral
-    mkModuleDefn modK modIdent maybeSigId content =
+    literalModuleShorthand = moduleLiteral
+    mkModuleDefn modK modIdent maybeArgs maybeSigId body_ =
       let
-        m = case maybeSigId of
-          Nothing -> content
-          Just msigId -> ModuleSeal content (IdentMT msigId)
+        body = case body_ of
+          Left me -> me
+          Right mlit -> (case modK of
+                          ModuleMK -> ModuleStruct mlit
+                          ModelMK -> ModuleModel (ModelStruct mlit))
+        cod = case maybeSigId of
+          Nothing -> body
+          Just msigId -> ModuleSeal body (IdentMT msigId)
+        m = case maybeArgs of
+          Nothing -> cod
+          Just args -> ModuleFun args cod
       in SubmoduleDefn modIdent modK m
 
 funDecl :: Parser (Ident, ValueDecl)

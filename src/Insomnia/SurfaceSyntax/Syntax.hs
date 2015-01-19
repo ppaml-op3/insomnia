@@ -59,7 +59,7 @@ data ModelExpr =
 data ModuleType =
   SigMT !Signature
   | IdentMT !Ident
-  | FunMT ![(ModuleKind, Ident, ModuleType)] !ModuleType
+  | FunMT ![(ModuleKind, Ident, ModuleType)] !ModuleKind !ModuleType
     deriving (Show)
 
 data Signature = Sig ![SigDecl]

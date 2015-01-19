@@ -222,9 +222,9 @@ moduleType (SigMT sig) = do
   modK <- view currentModuleKind
   let mkSig s = I.SigMT (I.SigV s modK)
   mkSig <$> (signature sig)
-moduleType (FunMT args result) = do
+moduleType (FunMT args resultK result) = do
   functorArguments args $ \args' -> do
-    result' <- moduleType result
+    result' <- local (currentModuleKind .~ resultK) (moduleType result)
     return (I.FunMT $ U.bind args' result')
 moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
 
