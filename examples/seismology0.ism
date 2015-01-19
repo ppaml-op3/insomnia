@@ -1,9 +1,28 @@
+module Prelude {
+  sig (.+) :: Real -> Real -> Real
+  sig (.-) :: Real -> Real -> Real
+  sig (.*) :: Real -> Real -> Real
+
+  sig abs :: Real -> Real
+  sig log :: Real -> Real
+}
+
 module type STD_DIST {
   type R = Real
   type Rp = Real -- positive
   type Normal_inverse_gamma_params = { μ :: R ; λ_ :: Rp ; α :: Rp ; β :: Rp }
   type Gamma_params                = { α :: Rp ; β :: Rp }
   type Gaussian_params             = { μ :: R ; σ² :: Rp }
+
+
+  sig uniform :: R -> R -> Dist R
+  sig exponential :: R -> Dist Rp
+
+  sig gamma :: Gamma_params -> Dist Rp
+  sig gauss :: Gaussian_params -> Dist R
+
+  sig normal_inverse_gamma :: Normal_inverse_gamma_params -> Dist Gaussian_params
+
 }
 
 module type LIST {
@@ -16,24 +35,55 @@ module List :: LIST {
   data List (a :: *) = Nil | Cons a (List a)
 }
 
+module type SEISMIC_EARTH {
+  type R = Real
+  type Rp = Real -- positive
+  type Probability = Real
+
+  -----------------------------------------------
+  --   things to do with the earth in motion
+  --
+
+  sig rate_parameters :: StdDist.Gamma_params
+  sig velocity_parameters :: StdDist.Gaussian_params -- #3
+  sig absorptivity_parameters :: StdDist.Gaussian_params -- #4
+
+  module Earth
+    :: (module Station :: { type Station :: *
+                            sig loc :: Station -> R
+                          }
+       ) -> model {
+
+         sig λ₀ :: Rp  -- rate of event occurrence
+         sig v₀ :: R                             -- #3
+         sig α₀ :: Rp
+
+
+         -----------------------------------------------
+         --   things to do with each (real event)
+         --
+         type Station = Station.Station
+         type Event =
+           { location  :: R -- [0..1]
+           ; time      :: R -- [0..1]
+           ; magnitude :: R -- [2..]
+           ; log_amplitude :: Station -> R
+           ; detection_probability :: Station -> Probability
+           }
+    
+         -- each event will be a draw from this distribution
+         sig event :: Dist Event
+  }
+
+}
+
 module type SEISMIC {
   type Probability = Real -- [0.0 .. 1.0]
   type R = Real
   type Rp = Real -- positive
   
-  -----------------------------------------------
-  --   things to do with the earth in motion
-  --
-
-  sig gamma_params :: StdDist.Gamma_params
-  sig λ₀ :: Rp  -- rate of event occurrence
-
-  sig velocity_parameters :: StdDist.Gamma_params -- #3
-  sig v₀ :: R                             -- #3
-
-  sig absorptivitity_parameters :: StdDist.Gaussian_params -- #4
-  sig α₀ :: Rp
-
+  module Earth :: SEISMIC_EARTH
+  
   enum Station 5
 
   -- First, model parameters to do with stations, from parts #2 and #5--#8
@@ -44,15 +94,15 @@ module type SEISMIC {
 
   data Direction = Left | Right
 
-  -- Second, latent varibles that give properties of each station
-  model M {
+  sig station_parameters ::         -- parameters underlying #5–#8
+    { detection       :: { fst :: StdDist.Gaussian_params ; snd :: StdDist.Gamma_params }
+    ; arrival_time    :: StdDist.Normal_inverse_gamma_params
+    ; amplitude_error :: StdDist.Normal_inverse_gamma_params
+    ; noise_amplitude :: StdDist.Normal_inverse_gamma_params
+    }
 
-    sig station_parameters ::         -- parameters underlying #5–#8
-      { detection       :: { fst :: StdDist.Gaussian_params ; snd :: StdDist.Gamma_params }
-      ; arrival_time    :: StdDist.Normal_inverse_gamma_params
-      ; amplitude_error :: StdDist.Normal_inverse_gamma_params
-      ; noise_amplitude :: StdDist.Normal_inverse_gamma_params
-      }
+  -- Second, latent varibles that give properties of each station
+  model Stations {
 
     sig noise                :: Station -> Rp    -- #2's capital N
     sig false_alarm          :: Station -> Rp    -- #2's capital F
@@ -68,32 +118,24 @@ module type SEISMIC {
     -- function that returns a record of four components.  For an
     -- example of that kind of structure, look at the definitions for
     -- `detection` and `episodes` below.
+  }
 
-    -----------------------------------------------
-    --   things to do with each (real event)
-    --
-    type Event =
-      { location  :: R -- [0..1]
-      ; time      :: R -- [0..1]
-      ; magnitude :: R -- [2..]
-      ; log_amplitude :: Station -> R
-      ; detection_probability :: Station -> Probability
-      }
 
-    -----------------------------------------------------
-    --   things to do with each detection (true or false)
-    --
+  -----------------------------------------------------
+  --   things to do with each detection (true or false)
+  --
+  type Detection =
+    { time :: R
+    ; measured_log_amplitude :: R
+    ; arrival_direction :: Direction
+    }
 
-    type Detection =
-      { time :: R
-      ; measured_log_amplitude :: R
-      ; arrival_direction :: Direction
-      }
+  -----------------------------------------------------
+  --   things to do with episodes
+  --
+  type Episode = Station -> List.List Detection
 
-    -----------------------------------------------------
-    --   things to do with episodes
-    --
-    type Episode = Station -> List.List Detection
+  model Episodes {
 
     sig episodes :: Dist Episode
   }
@@ -106,18 +148,81 @@ module type SEISMOLOGY {
 
   type Direction :: *
 
-  model M {
-  
-    type Detection =
-      { time :: R
-      ; measured_log_amplitude :: R
-      ; arrival_direction :: Direction
-      }
+  type Detection =
+    { time :: R
+    ; measured_log_amplitude :: R
+    ; arrival_direction :: Direction
+    }
 
-    type Episode = Station -> List.List Detection
+  type Episode = Station -> List.List Detection
 
+  model Episodes {
     sig episodes :: Dist Episode
   }
+}
+
+--------------------✂✄--------------------
+
+-- Implementations start here 
+
+module SeismicEarth :: SEISMIC_EARTH {
+  import Prelude
+
+  type R = Real
+  type Rp = Real -- positive
+  type Probability = Real
+
+  sig rate_parameters :: StdDist.Gamma_params
+  val rate_parameters = { α = 20.0,  β = 2.0 }
+  sig velocity_parameters :: StdDist.Gaussian_params -- #3
+  val velocity_parameters = { μ = 5.0, σ² = 1.0 }
+  sig absorptivity_parameters :: StdDist.Gaussian_params -- #4
+  val absorptivity_parameters = { μ = 2.0, σ² = 1.0 }
+
+  model Earth (module Station :: { type Station :: *
+                                   sig loc :: Station -> R -- [0..1]
+                                  }
+              ) {
+    sig λ₀ :: Rp
+    val λ₀ ~ StdDist.gamma rate_parameters
+
+    sig v₀ :: R
+    val v₀ ~ let w₀ ~ StdDist.gauss velocity_parameters
+             in return (w₀ .* w₀)
+
+    sig α₀ :: Rp
+    val α₀ ~ let β₀ ~ StdDist.gauss absorptivity_parameters
+             in return (β₀ .* β₀)
+
+    type Station = Station.Station
+
+    type Event =
+      { location  :: R -- [0..1]
+      ; time      :: R -- [0..1]
+      ; magnitude :: R -- [2..]
+      ; log_amplitude :: Station -> R
+      ; detection_probability :: Station -> Probability
+      }
+
+    sig event :: Dist Event
+    val event ~ return (let
+                          l ~ StdDist.uniform 0.0 1.0
+                          t ~ StdDist.uniform 0.0 1.0
+                          δm ~ StdDist.exponential (Prelude.log 10.0)
+                          magnitude = 2.0 .+ δm
+                          forall (s :: Station) in
+                            log_amplitude s ~ return (magnitude - (α₀ .* Prelude.abs (l .- Station.loc s)))
+                          forall (s :: Station) in
+                            detection_probability s ~ return 0.5 -- TODO: fill in with big formula
+                        in
+                         return { location = l
+                                , time = t
+                                , magnitude = magnitude
+                                , log_amplitude = log_amplitude
+                                , detection_probability = detection_probability
+                                })
+  }
+
 }
 
 module Seismic = assume SEISMIC
