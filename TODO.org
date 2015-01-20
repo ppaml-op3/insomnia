@@ -107,6 +107,11 @@
   If bare record types (without a datatype wrapped around them) are going to be common, this
   may get very annoying.
 
+** TODO simplify infix operator resolution
+   Assuming that we can lexically distinguish values, constructors and operators,
+   we should have a better representation of fixity declarations in the ToAST module.
+   [[file:src/Insomnia/SurfaceSyntax/ToAST.hs::--%20TODO:%20this%20is%20horrible.%20rethink%20how%20we%20resolve%20associativity%20and%20precedence.][file:src/Insomnia/SurfaceSyntax/ToAST.hs::-- TODO: this is horrible. rethink how we resolve associativity and precedence.]]
+   [[file:src/Insomnia/SurfaceSyntax/ToAST.hs::--%20TODO:%20we%20should%20handle%20default%20fixity%20in%20a%20more%20principled%20way.][file:src/Insomnia/SurfaceSyntax/ToAST.hs::-- TODO: we should handle default fixity in a more principled way.]]
 * Ideas about syntax
 
   http://ppaml.cs.tufts.edu/Sean%E2%80%99s%20simple%20model%20notation

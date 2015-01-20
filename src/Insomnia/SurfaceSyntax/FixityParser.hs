@@ -7,6 +7,7 @@ module Insomnia.SurfaceSyntax.FixityParser
        , fixityParser
        ) where
 
+import Control.Applicative ((<*))
 import qualified Data.Map as M
 import Data.Monoid ((<>))
 
@@ -32,12 +33,12 @@ showsAssoc AssocLeft = showString "AssocLeft"
 showsAssoc AssocRight = showString "AssocRight"
 showsAssoc AssocNone = showString "AssocNone"
 
-runFixityParser :: (FixityParseable tok op m t, Monad m)
+runFixityParser :: (FixityParseable tok op m t, Monad m, Show tok)
                    => ParsecT [tok] () m t
                    -> [tok]
                    -> SourceName
                    -> m (Either ParseError t)
-runFixityParser p toks fileName = runParserT p () fileName toks
+runFixityParser p toks fileName = runParserT (p <* eof) () fileName toks
 
 fixityParser :: (FixityParseable tok op m t, Stream s m tok)
                 => M.Map op Fixity

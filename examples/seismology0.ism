@@ -211,7 +211,7 @@ module SeismicEarth :: SEISMIC_EARTH {
                           δm ~ StdDist.exponential (Prelude.log 10.0)
                           magnitude = 2.0 .+ δm
                           forall (s :: Station) in
-                            log_amplitude s ~ return (magnitude - (α₀ .* Prelude.abs (l .- Station.loc s)))
+                            log_amplitude s ~ return (magnitude .- (α₀ .* Prelude.abs (l .- Station.loc s)))
                           forall (s :: Station) in
                             detection_probability s ~ return 0.5 -- TODO: fill in with big formula
                         in

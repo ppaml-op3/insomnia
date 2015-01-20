@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleInstances, FlexibleContexts, MultiParamTypeClasses, TemplateHaskell, RankNTypes #-}
 module Insomnia.SurfaceSyntax.ToAST where
 
+import Prelude hiding (foldr)
 import Control.Applicative (Applicative (..), (<$>))
 import Control.Lens
 import Control.Monad (forM)
@@ -9,6 +10,7 @@ import Control.Monad.Reader (runReader, Reader)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState (..))
 
+import Data.Foldable (Foldable(..))
 import qualified Data.Map as M
 
 import qualified Text.Parsec.Prim as P
@@ -145,10 +147,12 @@ withValCons idents =
 
 updateWithFixity :: Ident -> Fixity -> TA a -> TA a
 updateWithFixity ident fixity =
-  let setFixity (ValVarII _) = ValVarII (Just fixity)
-      setFixity (ValConII _) = ValConII (Just fixity)
+  -- TODO: this is horrible. rethink how we resolve associativity and precedence.
+  let setFixity (Just (ValVarII _)) = Just $ ValVarII (Just fixity)
+      setFixity (Just (ValConII _)) = Just $ ValConII (Just fixity)
+      setFixity Nothing = Just $ ValVarII (Just fixity)
       qid = QId [] ident
-  in local (valIdInfo . ix qid %~ setFixity)
+  in local (valIdInfo . at qid %~ setFixity)
 
 withTyCon :: Con -> Maybe Fixity -> TA a -> TA a
 withTyCon con fixity =
@@ -452,9 +456,23 @@ expr (Let bnds e) =
   bindings bnds $ \bnds' -> do
     e' <- expr e
     return $ I.Let $ U.bind bnds' e'
-expr (Phrase atms) = do
-  valOps <- askValOperators
-  disfix atms valOps
+expr (Phrase atms) =
+  -- for any operators without a fixity, assume a default.
+  -- TODO: we should handle default fixity in a more principled way.
+  local (valIdInfo %~ M.unionWith justSecond (M.fromList $ defaultInfix atms)) $ do
+    valOps <- askValOperators
+    disfix atms valOps
+  where
+    defaultInfix =
+      foldMap (\atm -> case atm of
+                (I (InfixN (V (Var i)))) -> [(QId [] i, ValVarII $ Just $ Fixity AssocNone 5)]
+                (I (InfixN (Q (QVar q)))) -> [(q, ValVarII $ Just $ Fixity AssocNone 5)]
+                (I (InfixN (C (Con q)))) -> [(q, ValConII $ Just $ Fixity AssocNone 5)]
+                _ -> [])
+    justSecond _ j@(ValVarII (Just _)) = j
+    justSecond _ j@(ValConII (Just _)) = j
+    justSecond i _ = i
+      
 
 valueConstructor :: Con -> TA I.ValueConstructor
 valueConstructor con = do
@@ -690,7 +708,7 @@ instance FixityParseable PatternAtom Con CTA PartialPattern where
                                  ])
 ---------------------------------------- Utilities
   
-disfix :: (FixityParseable tok op m t, Monad m)
+disfix :: (FixityParseable tok op m t, Monad m, Show tok)
           => [tok]
           -> M.Map op Fixity
           -> m t
