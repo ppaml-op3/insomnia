@@ -1,3 +1,4 @@
+
 module Prelude {
   sig (.+) :: Real -> Real -> Real
   sig (.-) :: Real -> Real -> Real
@@ -7,9 +8,23 @@ module Prelude {
   sig log :: Real -> Real
 }
 
+
+module type LIST {
+  data List (a :: *) = Nil | Cons a (List a)
+
+  sig replicate :: forall (a :: *) . Int -> a -> List a
+}
+
+module List :: LIST {
+  data List (a :: *) = Nil | Cons a (List a)
+
+  sig replicate :: forall (a :: *) . Int -> a -> List a
+}
+
 module type STD_DIST {
   type R = Real
   type Rp = Real -- positive
+  type Nat = Int -- non-negative
   type Normal_inverse_gamma_params = { μ :: R ; λ_ :: Rp ; α :: Rp ; β :: Rp }
   type Gamma_params                = { α :: Rp ; β :: Rp }
   type Gaussian_params             = { μ :: R ; σ² :: Rp }
@@ -18,22 +33,18 @@ module type STD_DIST {
   sig uniform :: R -> R -> Dist R
   sig exponential :: R -> Dist Rp
 
+  sig poisson :: R -> Dist Nat
+
   sig gamma :: Gamma_params -> Dist Rp
   sig gauss :: Gaussian_params -> Dist R
 
   sig normal_inverse_gamma :: Normal_inverse_gamma_params -> Dist Gaussian_params
 
-}
-
-module type LIST {
-  data List (a :: *) = Nil | Cons a (List a)
+  sig sequence :: forall (a :: *) . List.List (Dist a) -> Dist (List.List a)
 }
 
 module StdDist = assume STD_DIST
 
-module List :: LIST {
-  data List (a :: *) = Nil | Cons a (List a)
-}
 
 module type STATION {
   type Station :: *
@@ -230,3 +241,44 @@ module SeismicEarth :: SEISMIC_EARTH {
 module Seismic = assume SEISMIC
 
 module Seismology = (Seismic :: SEISMOLOGY)
+
+-- Suppose we have a module that describes a concrete configuration of stations.
+module FiveStations :: STATION {
+  enum Station 5
+  sig loc :: Station -> Real
+  -- fun loc s = ...
+}
+
+-- now let's talk about a model that exposes the unknown params and a
+-- list of generated events.
+model type GENERATE_EVENTS {
+  type R = Real
+  type Station :: *
+  type Event =
+           { location  :: R -- [0..1]
+           ; time      :: R -- [0..1]
+           ; magnitude :: R -- [2..]
+           ; log_amplitude :: Station -> R
+           ; detection_probability :: Station -> R
+           }
+
+  sig λ₀ :: R
+
+  sig events :: List.List Event
+}
+
+model GenerateEvents = model local
+  module E ~ SeismicEarth.Earth (FiveStations)
+  in {
+    type R = Real
+    type Station = FiveStations.Station
+    type Event = E.Event
+    
+    sig λ₀ :: Real
+    val λ₀ = E.λ₀
+    
+    sig events :: List.List Event
+    val events ~ let
+     n ~ StdDist.poisson λ₀
+     in StdDist.sequence (List.replicate n E.event)
+  } :: GENERATE_EVENTS
