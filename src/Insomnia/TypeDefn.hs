@@ -126,6 +126,9 @@ instance Subst ValueConstructor Literal where
 instance Subst ValueConstructor Type where
   subst _ _ = id
   substs _ = id
+instance Subst ValueConstructor TypePath where
+  subst _ _ = id
+  substs _ = id
 
 instance Subst TypeConstructor ConstructorDef
 instance Subst TypeConstructor TypeAlias

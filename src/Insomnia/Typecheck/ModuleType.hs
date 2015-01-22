@@ -16,6 +16,7 @@ import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType)
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
 import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtxNF)
+import Insomnia.Typecheck.ReduceWhereClause (reduceWhereModuleTypeNF)
 
 -- | Check that the given module type expression is well-formed, and
 -- return both the module type expression and the signature that it
@@ -33,6 +34,10 @@ checkModuleType (FunMT bnd) =
 checkModuleType (IdentMT ident) = do
   mtnf <- lookupModuleType ident
   return (IdentMT ident, mtnf)
+checkModuleType (WhereMT mt whClause) = do
+  (mt', mtnf) <- checkModuleType mt
+  mtnf' <- reduceWhereModuleTypeNF mtnf whClause
+  return (WhereMT mt' whClause, mtnf')
 
 -- | Given a telescope of functor arguments (id : Mt1, ..., id : Mtn)
 -- extend the context of the continuation with the corresponding

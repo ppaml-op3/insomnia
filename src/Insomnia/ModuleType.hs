@@ -26,6 +26,13 @@ data ModuleType =
   SigMT !(SigV Signature) -- "module/model { decls ... }"
   | IdentMT !SigIdentifier -- "X_SIG"
   | FunMT !(Bind (Telescope (FunctorArgument ModuleType)) ModuleType)
+  | WhereMT !ModuleType !WhereClause
+  deriving (Show, Typeable, Generic)
+
+data WhereClause =
+  -- | "SIG where type p = ty"
+  -- (invariant, the IdP at the head of the TypePath is the one that is bound, and it is irrelevant.
+  WhereTypeCls !(Bind Identifier TypePath) !Type
   deriving (Show, Typeable, Generic)
 
 data FunctorArgument t =
@@ -95,11 +102,13 @@ instance Alpha Signature
 instance Alpha a => Alpha (FunctorArgument a)
 instance Alpha a => Alpha (SigV a)
 instance Alpha TypeSigDecl
+instance Alpha WhereClause
 instance Alpha ModuleTypeNF
 
 instance Subst Path Signature
 instance Subst Path TypeSigDecl
 instance Subst Path ModuleType
+instance Subst Path WhereClause
 instance Subst Path a => Subst Path (SigV a)
 instance Subst Path a => Subst Path (FunctorArgument a)
 instance Subst Path ModuleTypeNF
@@ -109,9 +118,11 @@ instance Subst ValueConstructor Signature
 instance Subst ValueConstructor a => Subst ValueConstructor (FunctorArgument a)
 instance Subst ValueConstructor TypeSigDecl
 instance Subst ValueConstructor a => Subst ValueConstructor (SigV a)
+instance Subst ValueConstructor WhereClause
 
 instance Subst TypeConstructor ModuleType
 instance Subst TypeConstructor Signature
+instance Subst TypeConstructor WhereClause
 instance Subst TypeConstructor a => Subst TypeConstructor (FunctorArgument a)
 instance Subst TypeConstructor TypeSigDecl
 instance Subst TypeConstructor a => Subst TypeConstructor (SigV a)
@@ -123,3 +134,4 @@ instance Subst Expr ModuleType where
   substs _ = id
 
 instance Subst Expr a => Subst Expr (FunctorArgument a)
+

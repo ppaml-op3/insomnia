@@ -51,9 +51,11 @@ library
                        Insomnia.Typecheck.Type
                        Insomnia.Typecheck.Expr
                        --
+                       Insomnia.Typecheck.SigOfModuleType
+                       Insomnia.Typecheck.ReduceWhereClause
+                       --
                        Insomnia.Typecheck.SelfSig
                        Insomnia.Typecheck.ExtendModuleCtx
-                       Insomnia.Typecheck.SigOfModuleType
                        Insomnia.Typecheck.Selfify
                        Insomnia.Typecheck.ClarifySignature
                        --
