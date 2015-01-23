@@ -3,6 +3,11 @@ The Insomnia Programming Language
 
 Insomnia is a strongly typed probabilistic programming language.
 
+Slogans:
+
+* A *model* is a distribution over *modules*.
+* *Model sealing* is marginalization.
+
 Building from source - installation instructions
 ------------------------------------------------
 
@@ -39,7 +44,7 @@ Building from source - installation instructions
 
 5. Try an example
 
-        $ dist/build/Insomnia/insomnia seismology0.ism
+        $ dist/build/Insomnia/insomnia examples/seismology0.ism
 
     The expected output is a message that the file typechecked okay,
     followed by a pretty-printing of the source code, followed by the
