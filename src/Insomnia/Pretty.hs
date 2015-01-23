@@ -217,6 +217,15 @@ instance Pretty ValueConstructor where
 instance Pretty TypePath where
   pp (TypePath pmod f) = pp pmod <> "." <> pp f
 
+ppTypePathNoRoot :: TypePath -> PM Doc
+ppTypePathNoRoot (TypePath pmod f) =
+  ppPathNoRoot pmod <> "." <> pp f
+
+ppPathNoRoot :: Path -> PM Doc
+ppPathNoRoot (IdP _) = mempty
+ppPathNoRoot (ProjP (IdP _) f) = pp f
+ppPathNoRoot (ProjP p f) = ppPathNoRoot p <> "." <> pp f
+
 instance Pretty TypeConstructor where
   pp (TCLocal n) = pp n
   pp (TCGlobal p) = pp p
@@ -435,6 +444,15 @@ instance Pretty ModuleType where
     let (tele, body) = UU.unsafeUnbind bnd
     in fsep [parens (fsep $ ppTelescope pp tele), indent rightArrow (pp body)]
   pp (IdentMT ident) = pp ident
+  pp (WhereMT mt wh) =
+    fsep [pp mt, indent "where" (pp wh)]
+
+instance Pretty WhereClause where
+  pp (WhereTypeCls bnd rhs) =
+    let (_, p) = UU.unsafeUnbind bnd
+    in fsep [ppTypePathNoRoot p, indent "=" (pp rhs)]
+
+
 
 instance Pretty ModuleTypeNF where
   pp (SigMTNF sigv) = pp sigv
