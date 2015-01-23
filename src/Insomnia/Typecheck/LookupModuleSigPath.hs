@@ -11,7 +11,7 @@ import Insomnia.ModuleType (ModuleTypeNF(..), SigV(..), sigVSig, Signature(..))
 import Insomnia.Types (TypeConstructor(..), TypePath(..))
 
 import Insomnia.Typecheck.Env
-import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
+import Insomnia.Typecheck.WhnfModuleType (whnfModuleType)
 
 lookupModuleSigPath :: Path -> TC ModuleTypeNF
 lookupModuleSigPath (IdP ident) = lookupModuleSig ident
@@ -49,4 +49,4 @@ projectModuleField pmod fieldName = go
         in go' mrest
       else
         U.lunbind bnd $ \((_, U.unembed -> modTy), _) ->
-        signatureOfModuleType modTy
+        whnfModuleType modTy

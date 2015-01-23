@@ -19,7 +19,7 @@ import Insomnia.ModuleType (Signature(..), ModuleType(..),
                             moduleTypeNormalFormEmbed)
 
 import Insomnia.Typecheck.Env
-import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
+import Insomnia.Typecheck.WhnfModuleType (whnfModuleType)
 
 
 -- | Clarify a signature by making its abstract types be manifestly equal to
@@ -120,7 +120,7 @@ clarifySubmodule :: Path
                    -> Signature
                    -> TC Signature
 clarifySubmodule pmod f ident subModTy rest = do
-  subSigNF <- signatureOfModuleType subModTy
+  subSigNF <- whnfModuleType subModTy
   clearSubSigNF <- clarifySignatureNF (ProjP pmod f) subSigNF
   rest' <- clarifySignature pmod rest
   return $ SubmoduleSig f $ U.bind (ident, U.embed (moduleTypeNormalFormEmbed clearSubSigNF)) rest'

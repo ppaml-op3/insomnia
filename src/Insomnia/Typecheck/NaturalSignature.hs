@@ -32,7 +32,7 @@ import Insomnia.Module
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.LookupModuleSigPath (lookupModuleSigPath)
 import Insomnia.Typecheck.ModuleType (extendModuleCtxFunctorArgs)
-import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
+import Insomnia.Typecheck.WhnfModuleType (whnfModuleType)
 
 -- | Returns the "natural" signature of a module.
 -- This is a signature in which all type equations are preserved, all
@@ -94,8 +94,8 @@ naturalSignatureModuleExpr :: ModuleExpr -> TC ModuleTypeNF
 naturalSignatureModuleExpr (ModuleStruct mdl) = do
   modSig <- naturalSignature mdl
   return (SigMTNF (SigV modSig ModuleMK))
-naturalSignatureModuleExpr (ModuleSeal _ mt) = signatureOfModuleType mt
-naturalSignatureModuleExpr (ModuleAssume mt) = signatureOfModuleType mt
+naturalSignatureModuleExpr (ModuleSeal _ mt) = whnfModuleType mt
+naturalSignatureModuleExpr (ModuleAssume mt) = whnfModuleType mt
 naturalSignatureModuleExpr (ModuleId path) = lookupModuleSigPath path
 naturalSignatureModuleExpr (ModuleModel mdl) = SigMTNF <$> naturalSignatureModelExpr mdl
 naturalSignatureModuleExpr (ModuleFun bnd) =
@@ -156,7 +156,7 @@ naturalSignatureModelExpr (ModelStruct mdl) = do
   modSig <- naturalSignature mdl
   return (SigV modSig ModelMK)
 naturalSignatureModelExpr (ModelLocal _ _ mt) = do
-  nf <- signatureOfModuleType mt
+  nf <- whnfModuleType mt
   case nf of
    SigMTNF sigv -> return sigv
    FunMTNF {} -> typeError ("model is ascribed a functor type " <> formatErr mt)

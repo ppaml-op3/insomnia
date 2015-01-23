@@ -19,7 +19,7 @@ import Insomnia.ModuleType (ModuleType, ModuleTypeNF(..),
                             SigV(..))
 
 import Insomnia.Typecheck.Env
-import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
+import Insomnia.Typecheck.WhnfModuleType (whnfModuleType)
 import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtxNF)
 
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
@@ -191,7 +191,7 @@ checkValueFieldTail pmod fld ty msig1 =
       U.lunbind bnd $ \((ident1, U.unembed -> moduleTy), mrest1_) -> do
         let pdefn = ProjP pmod fld'
             mrest1 = U.subst ident1 pdefn mrest1_
-        subSigNF <- signatureOfModuleType moduleTy
+        subSigNF <- whnfModuleType moduleTy
         extendModuleCtxNF pdefn subSigNF
           $ checkValueFieldTail pmod fld ty mrest1
     TypeSig fld' bnd ->
@@ -252,7 +252,7 @@ checkTypeFieldTail pmod fld bnd msig1 kont =
       checkTypeFieldTail pmod fld bnd mrest1 (kont . ValuePreSig fld' ty')
     SubmoduleSig fld' bnd' ->
       U.lunbind bnd' $ \((ident1, U.unembed -> moduleTy), mrest1_) -> do
-        subSigNF <- signatureOfModuleType moduleTy
+        subSigNF <- whnfModuleType moduleTy
         let pSubmod = ProjP pmod fld'
             mrest1 = U.subst ident1 pSubmod mrest1_
         extendModuleCtxNF pSubmod subSigNF
@@ -388,7 +388,7 @@ checkSubmoduleField pmod fld bnd msig1 kont =
         -- found a match.
         -- check that such a module can be ascribed the given signature.
         U.lunbind bnd $ \((ident2, U.unembed -> moduleTy2), mrest2_) -> do
-          sigV2 <- signatureOfModuleType moduleTy2
+          sigV2 <- whnfModuleType moduleTy2
           let
             pSubmod = ProjP pmod fld
           checkModuleTypeNF pSubmod sigV1 sigV2
@@ -444,7 +444,7 @@ checkSubmoduleFieldTail pmod fld bnd msig1 kont =
       -}
       if fld /= fld'
       then U.lunbind bnd' $ \((ident1, U.unembed -> moduleTy1), mrest1_) -> do
-        sigNF1 <- signatureOfModuleType moduleTy1
+        sigNF1 <- whnfModuleType moduleTy1
         let pSubmod = ProjP pmod fld'
             mrest1 = U.subst ident1 pSubmod mrest1_
         extendModuleCtxNF pSubmod sigNF1
@@ -457,8 +457,8 @@ checkSubmoduleFieldTail pmod fld bnd msig1 kont =
                          <> " Did not expect lunbind2 to return Nothing")
         Just ((ident2, U.unembed -> moduleTy2), mrest2_,
               (ident1, U.unembed -> moduleTy1), mrest1_) -> do
-          (sigNF1) <- signatureOfModuleType moduleTy1
-          (sigNF2) <- signatureOfModuleType moduleTy2
+          (sigNF1) <- whnfModuleType moduleTy1
+          (sigNF2) <- whnfModuleType moduleTy2
           let
             pSubmod = ProjP pmod fld
           checkModuleTypeNF pSubmod sigNF1 sigNF2

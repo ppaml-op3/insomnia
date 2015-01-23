@@ -23,7 +23,7 @@ import Insomnia.ModuleType (Signature(..),
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
-import Insomnia.Typecheck.SigOfModuleType (signatureOfModuleType)
+import Insomnia.Typecheck.WhnfModuleType (whnfModuleType)
 
 -- | "Selfification" (c.f. TILT) is the process of adding to the current scope
 -- a type variable of singleton kind (ie, a module variable standing
@@ -53,8 +53,8 @@ selfifySignature pmod msig_ =
     SubmoduleSig fld bnd ->
       U.lunbind bnd $ \((modId, U.unembed -> modTy), msig) -> do
         let p = ProjP pmod fld
-        subSigV <- signatureOfModuleType modTy
-        case subSigV of
+        mtnf <- whnfModuleType modTy
+        case mtnf of
          (SigMTNF (SigV subSig ModuleMK)) -> do
            subSelfSig <- selfifySignature p subSig
            let msig' = U.subst modId p msig
@@ -63,11 +63,11 @@ selfifySignature pmod msig_ =
          (SigMTNF (SigV _ ModelMK)) -> do
            let msig' = U.subst modId p msig
            selfSig' <- selfifySignature pmod msig'
-           return $ GenerativeSelfSig p subSigV selfSig'
+           return $ GenerativeSelfSig p mtnf selfSig'
          (FunMTNF {}) -> do
            let msig' = U.subst modId p msig
            selfSig' <- selfifySignature pmod msig'
-           return $ GenerativeSelfSig p subSigV selfSig'
+           return $ GenerativeSelfSig p mtnf selfSig'
 
 selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(ValConName, ValueConstructor)]
 selfifyTypeSigDecl pmod tsd =

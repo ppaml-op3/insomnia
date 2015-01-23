@@ -16,7 +16,7 @@ import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType)
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
 import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtxNF)
-import Insomnia.Typecheck.ReduceWhereClause (reduceWhereModuleTypeNF)
+import Insomnia.Typecheck.WhnfModuleType (reduceWhereModuleTypeNF)
 
 -- | Check that the given module type expression is well-formed, and
 -- return both the module type expression and the signature that it

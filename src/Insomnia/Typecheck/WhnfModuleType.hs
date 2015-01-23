@@ -1,10 +1,8 @@
--- | Reduction of "SIG where type p = ty" signatures We actually only
--- do a minimum amount of reduction (as the structure of
--- 'ModuleTypeNF' suggests, it's really a weak head normal form), and
--- peel off a single layer of modules from the path 'p' to do the
--- substitution.
+-- | Weak head normalization of module types to module types in normal form.
+--  Among other things, it eliminates "SIG where type p = ty" signatures by patching
+-- the signature with the type of the RHS.
 {-# LANGUAGE ViewPatterns, OverloadedStrings #-}
-module Insomnia.Typecheck.ReduceWhereClause (whnfModuleType, reduceWhereModuleTypeNF) where
+module Insomnia.Typecheck.WhnfModuleType (whnfModuleType, reduceWhereModuleTypeNF) where
 
 import Control.Applicative
 import Data.Monoid ((<>))
