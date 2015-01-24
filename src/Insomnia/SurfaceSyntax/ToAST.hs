@@ -231,6 +231,20 @@ moduleType (FunMT args resultK result) = do
     result' <- local (currentModuleKind .~ resultK) (moduleType result)
     return (I.FunMT $ U.bind args' result')
 moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
+moduleType (WhereMT mt wh) = I.WhereMT <$> moduleType mt <*> whereClause wh
+
+whereClause :: WhereClause -> TA I.WhereClause
+whereClause (WhereTypeCls con rhs) = do
+  p <- whereClausePath (unCon con)
+  rhs' <- type' rhs
+  return $ I.WhereTypeCls p rhs'
+
+whereClausePath :: QualifiedIdent -> TA (U.Bind I.Identifier I.TypePath)
+whereClausePath (QId pfx fld) =
+  let
+    modId =  U.s2n "<mod>"
+    path = I.headSkelFormToPath (modId, pfx)
+  in return $ U.bind modId $ I.TypePath path fld
 
 functorArguments :: [(ModuleKind, Ident, ModuleType)]
                     -> (Telescope (I.FunctorArgument I.ModuleType) -> TA a)

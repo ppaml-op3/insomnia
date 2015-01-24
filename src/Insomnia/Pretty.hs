@@ -450,7 +450,7 @@ instance Pretty ModuleType where
 instance Pretty WhereClause where
   pp (WhereTypeCls bnd rhs) =
     let (_, p) = UU.unsafeUnbind bnd
-    in fsep [ppTypePathNoRoot p, indent "=" (pp rhs)]
+    in fsep ["type", ppTypePathNoRoot p, indent "=" (pp rhs)]
 
 
 

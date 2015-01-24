@@ -60,6 +60,11 @@ data ModuleType =
   SigMT !Signature
   | IdentMT !Ident
   | FunMT ![(ModuleKind, Ident, ModuleType)] !ModuleKind !ModuleType
+  | WhereMT !ModuleType !WhereClause
+    deriving (Show)
+
+data WhereClause =
+  WhereTypeCls !Con !Type
     deriving (Show)
 
 data Signature = Sig ![SigDecl]

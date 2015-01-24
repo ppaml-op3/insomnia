@@ -58,6 +58,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , reservedNames = ["model", "module", "local", "import",
+                     "where",
                      "forall", "∀",
                      "⋆", "∷",
                      "infix", "infixr", "infixl",
@@ -213,7 +214,7 @@ toplevelModule =
   mkToplevelModule
   <$> (try kindAndId)
   <*> optional functorArguments
-  <*> optional (IdentMT <$ classify <*> moduleTypeIdentifier)
+  <*> optional (classify *> atomicModuleTypeExpr)
   <*> ((Left <$ reservedOp "=" <*> moduleExpr)
        <|> (Right <$> literalModuleShorthand))
   where
@@ -350,14 +351,37 @@ literalModuleType =
 
 moduleTypeExpr :: Parser ModuleType
 moduleTypeExpr =
+  mkWheres <$> atomicModuleTypeExpr
+  <*> many whereTypeClause
+  where mkWheres at [] = at
+        mkWheres at (cls:clss) = mkWheres (WhereMT at cls) clss
+
+whereTypeClause :: Parser WhereClause
+whereTypeClause =
+  WhereTypeCls
+  <$ reserved "where"
+  <* reserved "type"
+  <*> conId
+  <* reservedOp "="
+  <*> typeExpr
+
+atomicModuleTypeExpr :: Parser ModuleType
+atomicModuleTypeExpr = 
   (IdentMT <$> moduleTypeIdentifier <?> "module type identifier")
   <|> literalModuleType
-  <|> functorModuleType
+  <|> functorOrParenthesizedModuleType
+
+functorOrParenthesizedModuleType :: Parser ModuleType
+functorOrParenthesizedModuleType =
+  functorModuleType -- has an embedded try
+  <|> parens moduleTypeExpr
 
 functorModuleType :: Parser ModuleType
 functorModuleType =
   FunMT
-  <$> functorArguments
+  <$> try functorArguments -- 'try' in case we see "( modTyExpr )"
+                           -- instead and need to backtrack out of
+                           -- here
   <* reservedOp "->"
   <*> ((reservedOp "model" *> pure ModelMK)
        <|> pure ModuleMK)
@@ -391,8 +415,9 @@ moduleExpr =
   <|> modulePathOrApp
   <|> (reserved "model" *> (ModuleModel <$> modelExpr) <?> "model expression")
   where
-    moduleAssume =  (ModuleAssume . IdentMT)
-                    <$> (reserved "assume" *> moduleTypeIdentifier)
+    moduleAssume =  ModuleAssume
+                    <$ reserved "assume"
+                    <*> atomicModuleTypeExpr
     nestedModule = parens (mkNestedModuleExpr
                            <$> moduleExpr
                            <*> optional (classify *> moduleTypeExpr))
@@ -490,21 +515,21 @@ moduleDefn =
   mkModuleDefn <$> moduleKind
   <*> modelIdentifier
   <*> optional functorArguments
-  <*> optional (try (classify *> moduleTypeIdentifier))
+  <*> optional (try (classify *> atomicModuleTypeExpr))
   <*> (try (Left <$ reservedOp "=" <*> moduleExpr)
        <|> (Right <$> literalModuleShorthand))
   where
     literalModuleShorthand = moduleLiteral
-    mkModuleDefn modK modIdent maybeArgs maybeSigId body_ =
+    mkModuleDefn modK modIdent maybeArgs maybeMt body_ =
       let
         body = case body_ of
           Left me -> me
           Right mlit -> (case modK of
                           ModuleMK -> ModuleStruct mlit
                           ModelMK -> ModuleModel (ModelStruct mlit))
-        cod = case maybeSigId of
+        cod = case maybeMt of
           Nothing -> body
-          Just msigId -> ModuleSeal body (IdentMT msigId)
+          Just modTy -> ModuleSeal body modTy
         m = case maybeArgs of
           Nothing -> cod
           Just args -> ModuleFun args cod
