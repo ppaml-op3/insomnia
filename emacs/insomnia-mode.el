@@ -11,9 +11,9 @@
 (require 'generic)
 
 (defvar insomnia-mode-tab-width 2
-  "The indentation width for tempest-mode.")
+  "The indentation width for insomnia-mode.")
 (defun insomnia-mode-indentation ()
-  "Set up the indentation for tempest-mode."
+  "Set up the indentation for insomnia-mode."
   (progn (setq tab-width insomnia-mode-tab-width)
          (setq indent-tabs-mode nil)))
 
@@ -30,5 +30,5 @@
     "Major mode for editing Insomnia programs"))
 
 (provide 'insomnia-mode)
-;;; tempest-mode ends here
+;;; insomnia-mode ends here
 
