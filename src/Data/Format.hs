@@ -7,6 +7,7 @@ module Data.Format
        , docToText
        , docToString
        , putStrDoc
+       , hPutStrDoc
        , WrapShow(..)
        ) where
 
@@ -18,6 +19,8 @@ import qualified Data.Text.Lazy as T
 import qualified Data.Text.Lazy.IO as T
 import qualified Data.Text.Lazy.Builder as TB
 import qualified Text.PrettyPrint as PP
+
+import qualified System.IO as IO
 
 import qualified Unbound.Generics.LocallyNameless as U
   
@@ -92,9 +95,13 @@ docToText = TB.toLazyText . unDoc
 docToString :: Doc -> String
 docToString = T.unpack . docToText
 
--- | display the given Doc on stdOut
+-- | display the given 'Doc' on 'IO.stdout'
 putStrDoc :: Doc -> IO ()
-putStrDoc = T.putStr . docToText
+putStrDoc = hPutStrDoc IO.stdout
+
+-- | display the given 'Doc' on the given 'IO.Handle'
+hPutStrDoc :: IO.Handle -> Doc -> IO ()
+hPutStrDoc h = T.hPutStr h . docToText
 
 renderDoc :: PP.Doc -> Doc
 renderDoc = renderDoc' PP.style { PP.lineLength = 78 }

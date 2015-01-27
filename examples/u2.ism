@@ -1,8 +1,8 @@
-model type S_SIG {
+module type S_SIG {
   type T :: *
 }
 
-model type PRELUDE {
+module type PRELUDE {
   data Bool = True | False
   -- type Bool :: *
   type Bool2 = Bool
@@ -12,8 +12,8 @@ model type PRELUDE {
   parameter sig (:) :: ∀ (a ∷ ⋆) . a -> List a -> List a
   
 
-  model S :: {
-     model S2 :: S_SIG
+  module S :: {
+     module S2 :: S_SIG
      type W = S2.T
   }
 
@@ -28,10 +28,10 @@ model type PRELUDE {
   parameter sig foo :: S.W -> S.S2.T
 }
 
-model Prelude :: PRELUDE {
+module Prelude :: PRELUDE {
 
-   model S {
-      model S2 {
+   module S {
+      module S2 {
          type T = Int
       }
       type W = S2.T

@@ -3,6 +3,9 @@ module Insomnia.Main where
 
 import System.Environment (getArgs)
 import System.Exit (exitFailure)
+import qualified System.IO as IO
+
+import Control.Monad.Reader
 
 import Data.Monoid (Monoid(..), (<>))
 
@@ -23,9 +26,24 @@ main :: IO ()
 main = do
   act <- processArguments
   case act of
-    Typecheck fp -> parseAndCheck fp
+    Typecheck fp -> runInsomniaMain (parseAndCheck fp) defaultConfig
     HelpUsage -> printUsage
 
+type InsomniaMain a = ReaderT InsomniaMainConfig IO a
+
+data InsomniaMainConfig = InsomniaMainConfig {
+  ismCfgDebugOut :: IO.Handle -- ^ handle to use for debug output
+  , ismCfgErrorOut :: IO.Handle -- ^ handle to use for error output
+  }
+
+runInsomniaMain :: InsomniaMain a -> InsomniaMainConfig -> IO a
+runInsomniaMain = runReaderT 
+
+defaultConfig :: InsomniaMainConfig
+defaultConfig = InsomniaMainConfig {
+  ismCfgDebugOut = IO.stdout
+  , ismCfgErrorOut = IO.stderr
+  }
 
 data Command =
   Typecheck !FilePath
@@ -42,20 +60,20 @@ processArguments = do
 printUsage :: IO ()
 printUsage = putStrLn "Usage: insomnia [FILE | --help]"
 
-parseAndCheck :: FilePath -> IO ()
+parseAndCheck :: FilePath -> InsomniaMain ()
 parseAndCheck fp =
   startingFrom fp
   $ parsing
   ->->- desugaring
   ->->- checking
-  ->->- demodularizing
+--  ->->- demodularizing
   ->->- compilerDone
 
 parsing :: Stage FilePath Toplevel
 parsing = Stage {
   bannerStage = "Parsing"
   , performStage = \fp -> do
-     result <- P.parseFile fp
+     result <- lift $ P.parseFile fp
      case result of
        Left err -> showErrorAndDie "parsing" err
        Right surfaceAst -> return (ToAST.toAST surfaceAst)
@@ -79,9 +97,9 @@ checking = Stage {
     (elab, m) <- case tc of
       Left err -> showErrorAndDie "typechecking" err
       Right ans -> return ans
-    putStrLn "Typechecked OK."
-    putStrLn "Unification state:"
-    F.putStrDoc (F.format (ppDefault m)
+    putDebugStrLn "Typechecked OK."
+    putDebugStrLn "Unification state:"
+    putDebugDoc (F.format (ppDefault m)
                  <> F.newline)
     return elab
   , formatStage = F.format . ppDefault
@@ -97,7 +115,7 @@ demodularizing = Stage {
   }
 
 data Stage a b = Stage { bannerStage :: F.Doc 
-                       , performStage :: a -> IO b
+                       , performStage :: a -> InsomniaMain b
                        , formatStage :: b -> F.Doc }
 
 (->->-) :: Stage a b -> Stage b c -> Stage a c
@@ -105,9 +123,9 @@ stage1 ->->- stage2 = Stage {
   bannerStage = bannerStage stage1
   , performStage = \x -> do
     y <- performStage stage1 x
-    F.putStrDoc (formatStage stage1 y <> F.newline)
-    putStrLn "--------------------✂✄--------------------"
-    F.putStrDoc (bannerStage stage2 <> F.newline)
+    putDebugDoc (formatStage stage1 y <> F.newline)
+    putDebugStrLn "--------------------✂✄--------------------"
+    putDebugDoc (bannerStage stage2 <> F.newline)
     performStage stage2 y
   , formatStage = formatStage stage2
   }
@@ -120,14 +138,27 @@ compilerDone = Stage { bannerStage = mempty
                      , formatStage = mempty
                      }
 
-startingFrom :: a -> Stage a () -> IO ()
+startingFrom :: a -> Stage a () -> InsomniaMain ()
 startingFrom a stages = do
-  F.putStrDoc (bannerStage stages <> F.newline)
+  putDebugDoc (bannerStage stages <> F.newline)
   performStage stages a
 
-showErrorAndDie :: (Format err) => String -> err -> IO a
+showErrorAndDie :: (Format err) => String -> err -> InsomniaMain a
 showErrorAndDie phase msg = do
-  putStrLn $ "Encountered error while " ++ phase
-  F.putStrDoc (F.format $ msg)
-  putStrLn ""
-  exitFailure
+  putErrorStrLn $ "Encountered error while " ++ phase
+  putErrorDoc (F.format msg <> F.newline)
+  lift $ exitFailure
+
+putErrorStrLn :: String -> InsomniaMain ()
+putErrorStrLn msg =
+ asks ismCfgErrorOut >>= \h -> lift $ IO.hPutStrLn h msg
+
+putDebugStrLn :: String -> InsomniaMain ()
+putDebugStrLn msg =
+ asks ismCfgDebugOut >>= \h -> lift $ IO.hPutStrLn h msg
+
+putErrorDoc :: F.Doc -> InsomniaMain ()
+putErrorDoc d = asks ismCfgErrorOut >>= \h -> lift $ F.hPutStrDoc h d
+
+putDebugDoc :: F.Doc -> InsomniaMain ()
+putDebugDoc d = asks ismCfgDebugOut >>= \h -> lift $ F.hPutStrDoc h d

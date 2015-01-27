@@ -1,10 +1,10 @@
-model type T {
+module type T {
   type T :: *
   sig x :: T
   parameter sig f :: T -> Real
 }
 
-model M1 :: T {
+module M1 :: T {
   data T = T
 
   sig x :: T

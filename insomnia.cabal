@@ -13,7 +13,8 @@ maintainer:          aleksey.kliger@baesystems.com
 -- copyright:           
 category:            Language
 build-type:          Simple
--- extra-source-files:  
+extra-source-files:
+                     examples/*.ism
 cabal-version:       >=1.10
 
 library
@@ -109,3 +110,21 @@ executable insomnia
                       insomnia
   ghc-options:        -Wall
   default-language:   Haskell2010
+
+
+test-suite run-insomnia
+  default-language:
+                   Haskell2010
+  type:
+       exitcode-stdio-1.0
+  hs-source-dirs:
+                 tests
+  main-is: test-run-compiler.hs
+  build-depends:
+                base >= 4 && < 5
+              , tasty >= 0.10
+              , tagged >= 0.6.2
+              , Glob >= 0.7.5 && < 1
+              , temporary >= 1.2
+              , insomnia
+
