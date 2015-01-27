@@ -4,7 +4,23 @@
 name:                insomnia
 version:             0.0
 synopsis:            Typed probabilistic programming language
--- description:         
+description:         Insomnia is a typed, modular probabilistic programming language.
+                     .
+
+                     The syntax and static semantics are vaguely based
+                     on the ML family of languages.  In particular,
+                     the module system has hierarchical modules, higher-order functors,
+                     and generative sealing.  Additionally there is a new module-level notion of a "model" and
+                     of probabilistic sampling at the model level.
+                     .
+                     The slogans are:
+                     .
+                       * A model is a distribution over modules.
+                     .
+                       * Model sealing is marginalization.  
+                     .
+                     Currently the compiler is quite immature (in fact, there is no backend) and
+                     the language syntax and semantics are quite likely to continue evolving.
 homepage:            http://ppaml.cs.tufts.edu/
 license:             BSD3
 license-file:        LICENSE
@@ -119,6 +135,8 @@ test-suite run-insomnia
        exitcode-stdio-1.0
   hs-source-dirs:
                  tests
+  other-modules:
+                InsomniaProvider
   main-is: test-run-compiler.hs
   build-depends:
                 base >= 4 && < 5
@@ -128,3 +146,6 @@ test-suite run-insomnia
               , temporary >= 1.2
               , insomnia
 
+source-repository head
+  type:                git
+  location:            git://github.com/lambdageek/insomnia.git
