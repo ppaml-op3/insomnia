@@ -27,9 +27,11 @@ checkToplevelItem item kont =
   case item of
     ToplevelModule moduleIdent me ->
       let pmod = IdP moduleIdent
-      in inferModuleExpr pmod me
+      in (inferModuleExpr pmod me
+          .??@ ("while infering the module type of " <> formatErr pmod))
          $ \me' sigNF ->
-            extendModuleCtxNF pmod sigNF
+            (extendModuleCtxNF pmod sigNF
+             .??@ ("while extending the context with module type of " <> formatErr pmod))
             $ kont $ ToplevelModule moduleIdent me'
           
     ToplevelModuleType modTypeIdent modType -> do
@@ -39,3 +41,4 @@ checkToplevelItem item kont =
       extendModuleTypeCtx modTypeIdent sigV
         $ kont $ ToplevelModuleType modTypeIdent modType'
         
+

@@ -24,6 +24,7 @@ import Insomnia.ModuleType (Signature(..),
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
 import Insomnia.Typecheck.WhnfModuleType (whnfModuleType)
+import {-# SOURCE #-} Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtx)
 
 -- | "Selfification" (c.f. TILT) is the process of adding to the current scope
 -- a type variable of singleton kind (ie, a module variable standing
@@ -44,11 +45,12 @@ selfifySignature pmod msig_ =
           -- this definition in the rest of the signature by
           -- the full projection from the model path.  Also replace the
           -- type constructors
+          tcon = TCGlobal p
           substVCons = selfifyTypeSigDecl pmod tsd
-          substTyCon = [(tyId, TCGlobal p)]
+          substTyCon = [(tyId, tcon)]
           tsd' = U.substs substTyCon $ U.substs substVCons tsd
           msig' = U.substs substTyCon $ U.substs substVCons msig
-      selfSig <- selfifySignature pmod msig'
+      selfSig <- extendTypeSigDeclCtx tcon tsd $ selfifySignature pmod msig'
       return $ TypeSelfSig p tsd' selfSig
     SubmoduleSig fld bnd ->
       U.lunbind bnd $ \((modId, U.unembed -> modTy), msig) -> do
@@ -58,7 +60,7 @@ selfifySignature pmod msig_ =
          (SigMTNF (SigV subSig ModuleMK)) -> do
            subSelfSig <- selfifySignature p subSig
            let msig' = U.subst modId p msig
-           selfSig' <- selfifySignature pmod msig'
+           selfSig' <- extendModuleCtx subSelfSig $ selfifySignature pmod msig'
            return $ SubmoduleSelfSig p subSelfSig selfSig'
          (SigMTNF (SigV _ ModelMK)) -> do
            let msig' = U.subst modId p msig

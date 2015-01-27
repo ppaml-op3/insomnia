@@ -18,6 +18,7 @@ import Insomnia.Types
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (inferType)
+import {-# SOURCE #-} Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtxNF, extendTypeSigDeclCtx)
 
 -- | Dig through a module until we're 'Here'.
 -- Unlike a 'Path', we go from the outside
@@ -50,51 +51,73 @@ startDiggingMTNF unpatched (DigType digModule tyFld) tyHead = do
   (tyHead', tyK) <- inferType tyHead
   let
     patch = PatchTypeField tyFld tyHead' tyK
-  downMTNF unpatched digModule patch
+  downMTNF Nothing unpatched digModule patch
   <??@ ("while computing where clause signature for type " <> formatErr tyFld)
 
-downMTNF :: ModuleTypeNF -> DigModule -> PatchTypeField -> TC ModuleTypeNF
-downMTNF mtnf Here p =
+downMTNF :: Maybe Path -> ModuleTypeNF -> DigModule -> PatchTypeField -> TC ModuleTypeNF
+downMTNF _pmod mtnf Here p =
   case mtnf of
    SigMTNF (SigV sig ModuleMK) -> (SigMTNF . flip SigV ModuleMK) <$> patchSig sig p
    SigMTNF (SigV _ ModelMK) -> typeError ("expected a module signature, bug got a model signature")
    FunMTNF {} -> typeError ("expected a module signature, but got a functor")
-downMTNF mtnf (There modFld dig) p =
+downMTNF pmod mtnf (There modFld dig) p =
   case mtnf of
    SigMTNF (SigV sig ModuleMK) ->
-     (SigMTNF . flip SigV ModuleMK) <$> (acrossSig sig modFld (\mt -> downMT mt dig p)
+     (SigMTNF . flip SigV ModuleMK) <$> (acrossSig pmod sig modFld (\(pmod', mt) -> downMT pmod' mt dig p)
                                          <??@ ("while computing a where clause signature for submodule "
                                                <> formatErr modFld))
    SigMTNF (SigV _ ModelMK) ->
      typeError ("expected a module signature, but got a model signature")
    FunMTNF {} -> typeError ("expected a module signature, but got a functor")
 
-acrossSig :: Signature -> Field -> (ModuleType -> TC ModuleType) -> TC Signature
-acrossSig sig modFld k =
+typeConstructorForCtx :: Maybe Path
+                         -> Field
+                         -> TyConName
+                         -> TypeConstructor
+typeConstructorForCtx pmod fld lcon =
+  case pmod of
+   Nothing -> TCLocal lcon
+   Just p -> TCGlobal (TypePath p fld)
+
+submodulePathForCtx :: Maybe Path
+                       -> Field
+                       -> Identifier
+                       -> Path
+submodulePathForCtx pmod fld subId =
+  case pmod of
+   Nothing -> IdP subId
+   Just p -> ProjP p fld
+
+acrossSig :: Maybe Path -> Signature -> Field
+             -> ((Path, ModuleType) -> TC ModuleType)
+             -> TC Signature
+acrossSig pmod sig modFld k =
   case sig of
    UnitSig -> typeError ("expected to find submodule " <> formatErr modFld
                          <> ", but it's not present in the signature")
    ValueSig vFld ty rest -> 
-     ValueSig vFld ty <$>  acrossSig rest modFld k
+     ValueSig vFld ty <$>  acrossSig pmod rest modFld k
    TypeSig tyFld bnd ->
-     U.lunbind bnd $ \(typeStuff, rest) -> do
-       rest' <- acrossSig rest modFld k
-       return $ TypeSig tyFld $ U.bind typeStuff rest'
+     U.lunbind bnd $ \((tyConName, U.unembed -> tsd), rest) -> do
+       rest' <- extendTypeSigDeclCtx (typeConstructorForCtx pmod tyFld tyConName) tsd
+                $ acrossSig pmod rest modFld k
+       return $ TypeSig tyFld $ U.bind (tyConName, U.embed tsd) rest'
    SubmoduleSig modCand bnd ->
      U.lunbind bnd $ \((modId, U.unembed -> mt), rest) ->
-     if modCand `U.aeq` modFld
-     then do
-       -- XXX blah: what i really need to do here is apply some kinda continuation.
-       mt' <- k mt
-       return $ SubmoduleSig modCand $ U.bind (modId, U.embed mt') rest
-     else do
-       rest' <- acrossSig rest modFld k
-       return $ SubmoduleSig modCand $ U.bind (modId, U.embed mt) rest'
+       let pSubmod = submodulePathForCtx pmod modCand modId
+       in if modCand `U.aeq` modFld
+          then do
+            mt' <- k (pSubmod, mt)
+            return $ SubmoduleSig modCand $ U.bind (modId, U.embed mt') rest
+          else do
+            mtnfSub <- whnfModuleType mt
+            rest' <- extendModuleCtxNF pSubmod mtnfSub $ acrossSig pmod rest modFld k
+            return $ SubmoduleSig modCand $ U.bind (modId, U.embed mt) rest'
 
-downMT :: ModuleType -> DigModule -> PatchTypeField -> TC ModuleType
-downMT mt digMod p = do
+downMT :: Path -> ModuleType -> DigModule -> PatchTypeField -> TC ModuleType
+downMT pmod mt digMod p = do
   mtnf <- whnfModuleType mt
-  patchedMtnf <- downMTNF mtnf digMod p
+  patchedMtnf <- downMTNF (Just pmod) mtnf digMod p
   return $ moduleTypeNormalFormEmbed patchedMtnf
 
 patchSig :: Signature -> PatchTypeField -> TC Signature

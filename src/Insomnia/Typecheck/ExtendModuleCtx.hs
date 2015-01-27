@@ -1,7 +1,8 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
 module Insomnia.Typecheck.ExtendModuleCtx (
   extendTypeSigDeclCtx
   , extendModuleCtxNF
+  , extendModuleCtx
   ) where
 
 import Control.Lens

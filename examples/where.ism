@@ -1,0 +1,41 @@
+module Prelude {
+  data Bool = True | False
+  data Order = Lt | Eq | Gt
+  
+}
+
+module type EQ {
+  type T :: *
+  sig eq :: T -> T -> Prelude.Bool
+}
+
+module type ORD {
+  type T :: *
+  module Eq :: EQ where type T = T
+  sig compare :: T -> T -> Prelude.Order
+}
+
+module IntOrd = assume (ORD where type T = Int)
+
+module BoolOrd :: (ORD where type T = Prelude.Bool) {
+  type T = Prelude.Bool
+  module Eq {
+    type T = T
+    fun eq x y =
+      case {x = x, y = y} of
+        ({x = Prelude.True, y = Prelude.True}) -> Prelude.True
+        ({x = Prelude.False, y = Prelude.False}) -> Prelude.True
+        _ -> Prelude.False
+  }
+
+  fun compare x y =
+    case {x = x, y = y} of
+      ({x = Prelude.False, y = Prelude.True}) -> Prelude.Lt
+      ({x = Prelude.True, y = Prelude.False}) -> Prelude.Gt
+      _ -> Prelude.Eq
+}
+
+module X {
+  sig f :: Int -> Int -> Prelude.Bool
+  fun f x y = IntOrd.Eq.eq x y
+}

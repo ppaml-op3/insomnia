@@ -426,6 +426,10 @@ comp <??@ note =
 (@??>) :: F.Doc -> TC a -> TC a
 (@??>) = flip (<??@)
 
+(.??@) :: (a -> TC b) -> F.Doc -> a -> TC b
+(.??@) f note x =
+  f x <??@ note
+
 infixl 0 <??@
 infixr 0 @??>
 
