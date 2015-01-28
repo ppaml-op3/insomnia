@@ -112,6 +112,8 @@
    we should have a better representation of fixity declarations in the ToAST module.
    [[file:src/Insomnia/SurfaceSyntax/ToAST.hs::--%20TODO:%20this%20is%20horrible.%20rethink%20how%20we%20resolve%20associativity%20and%20precedence.][file:src/Insomnia/SurfaceSyntax/ToAST.hs::-- TODO: this is horrible. rethink how we resolve associativity and precedence.]]
    [[file:src/Insomnia/SurfaceSyntax/ToAST.hs::--%20TODO:%20we%20should%20handle%20default%20fixity%20in%20a%20more%20principled%20way.][file:src/Insomnia/SurfaceSyntax/ToAST.hs::-- TODO: we should handle default fixity in a more principled way.]]
+** TODO don't allow projection of modules out of models                 :bug:
+[[file:src/Insomnia/Typecheck/LookupModuleSigPath.hs::--%20XXX:%20Do%20I%20really%20want%20to%20allow%20projection%20out%20of%20models%20here?][file:src/Insomnia/Typecheck/LookupModuleSigPath.hs::-- XXX: Do I really want to allow projection out of models here?]]
 * Ideas about syntax
 
   http://ppaml.cs.tufts.edu/Sean%E2%80%99s%20simple%20model%20notation

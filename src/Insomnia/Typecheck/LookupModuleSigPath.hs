@@ -26,6 +26,7 @@ projectModuleField :: Path -> Field -> (SigV Signature) -> TC ModuleTypeNF
 projectModuleField pmod fieldName = go
   where
     go :: SigV Signature -> TC ModuleTypeNF
+    -- XXX: Do I really want to allow projection out of models here?
     go =  go' . view sigVSig
     go' :: Signature -> TC ModuleTypeNF
     go' UnitSig = typeError ("The module " <> formatErr pmod
@@ -39,12 +40,20 @@ projectModuleField pmod fieldName = go
       -- once we finally find the signature that we need, it will
       -- refer to earlier components of its parent module by the
       -- correct name.
+      
+      -- Note that there is no need to extend env with this type since
+      -- we started with a module that was already in the environment,
+      -- and the invariant that the environment maintains is that all
+      -- of its projectable types have already been added to the env.
       let mrest = U.subst tycon' (TCGlobal $ TypePath pmod fld') mrest_
       in go' mrest
     go' (SubmoduleSig fld' bnd) =
       if fieldName /= fld'
       then
         U.lunbind bnd $ \((ident', _), mrest_) ->
+        -- No need to extend env with this module's type since any
+        -- reference to it in mrest will call "LookupModuleSigPath" again,
+        -- and we'll pull it out from the parent module at that point.
         let mrest = U.subst ident' (ProjP pmod fld') mrest_
         in go' mrest
       else
