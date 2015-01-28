@@ -34,21 +34,10 @@ import qualified Insomnia.Toplevel    as I
 import Insomnia.SurfaceSyntax.Syntax
 import Insomnia.SurfaceSyntax.FixityParser
 
--- | Syntactic information about identifiers.
-data TyIdInfo =
-  TyConII (Maybe Fixity)
-  deriving (Show)
-
-data ValIdInfo =
-  ValVarII (Maybe Fixity)
-  | ValConII (Maybe Fixity)
-  deriving (Show)
-
-data Ctx = Ctx {_tyIdInfo :: M.Map Con TyIdInfo
-                  , _valIdInfo :: M.Map QualifiedIdent ValIdInfo
-                  , _currentModuleKind :: ModuleKind
-                  }
-            deriving (Show)
+data Ctx = Ctx {_declaredFixity :: M.Map QualifiedIdent Fixity
+               , _currentModuleKind :: ModuleKind
+               }
+         deriving (Show)
 
 $(makeLenses ''Ctx)
 
@@ -84,12 +73,8 @@ toAST = runToAST baseCtx . toplevel
     -- TODO: these really ought to be imported from somewhere, not built in.
     baseCtx = Ctx (M.fromList
                    [
-                     (Con $ QId [] "->", TyConII $ Just (Fixity AssocRight 5))
-                   , (Con $ QId [] "Dist", TyConII Nothing)
-                   , (Con $ QId [] "Int", TyConII Nothing)
-                   , (Con $ QId [] "Real", TyConII Nothing)
+                     (QId [] "->", Fixity AssocRight 5)
                    ])
-                  M.empty
                   ModuleMK
 
 
@@ -98,6 +83,10 @@ runToAST ctx comp = runReader comp ctx
 
 liftCTA :: TA a -> CTA a
 liftCTA comp = CTA $ \k -> comp >>= k
+
+updateWithFixity :: QualifiedIdent -> Fixity -> TA a -> TA a
+updateWithFixity qid f =
+  local (declaredFixity . at qid ?~ f)
 
 hasNoQualification :: QualifiedIdent -> Maybe Ident
 hasNoQualification (QId [] ident) = Just ident
@@ -123,62 +112,6 @@ qualifiedIdValueConstructor (QId modPath fld) =
   then I.VCLocal $ U.string2Name fld
   else I.VCGlobal $ I.ValConPath (submoduleIdentPath modPath) fld
 
-withValVar :: Ident -> TA a -> TA a
-withValVar ident =
-  let addVar = M.insert (QId [] ident) (ValVarII Nothing)
-  in local (valIdInfo %~ addVar)
-
-withValVars :: [Ident] -> TA a -> TA a
-withValVars idents =
-  let l = map (\ident -> (QId [] ident, ValVarII Nothing)) idents
-      addVars = M.union (M.fromList l)
-  in local (valIdInfo %~ addVars)
-
-withValCon :: Ident -> TA a -> TA a
-withValCon ident =
-  let addCon = M.insert (QId [] ident) (ValConII Nothing)
-  in local (valIdInfo %~ addCon)
-
-withValCons :: [Ident] -> TA a -> TA a
-withValCons idents =
-  let l = map (\ident -> (QId [] ident, ValConII Nothing)) idents
-      addCons = M.union (M.fromList l)
-  in local (valIdInfo %~ addCons)
-
-updateWithFixity :: Ident -> Fixity -> TA a -> TA a
-updateWithFixity ident fixity =
-  -- TODO: this is horrible. rethink how we resolve associativity and precedence.
-  let setFixity (Just (ValVarII _)) = Just $ ValVarII (Just fixity)
-      setFixity (Just (ValConII _)) = Just $ ValConII (Just fixity)
-      setFixity Nothing = Just $ ValVarII (Just fixity)
-      qid = QId [] ident
-  in local (valIdInfo . at qid %~ setFixity)
-
-withTyCon :: Con -> Maybe Fixity -> TA a -> TA a
-withTyCon con fixity =
-  let addTyCon = M.insert con (TyConII fixity)
-  in local (tyIdInfo %~ addTyCon)
-
-
-askTypeOperators :: TA (M.Map Con Fixity)
-askTypeOperators =
-  let justTypeOps (TyConII (Just fixity)) = Just fixity
-      justTypeOps _                       = Nothing
-  in views tyIdInfo (M.mapMaybe justTypeOps)
-
-askValOperators :: TA (M.Map QualifiedIdent Fixity)
-askValOperators =
-  let justValOps (ValVarII (Just fixity)) = Just fixity
-      justValOps (ValConII (Just fixity)) = Just fixity
-      justValOps _                        = Nothing
-  in views valIdInfo (M.mapMaybe justValOps)
-
-askValConstructors :: TA (M.Map Con Fixity)
-askValConstructors =
-  let justConOps (ValConII (Just fixity)) = Just fixity
-      justConOps _                        = Nothing
-  in views valIdInfo (M.mapKeysMonotonic Con . M.mapMaybe justConOps)
-
 stochasticityForModule :: ModuleKind -> Stochasticity
 stochasticityForModule ModuleMK = DeterministicParam
 stochasticityForModule ModelMK = RandomVariable
@@ -193,7 +126,7 @@ toplevel (Toplevel items) = I.Toplevel <$> mapM toplevelItem items
 
 toplevelItem :: ToplevelItem -> TA I.ToplevelItem
 toplevelItem (ToplevelModule modK ident mmt me) = do
-  ident' <- identifier ident
+  ident' <- modIdentifier ident
   me' <- local (currentModuleKind .~ modK) (moduleExpr me)
   case mmt of
    Just mt -> do
@@ -205,8 +138,8 @@ toplevelItem (ToplevelModuleType modK ident mt) =
   <$> sigIdentifier ident
   <*> local (currentModuleKind .~ modK) (moduleType mt)
 
-identifier :: Ident -> TA I.Identifier
-identifier s = return $ U.s2n s
+modIdentifier :: Ident -> TA I.Identifier
+modIdentifier s = return $ U.s2n s
 
 sigIdentifier :: Ident -> TA I.SigIdentifier
 sigIdentifier s = return $ U.s2n s
@@ -215,7 +148,10 @@ valueField :: Ident -> TA I.Field
 valueField ident = return ident
 
 moduleField :: Ident -> TA (I.Field, I.Identifier)
-moduleField ident = return (ident, U.s2n ident)
+moduleField ident = do
+  ident' <- modIdentifier ident
+  let f = ident
+  return (f, ident')
 
 typeField :: Ident -> TA (I.Field, I.TyConName)
 typeField ident = return (ident, U.s2n ident)
@@ -259,7 +195,7 @@ functorArgument :: (ModuleKind, Ident, ModuleType)
                    -> (I.FunctorArgument I.ModuleType -> TA a)
                    -> TA a
 functorArgument (modK, ident, mt) kont = do
-  ident' <- identifier ident
+  ident' <- modIdentifier ident
   mt' <- local (currentModuleKind .~ modK) (moduleType mt)
   kont $ I.FunctorArgument ident' (U.embed modK) (U.embed mt')
                        
@@ -313,12 +249,12 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
          rest <- kont
          return $ I.ValueSig f ty' rest
        FixitySig ident fixity ->
-         updateWithFixity ident fixity kont
+         updateWithFixity (QId [] ident) fixity kont
        TypeSig ident tsd -> do
          (f, tycon) <- typeField ident
          let con = Con $ QId [] ident
-         tsd' <- withTyCon con Nothing $ typeSigDecl tsd
-         rest <- withTyCon con Nothing $ kont
+         tsd' <- typeSigDecl tsd
+         rest <- kont
          return $ I.TypeSig f (U.bind (tycon, U.embed tsd') rest)
        SubmoduleSig ident mt modK -> do
          (f, ident') <- moduleField ident
@@ -339,21 +275,21 @@ decl d kont =
    ValueDecl ident vd -> do
      f <- valueField ident
      vd' <- valueDecl vd
-     withValVar ident $ kont [I.ValueDecl f vd']
+     kont [I.ValueDecl f vd']
    ImportDecl qid -> do
      kont [I.ImportDecl $  qualifiedIdPath qid]
    TypeDefn ident td -> do
      (f, _) <- typeField ident
      let con = Con $ QId [] ident
-     (td', idents) <- withTyCon con Nothing $ typeDefn td
-     withValCons idents $ withTyCon con Nothing $ kont [I.TypeDefn f td']
+     (td', idents) <- typeDefn td
+     kont [I.TypeDefn f td']
    TypeAliasDefn ident alias -> do
      (f, _) <- typeField ident
      alias' <- typeAlias alias
      let con = Con $ QId [] ident
-     withTyCon con Nothing $ kont [I.TypeAliasDefn f alias']
+     kont [I.TypeAliasDefn f alias']
    FixityDecl ident fixity ->
-     updateWithFixity ident fixity $ kont []
+     updateWithFixity (QId [] ident) fixity $ kont []
    SubmoduleDefn ident modK me -> do
      (f, _) <- moduleField ident
      me' <- local (currentModuleKind .~ modK) (moduleExpr me)
@@ -413,8 +349,15 @@ type' (TForall tv k ty) = do
   ty' <- type' ty
   return $ I.TForall (U.bind (tv', k') ty')
 type' (TPhrase atms) = do
-  tyOps <- askTypeOperators
-  disfix atms tyOps
+  ops <- view declaredFixity
+  let presentOps =
+        (M.fromList $ defaultInfix atms) `leftWithRightVals` (M.mapKeysMonotonic Con ops)
+  disfix atms presentOps
+  where
+    defaultInfix =
+      foldMap (\atm -> case atm of
+                (TC (InfixN c)) -> [(c, Fixity AssocNone 5)]
+                _ -> [])
 
 typeConstructor :: Con -> TA I.TypeConstructor
 typeConstructor (Con (QId [] f)) = return $ I.TCLocal $ U.s2n f
@@ -423,7 +366,8 @@ typeConstructor (Con (QId (h:ps) f)) = return $ I.TCGlobal (I.TypePath path f)
     path = I.headSkelFormToPath (U.s2n h,ps)
 
 typeAtom :: TypeAtom -> TA I.Type
-typeAtom (TC c) = I.TC <$> typeConstructor c
+typeAtom (TC (PrefixN c)) = I.TC <$> typeConstructor c
+typeAtom (TC (InfixN _)) = fail "ToAST.typeAtom InfixN can't happen"
 typeAtom (TV tv) = I.TV <$> tyvar tv
 typeAtom (TRecord rw) = I.TRecord <$> row rw
 typeAtom (TEnclosed ty mk) = do
@@ -460,7 +404,7 @@ expr :: Expr -> TA I.Expr
 expr (Lam ident mty e) = do
   let v = U.s2n ident
   ann <- annot mty
-  e' <- withValVar ident $ expr e
+  e' <- expr e
   return $ I.Lam $ U.bind (v, U.Embed ann) e'
 expr (Case e clauses) = do
   e' <- expr e
@@ -470,63 +414,38 @@ expr (Let bnds e) =
   bindings bnds $ \bnds' -> do
     e' <- expr e
     return $ I.Let $ U.bind bnds' e'
-expr (Phrase atms) =
-  -- for any operators without a fixity, assume a default.
-  -- TODO: we should handle default fixity in a more principled way.
-  local (valIdInfo %~ M.unionWith justSecond (M.fromList $ defaultInfix atms)) $ do
-    valOps <- askValOperators
-    disfix atms valOps
+expr (Phrase atms) = do
+    ops <- view declaredFixity
+    -- for any operators without a fixity, assume a default.
+    let presentOps =
+          (M.fromList $ defaultInfix atms) `leftWithRightVals` ops
+    disfix atms presentOps
   where
     defaultInfix =
       foldMap (\atm -> case atm of
-                (I (InfixN (V (Var i)))) -> [(QId [] i, ValVarII $ Just $ Fixity AssocNone 5)]
-                (I (InfixN (Q (QVar q)))) -> [(q, ValVarII $ Just $ Fixity AssocNone 5)]
-                (I (InfixN (C (Con q)))) -> [(q, ValConII $ Just $ Fixity AssocNone 5)]
+                (V (InfixN (Var qid))) -> [(qid, Fixity AssocNone 5)]
+                (C (InfixN (Con qid))) -> [(qid, Fixity AssocNone 5)]
                 _ -> [])
-    justSecond _ j@(ValVarII (Just _)) = j
-    justSecond _ j@(ValConII (Just _)) = j
-    justSecond i _ = i
-      
 
 valueConstructor :: Con -> TA I.ValueConstructor
 valueConstructor con = do
   let qid = unCon con
-  mii <- view (valIdInfo . at qid )
-  case mii of
-   Just (ValVarII _) -> error ("expected a value constructor, "
-                               ++ " but found a variable " ++ show con)
-   _ -> return $ qualifiedIdValueConstructor qid
-
-qualifiedVar :: QVar -> TA I.QVar
-qualifiedVar (QVar qid) = do
-  mii <- view (valIdInfo . at qid)
-  case mii of
-   Just (ValConII _) ->
-     error ("expected a variable, but found a value constructor " ++ show qid)
-   _ -> return $ qualifiedIdQVar qid
+  return $ qualifiedIdValueConstructor qid
    
-unqualifiedVar :: Var -> TA I.Var
-unqualifiedVar (Var ident) = do
-  let q = QId [] ident
-  mii <- view (valIdInfo . at q)
-  case mii of
-   Just (ValVarII _) -> return $ U.s2n ident
-   Nothing -> return $ U.s2n ident
-   Just (ValConII _) ->
-     error ("expected a variable, but found a value constructor " ++ show ident)
+unqualifiedVar :: Ident -> TA I.Var
+unqualifiedVar ident = return $ U.s2n ident
 
-exprNotationIdentifier :: Notation Identifier -> TA I.Expr
-exprNotationIdentifier n =
-  case dropNotation n of
-   V v  -> I.V <$> unqualifiedVar v
-   Q qv -> I.Q <$> qualifiedVar qv
-   C c  -> I.C <$> valueConstructor c
-  where
-    dropNotation (PrefixN x) = x
-    dropNotation (InfixN x) = x
+variableExpr :: Var -> TA I.Expr
+variableExpr (Var qid) =
+  case qid of
+   (QId [] ident) -> I.V <$> unqualifiedVar ident
+   _ -> return $ I.Q $ qualifiedIdQVar qid
 
 exprAtom :: ExprAtom -> TA I.Expr
-exprAtom (I ni) = exprNotationIdentifier ni
+exprAtom (V (PrefixN v)) = variableExpr v
+exprAtom (C (PrefixN c)) = I.C <$> valueConstructor c
+exprAtom (V (InfixN _)) = fail "ToAST.exprAtom V InfixN can't happen"
+exprAtom (C (InfixN _)) = fail "ToAST.exprAtom C InfixN can't happen"
 exprAtom (Enclosed e mt) = do
   e' <- expr e
   mt' <- traverse type' mt
@@ -566,7 +485,7 @@ completePP (CompletePP pat) = pat
 completePP (PartialPP patf) = patf []
 
 patternAtom :: PatternAtom -> CTA PartialPattern
-patternAtom (VarP v) = (CompletePP . I.VarP) <$> liftCTA (unqualifiedVar v)
+patternAtom (VarP ident) = (CompletePP . I.VarP) <$> liftCTA (unqualifiedVar ident)
 patternAtom (ConP ncon) = do
   let con = dropNotation ncon
   (PartialPP . I.ConP . U.embed) <$> liftCTA (valueConstructor con)
@@ -584,9 +503,17 @@ patternAtom (EnclosedP p) = CompletePP <$> pattern p
 
 pattern :: Pattern -> CTA I.Pattern
 pattern (PhraseP atms) = do
-  valCons <- liftCTA askValConstructors
-  pp <- disfix atms valCons
+  ops <- use declaredFixity
+  let
+    presentOps =
+      (M.fromList $ defaultInfix atms) `leftWithRightVals` (M.mapKeysMonotonic Con ops)
+  pp <- disfix atms presentOps
   return $ completePP pp
+  where
+    defaultInfix =
+      foldMap (\atm -> case atm of
+                (ConP (InfixN con)) -> [(con, Fixity AssocNone 5)]
+                _ -> [])
 
 
 bindings :: [Binding] -> (I.Bindings -> TA a) -> TA a
@@ -605,11 +532,11 @@ binding (SigB _ident _ty) kont = kont []
 binding (ValB ident e) kont = do
   let v = U.s2n ident
   e' <- expr e
-  withValVar ident $ kont [I.ValB (v, U.embed $ I.Annot Nothing) (U.embed e')]
+  kont [I.ValB (v, U.embed $ I.Annot Nothing) (U.embed e')]
 binding (SampleB ident e) kont = do
   let v = U.s2n ident
   e' <- expr e
-  withValVar ident $ kont [I.SampleB (v, U.embed $ I.Annot Nothing)
+  kont [I.SampleB (v, U.embed $ I.Annot Nothing)
                                      (U.embed e')]
 binding (TabB tabD) kont = 
   let mkB name tf = I.TabB (U.s2n name) (U.embed tf)
@@ -626,10 +553,10 @@ tabulatedDecl (TabulatedDecl idtys tfs) mkB kont = do
     let v = U.s2n ident
     mty' <- traverse type' mty
     return (v, U.embed $ I.Annot mty')
-  namedtfs' <- withValVars (map fst idtys) $ traverse (tabulatedFun annvs) tfs
+  namedtfs' <- traverse (tabulatedFun annvs) tfs
   let (names, bnds) =
         unzip $ map (\(name, tf) -> (name, mkB name tf)) namedtfs'
-  withValVars names $ kont bnds
+  kont bnds
 
 tabulatedFun :: [I.AnnVar] -> TabulatedFun -> TA (Ident, I.TabulatedFun)
 tabulatedFun annvs (TabulatedFun ident ts) = do
@@ -647,22 +574,27 @@ tabSelector (TabIndex ident) = return (I.TabIndex $ U.s2n ident)
 
 ---------------------------------------- Infix parsing
 
+-- | 'leftWithRightVals l r' is a mapping from each key 'k' in 'l'
+-- to the value 'vl' in 'l', unless 'r' maps 'k' to 'vr' in which
+-- case, the result maps 'k' to 'vr'.
+leftWithRightVals :: Ord k => M.Map k a -> M.Map k a -> M.Map k a
+leftWithRightVals =
+  M.mergeWithKey (\_k _x y -> Just y) id (const M.empty)
+
+
 instance FixityParseable TypeAtom Con TA I.Type where
   term = do
-    ctx <- ask
-    t <- P.tokenPrim show (\pos _tok _toks -> pos) (notInfix ctx)
+    t <- P.tokenPrim show (\pos _tok _toks -> pos) notInfix
     lift $ typeAtom t
     where
-      notInfix ctx t =
+      notInfix t =
         case t of
-         TC con -> case ctx ^. tyIdInfo . at con of
-                    (Just (TyConII (Just _fixity))) -> Nothing
-                    _ -> Just t
-         _ -> Just t
+         TC (InfixN con) -> Nothing
+         _ -> Just t 
   juxt = pure I.TApp
   infx con = do
-    let match t@(TC con2) | con == con2 = Just t
-        match _                         = Nothing
+    let match t@(TC (InfixN con2)) | con == con2 = Just t
+        match _                                  = Nothing
     _ <- P.tokenPrim show (\pos _tok _toks -> pos) match
     tOp <- lift (I.TC <$> typeConstructor con)
     return $ \t1 t2 -> I.tApps tOp [t1, t2]
@@ -675,18 +607,17 @@ instance FixityParseable ExprAtom QualifiedIdent TA I.Expr where
     where
       notInfix _ctx e =
         case e of
-         I (InfixN _) -> Nothing
+         V (InfixN _) -> Nothing
+         C (InfixN _) -> Nothing
          _ -> Just e
   juxt = pure I.App
   infx qid = do
     let
-      match (I (InfixN (Q qv)))
-        | unQVar qv == qid          = Just (I.Q <$> qualifiedVar qv)
-      match (I (InfixN (V v)))
-        | (QId [] $ unVar v) == qid = Just (I.V <$> unqualifiedVar v)
-      match (I (InfixN (C con)))
-        | unCon con == qid          = Just (I.C <$> valueConstructor con)
-      match _                                   = Nothing
+      match (V (InfixN qv))
+        | unVar qv == qid   = Just (variableExpr qv)
+      match (C (InfixN c))
+        | unCon c == qid    = Just (I.C <$> valueConstructor c)
+      match _               = Nothing
     m <- P.tokenPrim show (\pos _tok _toks -> pos) match
     v <- lift $ m
     return $ \e1 e2 -> I.App (I.App v e1) e2

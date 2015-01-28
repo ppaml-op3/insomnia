@@ -169,14 +169,11 @@ conId = ((Con . mkQId) <$> qualifiedName tyconIdentifier)
 
 
 -- | X.Y.Z.v -- all components except the last are initial-uppsercase
-qvarId :: Parser QVar
-qvarId = ((QVar . mkQId) <$> qualifiedName variableIdentifier)
+qvarId :: Parser Var
+qvarId = ((Var . mkQId) <$> qualifiedName variableIdentifier)
          <?> "possibly qualified value identifier"
   where
     mkQId (path,ident) = QId path ident
-
-varId :: Parser Var
-varId = Var <$> variableIdentifier
 
 tvarId :: Parser TyVar
 tvarId = TyVar <$> variableIdentifier
@@ -632,7 +629,8 @@ kindExpr = buildExpressionParser table kindFactor
 typeAtom :: Parser TypeAtom
 typeAtom =
   (TV <$> tvarId)
-  <|> (TC <$> try (conId <|> infixConId))
+  <|> (TC <$> try ((PrefixN <$> conId)
+                   <|> (InfixN <$> infixConId)))
   <|> (TEnclosed <$> tforall <*> pure Nothing)
   <|> (TRecord <$> recordRow)
   <|> parens (TEnclosed <$> typeExpr
@@ -679,17 +677,15 @@ expr =
   <|> (letExpr <?> "let expression")
   <|> (Phrase <$> some exprAtom)
 
-exprNotationIdentifier :: Parser (Notation Identifier)
+exprNotationIdentifier :: Parser ExprAtom
 exprNotationIdentifier =
-  (PrefixN . V <$> varId)
-  <|> ((InfixN . V . Var) <$> infixIdent)
-  <|> ((InfixN . Q . QVar) <$> try qualifiedInfixIdent)
-  <|> (PrefixN . Q <$> try qvarId)
-  <|> (PrefixN . C <$> try conId)
+  ((V . PrefixN) <$> try qvarId)
+  <|> ((V . InfixN . Var) <$> try qualifiedInfixIdent)
+  <|> ((C . PrefixN) <$> try conId)
 
 exprAtom :: Parser ExprAtom
 exprAtom =
-  (I <$> exprNotationIdentifier)
+  exprNotationIdentifier
   <|> (L <$> literal)
   <|> recordExpression
   <|> returnExpression
@@ -748,7 +744,7 @@ patternAtom =
   <|> ((ConP <$> ((PrefixN <$> conId)
                   <|> (InfixN . Con <$> qualifiedInfixIdent)))
        <?> "constructor pattern")
-  <|> (VarP <$> varId <?> "variable pattern")
+  <|> (VarP <$> variableIdentifier <?> "variable pattern")
   <|> recordPattern
   <|> parens (EnclosedP <$> pattern)
 

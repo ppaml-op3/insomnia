@@ -20,11 +20,8 @@ newtype Con = Con { unCon :: QualifiedIdent }
 newtype TyVar = TyVar { unTyVar :: Ident }
               deriving (Show)
 
-newtype Var = Var { unVar :: Ident }
-            deriving (Show)
-
-newtype QVar  = QVar { unQVar :: QualifiedIdent }
-             deriving (Show)
+newtype Var = Var { unVar :: QualifiedIdent }
+            deriving (Show, Eq, Ord)
 
 instance Ord QualifiedIdent where
   (QId p1 f1) `compare` (QId p2 f2) = compare p1 p2 <> compare f1 f2
@@ -122,7 +119,7 @@ data ValueDecl =
 data Kind = KType | KArr !Kind !Kind
           deriving (Show)
 
-data TypeAtom = TC !Con
+data TypeAtom = TC !(Notation Con)
               | TV !TyVar
               | TEnclosed !Type !(Maybe Kind)  -- '(' Type ')' or '(' Type ':' Kind ')'
               | TRecord !Row
@@ -142,12 +139,8 @@ data Notation a = PrefixN !a
                 | InfixN !a
                 deriving (Show)
                          
-data Identifier = V !Var
-              | Q !QVar
-              | C !Con
-              deriving (Show)
-
-data ExprAtom = I !(Notation Identifier)
+data ExprAtom = V !(Notation Var)
+              | C !(Notation Con)
               | L !Literal
               | Record ![(Label, Expr)]
               | Enclosed !Expr !(Maybe Type) -- '(' Expr ')' or '(' Expr ':' Type ')'
@@ -164,7 +157,7 @@ data Clause = Clause !Pattern !Expr
             deriving (Show)
 
 data PatternAtom = WildcardP
-                 | VarP !Var
+                 | VarP !Ident
                  | ConP !(Notation Con)
                  | RecordP ![(Label, Pattern)]
                  | EnclosedP !Pattern
