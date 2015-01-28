@@ -1,13 +1,13 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 module Insomnia.Typecheck.LookupModuleSigPath (lookupModuleSigPath) where
 
-import Control.Lens
 import Data.Monoid ((<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier
-import Insomnia.ModuleType (ModuleTypeNF(..), SigV(..), sigVSig, Signature(..))
+import Insomnia.Common.ModuleKind
+import Insomnia.ModuleType (ModuleTypeNF(..), SigV(..), Signature(..))
 import Insomnia.Types (TypeConstructor(..), TypePath(..))
 
 import Insomnia.Typecheck.Env
@@ -18,22 +18,22 @@ lookupModuleSigPath (IdP ident) = lookupModuleSig ident
 lookupModuleSigPath (ProjP pmod fieldName) = do
   modnf <- lookupModuleSigPath pmod
   case modnf of
-   SigMTNF sigV -> projectModuleField pmod fieldName sigV
+   SigMTNF (SigV sig ModuleMK) -> projectModuleField pmod fieldName sig
+   SigMTNF (SigV _sig ModelMK) ->
+     typeError ("unexpected model when projecting " <> formatErr fieldName
+                <> " from " <> formatErr pmod)
    FunMTNF {} -> typeError ("unexpected functor when projecting " <> formatErr fieldName
                             <> " from " <> formatErr pmod)
 
-projectModuleField :: Path -> Field -> (SigV Signature) -> TC ModuleTypeNF
+projectModuleField :: Path -> Field -> Signature -> TC ModuleTypeNF
 projectModuleField pmod fieldName = go
   where
-    go :: SigV Signature -> TC ModuleTypeNF
-    -- XXX: Do I really want to allow projection out of models here?
-    go =  go' . view sigVSig
-    go' :: Signature -> TC ModuleTypeNF
-    go' UnitSig = typeError ("The module " <> formatErr pmod
+    go :: Signature -> TC ModuleTypeNF
+    go UnitSig = typeError ("The module " <> formatErr pmod
                             <> " does not have a submodule named "
                             <> formatErr fieldName)
-    go' (ValueSig _ _ mrest) = go' mrest
-    go' (TypeSig fld' bnd) =
+    go (ValueSig _ _ mrest) = go mrest
+    go (TypeSig fld' bnd) =
       U.lunbind bnd $ \((tycon', _), mrest_) ->
       -- slightly tricky - we have to replace the tycon' in the rest
       -- of the module by the selfified name of the component so that
@@ -46,8 +46,8 @@ projectModuleField pmod fieldName = go
       -- and the invariant that the environment maintains is that all
       -- of its projectable types have already been added to the env.
       let mrest = U.subst tycon' (TCGlobal $ TypePath pmod fld') mrest_
-      in go' mrest
-    go' (SubmoduleSig fld' bnd) =
+      in go mrest
+    go (SubmoduleSig fld' bnd) =
       if fieldName /= fld'
       then
         U.lunbind bnd $ \((ident', _), mrest_) ->
@@ -55,7 +55,7 @@ projectModuleField pmod fieldName = go
         -- reference to it in mrest will call "LookupModuleSigPath" again,
         -- and we'll pull it out from the parent module at that point.
         let mrest = U.subst ident' (ProjP pmod fld') mrest_
-        in go' mrest
+        in go mrest
       else
         U.lunbind bnd $ \((_, U.unembed -> modTy), _) ->
         whnfModuleType modTy
