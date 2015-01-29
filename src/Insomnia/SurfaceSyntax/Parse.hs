@@ -769,7 +769,7 @@ simpleBinding = mkBinding
   where
     bindingOperator = (pure SampleB <* reservedOp "~")
                       <|> (pure ValB <* reservedOp "=")
-    mkBinding (v, _ty) op e = op v e -- TODO: use the type
+    mkBinding (v, mty) op e = op v (Phrase [Enclosed e mty])
 
 tabulatedFunB :: Parser Binding
 tabulatedFunB = TabB <$> tabulatedDecl

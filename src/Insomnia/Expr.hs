@@ -115,6 +115,9 @@ instance Alpha TabulatedFun
 instance Alpha TabSample
 instance Alpha TabSelector
 
+instance Eq Expr where (==) = aeq
+instance Eq Clause where (==) = aeq
+
 -- Capture-avoiding substitution of term variables in terms
 instance Subst Expr Expr where
   isvar (V v) = Just (SubstName v)

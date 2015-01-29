@@ -667,77 +667,126 @@ disfix atms precs = do
 
 -- TODO: make infix resolution tests executable again.
 
--- example1 :: () -> I.Type
--- example1 () = runReader (type' y) c
---   where
---     a = TI (QId [] "a")
---     arrow = TI (QId [] "->")
---     times = TI (QId [] "*")
---     -- a * a * a -> a * a
---     -- parsed as ((a * a) * a) -> (a * a)
---     x = TPhrase [a, times, a, times, a, arrow, a, times, a]
---     y = TForall "a" KType x
---     c = Ctx
---         (M.fromList
---          [
---            (QId [] "->", TyConII $ Just (Fixity AssocRight 5))
---          , (QId [] "*", TyConII $ Just (Fixity AssocLeft 6))
---          ]
---         )
---         M.empty
+example1 :: () -> I.Type
+example1 () = runReader (type' y) c
+  where
+    a = TV (TyVar "a")
+    arrow = TC (InfixN $ Con $ QId [] "->")
+    times = TC (InfixN $ Con $ QId [] "*")
+    -- a * a * a -> a * a
+    -- parsed as ((a * a) * a) -> (a * a)
+    x = TPhrase [a, times, a, times, a, arrow, a, times, a]
+    y = TForall (TyVar "a") KType x
+    c = Ctx
+        (M.fromList
+         [
+           (QId [] "->", Fixity AssocRight 5)
+         , (QId [] "*", Fixity AssocLeft 6)
+         ]
+        )
+        ModuleMK
+example1_expected :: I.Type
+example1_expected =
+  forall a (v a `prod` v a `prod` v a
+            `funTo`
+            v a `prod` v a)
+  where
+    a = U.s2n "a"
+    v = I.TV
+    prod x y = I.tApps (I.TC $ I.TCLocal $ U.s2n "*") [x, y]
+    funTo x y = I.tApps (I.TC $ I.TCLocal $ U.s2n "->") [x, y]
+    forall x t = I.TForall (U.bind (x, I.KType) t)
+    infixr 5 `funTo`
+    infixl 6 `prod`
 
--- example2 :: () -> I.Expr
--- example2 () = runReader (expr e) ctx
---   where
---     c = I (QId [] "::")
---     n = I (QId [] "N")
---     plus = I (QId [] "+")
---     x = I (QId [] "x")
---     y = I (QId [] "y")
---     e = Phrase [x, plus, y, plus, x, c, y, plus, x, c, n]
+example2 :: () -> I.Expr
+example2 () = runReader (expr e) ctx
+  where
+    c = C (InfixN $ Con $ QId [] "Cons")
+    n = C (PrefixN $ Con $ QId [] "N")
+    plus = V (InfixN $ Var $ QId [] "+")
+    x = V (PrefixN $ Var $ QId [] "x")
+    y = V (PrefixN $ Var $ QId [] "y")
+    e = Phrase [x, plus, y, plus, x, c, y, plus, x, c, n]
 
---     ctx = Ctx
---           M.empty
---           (M.fromList
---            [
---              (QId [] "::", ValConII $ Just (Fixity AssocRight 3))
---            , (QId [] "+", ValVarII $ Just (Fixity AssocLeft 7))
---            , (QId [] "x", ValVarII Nothing)
---            , (QId [] "y", ValVarII Nothing)
---            , (QId [] "N", ValConII Nothing)
---            ]
---           )
+    ctx = Ctx
+          (M.fromList
+           [
+             (QId [] "Cons", Fixity AssocRight 3)
+           , (QId [] "+", Fixity AssocLeft 7)
+           ]
+          )
+          ModuleMK
+example2_expected :: I.Expr
+example2_expected =
+  v x .+. v y .+. v x `cons` v y .+. v x `cons` n
+  where
+    v = I.V
+    x = U.s2n "x"
+    y = U.s2n "y"
+    n = I.C $ I.VCLocal $ U.s2n "N"
+    cons h t = I.App (I.App (I.C $ I.VCLocal $ U.s2n "Cons") h) t
+    e1 .+. e2 = I.App (I.App (I.V $ U.s2n "+") e1) e2
+    infixr 3 `cons`
+    infixl 7 .+.
 
--- example3 :: () -> I.Clause
--- example3 () = runReader (clause cls) ctx
---   where
---     c = (QId [] "::")
---     n = (QId [] "N")
---     x = (QId [] "x")
---     y = (QId [] "y")
---     p = PhraseP $ map IdP [x, c, y, c, n]
---     e = Phrase $ map I [y, c, x, c, n]
---     cls = Clause p e
---     ctx = Ctx
---           M.empty
---           (M.fromList
---            [
---              (QId [] "::", ValConII $ Just (Fixity AssocRight 3))
---            , (QId [] "N", ValConII Nothing)
---            , (QId [] "x", ValVarII Nothing) -- will be shadowed
---              -- note "y" not in scope yet.
---            ])
+example3 :: () -> I.Clause
+example3 () = runReader (clause cls) ctx
+  where
+    (cp, c) = let q = (InfixN $ Con $ QId [] "Cons")
+              in (ConP q, C q)
+    (np, n) = let q = (PrefixN $ Con $ QId [] "N")
+              in (ConP q, C q)
+    (xp, x) = let q = "x"
+              in (VarP q, V $ PrefixN $ Var $ QId [] q)
+    (yp, y) = let q = "y"
+              in (VarP q, V $ PrefixN $ Var $ QId [] q)
+    p = PhraseP [xp, cp, yp, cp, np]
+    e = Phrase [y, c, x, c, n]
+    cls = Clause p e
+    ctx = Ctx
+          (M.fromList
+           [
+             (QId [] "Cons", Fixity AssocRight 3)
+           ])
+          ModuleMK
+example3_expected :: I.Clause
+example3_expected =
+  I.Clause $ U.bind p e
+  where
+    p = consp xp (consp yp np)
+    e = cons (v y) (cons (v x) n)
+
+    consp p1 p2 = I.ConP (U.embed consc) [p1, p2]
+    cons e1 e2 = I.App (I.App (I.C consc) e1) e2
+    consc = I.VCLocal $ U.s2n "Cons"
+    np = I.ConP (U.embed nc) []
+    n = I.C nc
+    nc = I.VCLocal $ U.s2n "N"
+    x = U.s2n "x"
+    y = U.s2n "y"
+    xp = I.VarP x
+    yp = I.VarP y
+    v = I.V
+
+example4 :: () -> I.Clause
+example4 () = runReader (clause cls) ctx
+  where
+    cls = Clause p e
+    p = PhraseP [xp]
+    e = Phrase [x]
     
--- example4 :: () -> I.Clause
--- example4 () = runReader (clause cls) ctx
---   where
---     x = (QId [] "x")
---     p = PhraseP [IdP x]
---     e = Phrase [I x]
---     cls = Clause p e
---     ctx = Ctx
---           M.empty
---           (M.fromList
---            [
---            ])
-    
+    (xp, x) = let q = "x"
+              in (VarP q, V $ PrefixN $ Var $ QId [] q)
+    ctx = Ctx
+          M.empty
+          ModuleMK
+example4_expected :: I.Clause
+example4_expected =
+  I.Clause $ U.bind p e
+  where
+    p = xp
+    e = v x
+    x = U.s2n "x"
+    xp = I.VarP x
+    v = I.V

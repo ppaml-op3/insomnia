@@ -42,7 +42,7 @@
    #+END_EXAMPLE
 ** TODO Translate models to interpreter language
    [[file:src/Insomnia/Interp/ToLam.hs::--%20TODO:%20translate%20models][file:src/Insomnia/Interp/ToLam.hs::-- TODO: translate models]]
-** TODO consume type annotations on parsed samples
+** DONE consume type annotations on parsed samples
    [[file:src/Insomnia/SurfaceSyntax/Parse.hs::mkBinding%20(v,%20_ty)%20op%20e%20%3D%20op%20v%20e%20--%20TODO:%20use%20the%20type][file:src/Insomnia/SurfaceSyntax/Parse.hs::-- TODO: use the type]]
 ** TODO make a special module for the builtin types
    [[file:src/Insomnia/SurfaceSyntax/ToAST.hs::--%20TODO:%20these%20really%20ought%20to%20be%20imported%20from%20somewhere,%20not%20built%20in.][file:src/Insomnia/SurfaceSyntax/ToAST.hs::-- TODO: these really ought to be imported from somewhere, not built in.]]

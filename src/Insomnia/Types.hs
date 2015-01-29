@@ -121,6 +121,9 @@ instance Alpha Type
 instance Alpha Kind
 instance Alpha Row
 
+instance Eq Type where
+  (==) = aeq
+
 -- Substitution
 
 -- Capture avoiding substitution of type variables in types and terms.
