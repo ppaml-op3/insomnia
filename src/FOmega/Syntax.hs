@@ -13,7 +13,7 @@ data Field =
   | FType
   | FSig
   | FUser !String
-    deriving (Show, Eq, Typeable, Generic)
+    deriving (Show, Eq, Ord, Typeable, Generic)
 
 data Kind =
   KType
@@ -22,6 +22,7 @@ data Kind =
 
 type TyVar = Name Type
 
+-- TODO: Maybe use a (βη)-normalized representation?
 data Type =
   TV !TyVar
   | TLam !(Bind (TyVar, Embed Kind) Type)

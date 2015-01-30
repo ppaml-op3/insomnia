@@ -2,7 +2,12 @@
 -- except that it doesn't require the error type to be an instance of Error.
 -- (so it's like ExceptT from transformers-0.4.0.0)
 {-# LANGUAGE FlexibleInstances, MultiParamTypeClasses #-}
-module Insomnia.Except where
+module Insomnia.Except (
+  ExceptT (..)
+  , module Control.Monad.Error.Class
+  , Except
+  , runExcept
+  ) where
 
 import Control.Applicative
 

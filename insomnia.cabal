@@ -94,6 +94,7 @@ library
                        Insomnia.Typecheck
                        --
                        FOmega.Syntax
+                       FOmega.Check
                        --
                        Insomnia.Interp.Lam
                        Insomnia.Interp.Eval
