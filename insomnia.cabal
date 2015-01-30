@@ -93,6 +93,8 @@ library
                        Insomnia.Typecheck.Toplevel
                        Insomnia.Typecheck
                        --
+                       FOmega.Syntax
+                       --
                        Insomnia.Interp.Lam
                        Insomnia.Interp.Eval
                        Insomnia.Interp.PMonad
