@@ -22,6 +22,7 @@ import Control.Monad.IO.Class
 import Control.Monad.Trans.Class
 
 import Control.Monad.Error.Class
+import Unbound.Generics.LocallyNameless.LFresh (LFresh(..))
 
 newtype ExceptT e m a = ExceptT { runExceptT :: m (Either e a) }
 
@@ -86,6 +87,11 @@ instance Monad m => MonadError e (ExceptT e m) where
     case a of
       Left l -> runExceptT (h l)
       Right r -> return (Right r)
+
+instance LFresh m => LFresh (ExceptT e m) where
+  lfresh = lift . lfresh
+  avoid ns = ExceptT . avoid ns . runExceptT
+  getAvoids = lift $ getAvoids
 
 type Except e = ExceptT e Identity
 
