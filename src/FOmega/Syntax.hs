@@ -5,6 +5,8 @@ import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
+import {-# SOURCE #-} FOmega.Pretty (ppType, ppTerm, ppKind)
+import Insomnia.Pretty (Pretty(..))
 
 -- | There will be some stylized records that have predefined field
 -- names distinct from what a user may write.
@@ -45,7 +47,7 @@ data Term =
   | PApp !Term !Type
   | Record ![(Field, Term)]
   | Proj !Term !Field
-  | Pack !Term !Type !ExistPack
+  | Pack !Type !Term !ExistPack
   | Unpack !(Bind (TyVar, Var, Embed Term) Term)
   deriving (Show, Typeable, Generic)
 
@@ -84,3 +86,9 @@ instance Subst Term Field where
 instance Subst Term Kind where
   subst _ _ = id
   substs _ = id
+
+-- * Pretty printing
+
+instance Pretty Kind where pp = ppKind
+instance Pretty Type where pp = ppType
+instance Pretty Term where pp = ppTerm

@@ -141,9 +141,9 @@ inferTy m_ =
             throwError $ PolyAppArgKindMismatch m (Expected karg') a (Got karg)
           return $ U.subst tv a tres
       tother -> throwError $ PolyAppNotAFun m (Got tother)
-   Pack m a ep -> do
-     t <- inferTy m
+   Pack a m ep -> do
      k <- inferK a
+     t <- inferTy m
      checkExistPack ep
      t' <- instExistPack a k ep
      _bodyNorm <- tyEquiv (Expected t) (Got t') KType

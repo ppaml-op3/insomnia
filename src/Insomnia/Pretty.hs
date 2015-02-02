@@ -580,6 +580,9 @@ parens = fmap PP.parens
 
 braces :: PM Doc -> PM Doc
 braces = fmap PP.braces
+
+brackets :: PM Doc -> PM Doc
+brackets = fmap PP.brackets
   
 text :: String -> PM Doc
 text = pure . PP.text
