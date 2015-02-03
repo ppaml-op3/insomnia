@@ -14,6 +14,11 @@ data Field =
   FVal
   | FType
   | FSig
+  -- data type definition field
+  | FData
+  -- data type constructor field
+  | FCon !String
+  -- user defined record fields
   | FUser !String
     deriving (Show, Eq, Ord, Typeable, Generic)
 
@@ -92,3 +97,9 @@ instance Subst Term Kind where
 instance Pretty Kind where pp = ppKind
 instance Pretty Type where pp = ppType
 instance Pretty Term where pp = ppTerm
+
+-- * Utilities
+
+kArrs :: [Kind] -> Kind -> Kind
+kArrs [] = id
+kArrs (k:ks) = KArr k . kArrs ks

@@ -16,6 +16,8 @@ ppField :: Field -> PM Doc
 ppField FVal = "val"
 ppField FType = "type"
 ppField FSig = "sig"
+ppField FData = "data"
+ppField (FCon s) = "con" <+> text s 
 ppField (FUser s) = text s
 
 ppKind :: Kind -> PM Doc

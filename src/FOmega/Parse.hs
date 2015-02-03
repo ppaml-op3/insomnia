@@ -28,6 +28,7 @@ fomegaLang = LanguageDef {
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , reservedNames = ["forall", "exists", "∀", "∃",
                      "val", "type", "sig",
+                     "data", "con",
                      "λ",
                      "⋆",
                      "pack", "as", "unpack", "in"
@@ -52,6 +53,8 @@ fieldName =
   (FVal <$ reserved "val")
   <|> (FType <$ reserved "type")
   <|> (FSig <$ reserved "sig")
+  <|> (FData <$ reserved "data")
+  <|> (FCon <$ reserved "con" <*> identifier)
   <|> (FUser <$> identifier)
 
 kindExpr :: Parser Kind

@@ -6,6 +6,7 @@ module FOmega.Check where
 
 import Control.Monad.Reader
 import Data.Monoid
+import qualified Data.List as List
 import qualified Data.Set as S
 import Insomnia.Except
 
@@ -45,6 +46,7 @@ data OmegaErr =
   | UnpackNotExist !(Got Type)
   | ProjectFromNonRecord !(Got Type) !(Expected Field)
   | FieldNotFound !(Expected Field) !(Got [Field])
+  | MalformedStylizedRecord !(Got [Field])
   | AppendErr !OmegaErr !OmegaErr
   | NoErr
   deriving (Show)
@@ -98,6 +100,7 @@ inferK t_ =
        k <- inferK t
        expectKType t k
      ensureDistinctFields $ map fst fts
+     wellFormedStylizedRecord fts
      return KType
 
 checkExistPack :: MonadTC m => ExistPack -> m ()
@@ -166,6 +169,7 @@ inferTy m_ =
        t <- inferTy m
        return (f, t)
      ensureDistinctFields $ map fst fms
+     wellFormedStylizedRecord fts
      return $ TRecord fts
    Proj m f -> do
      t <- inferTy m
@@ -283,6 +287,30 @@ tyAtEquiv t1_ t2_ =
 
 ensureDistinctFields :: MonadTC m => [Field] -> m ()
 ensureDistinctFields _ = return () -- TODO: actually ensure
+
+-- | Records that contain builtin-fields have a certain expected form:
+-- 1. If a FVal, FType or FSig field is present, it is the only field.
+-- 2. If a FData field is present, there may be zero or more FCon fields and no others.
+-- 3. Otherwise all fields must be FUser
+wellFormedStylizedRecord :: MonadTC m => [(Field, a)] -> m ()
+wellFormedStylizedRecord [(FVal, _)] = return ()
+wellFormedStylizedRecord [(FType, _)] = return ()
+wellFormedStylizedRecord [(FSig, _)] = return ()
+wellFormedStylizedRecord fs = do
+  let userRecord = all isUser fs
+      isDatatype =
+        case List.partition isData fs of
+         ([_d], cs) -> all isCon cs
+         _ -> False
+  unless (userRecord || isDatatype) $
+    throwError $ MalformedStylizedRecord (Got $ map fst fs)
+  where
+    isUser (FUser {}, _) = True
+    isUser _ = False
+    isData (FData, _) = True
+    isData _ = False
+    isCon (FCon {}, _) = True
+    isCon _ = False
 
 lookupField :: MonadTC m => [(Field, a)] -> Field -> m a
 lookupField fs_ f = go fs_
