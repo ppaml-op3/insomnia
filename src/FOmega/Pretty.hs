@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 module FOmega.Pretty where
 
-import Data.Monoid (Monoid(..))
+import Data.Monoid (Monoid(..), (<>))
 
 import Text.PrettyPrint (Doc)
 
@@ -11,6 +11,12 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 import Insomnia.Pretty
 
 import {-# SOURCE #-} FOmega.Syntax
+
+ppField :: Field -> PM Doc
+ppField FVal = "val"
+ppField FType = "type"
+ppField FSig = "sig"
+ppField (FUser s) = text s
 
 ppKind :: Kind -> PM Doc
 ppKind KType = onUnicode "⋆" "*"
@@ -37,13 +43,17 @@ ppType t_ =
      in precParens 1
         $ fsep [onUnicode "∃" "exist", pp tv, coloncolon, ppKind k,
                 indent "." (withLowestPrec $ ppType body)]
+   TRecord fts ->
+     let
+       ppF (f, t) = fsep [ppField f, indent coloncolon (ppType t)]
+     in braces $ fsep $ punctuate "," $ map ppF fts
         
 withLowestPrec :: PM Doc -> PM Doc
 withLowestPrec = withPrec 0 AssocNone . Left
 
 ppTerm :: Term -> PM Doc
-ppTerm m =
-  case m of
+ppTerm m_ =
+  case m_ of
    V v -> pp v
    Lam bnd ->
      let ((v, U.unembed -> t), body) = UU.unsafeUnbind bnd
@@ -59,4 +69,25 @@ ppTerm m =
               indent "." (withLowestPrec $ ppTerm body)]
    PApp m t ->
      fsep [withPrec 2 AssocRight $ Left $ ppTerm m, brackets $ ppType t]
-   _ -> text (show m) -- TODO: XXX other expressions
+   Pack t m ep ->
+     withLowestPrec 
+     $ fsep ["pack", ppType t, indent "," (ppTerm m),
+             indent "as" (ppExistPack ep)]
+   Unpack bnd ->
+     let ((tv, xv, U.unembed -> m), body) = UU.unsafeUnbind bnd
+     in withLowestPrec
+        $ fsep ["unpack", pp tv, ",", pp xv,
+                indent "=" (ppTerm m),
+                indent "in" (ppTerm body)]
+   Record fms ->
+     let
+       ppF (f, m) = fsep [ppField f, indent "=" (ppTerm m)]
+     in braces $ fsep $ punctuate "," $ map ppF fms
+   Proj m f ->
+     withPrec 2 AssocLeft (Left $ ppTerm m) <> "." <> ppField f
+
+ppExistPack :: ExistPack -> PM Doc
+ppExistPack bnd =
+  let ((tv, U.unembed -> k), t) = UU.unsafeUnbind bnd
+  in fsep [ pp tv, coloncolon, ppKind k,
+            indent "." (ppType t) ]

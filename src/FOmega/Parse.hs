@@ -197,7 +197,8 @@ recordTerm = Record <$> braces (commaSep fieldAssn)
 -- TODO: pack t1, t2, ... tN, e as a1:k1, ... , aN : kN . t
 packTerm :: Parser Term
 packTerm =
-  Pack <$> typeExpr
+  Pack <$ reserved "pack"
+  <*> typeExpr
   <* comma
   <*> termExpr
   <* reserved "as"
@@ -213,7 +214,8 @@ packTerm =
 -- unpack a,x = e in e
 unpackTerm :: Parser Term
 unpackTerm =
-  mkUnpack <$> variableIdentifier
+  mkUnpack <$ reserved "unpack"
+  <*> variableIdentifier
   <* comma
   <*> variableIdentifier
   <* reservedOp "="
