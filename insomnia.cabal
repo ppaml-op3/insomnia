@@ -99,6 +99,10 @@ library
                        FOmega.Parse
                        FOmega.Test
                        --
+                       FOmega.SemanticSig
+                       --
+                       Insomnia.ToF
+                       --
                        Insomnia.Interp.Lam
                        Insomnia.Interp.Eval
                        Insomnia.Interp.PMonad
