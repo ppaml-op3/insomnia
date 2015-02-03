@@ -23,8 +23,8 @@ data SemanticSig =
   | DataSem !Type !Kind
   -- [∀β1...βM . τ1 → ... → τN → σ]
   | ConSem !Type
-  -- { f1 = Ξ1, ..., fn = Ξn }
-  | ModSem ![(Field, AbstractSig)]
+  -- { f1 = Σ1, ..., fn = Σn }
+  | ModSem ![(Field, SemanticSig)]
     -- ∀ α1:κ1 ... αN:κN . Σ → Ξ
   | FunctorSem !(Bind [(TyVar, Embed Kind)] SemanticFunctor)
     deriving (Show, Typeable, Generic)
@@ -79,8 +79,8 @@ embedSemanticSig (DataSem t k) = do
 embedSemanticSig (ConSem t) =
   return t
 embedSemanticSig (ModSem fas) = do
-  fts <- forM fas $ \(f, a) -> do
-    t <- embedAbstractSig a
+  fts <- forM fas $ \(f, s) -> do
+    t <- embedSemanticSig s
     return (f, t)
   return $ TRecord fts
 embedSemanticSig (FunctorSem bnd) =

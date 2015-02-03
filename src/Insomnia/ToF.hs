@@ -37,34 +37,35 @@ signature :: ToF m => Signature -> m F.AbstractSig
 signature = fmap (uncurry mkAbstractModuleSig) . signature'
   where
     mkAbstractModuleSig :: [(F.TyVar, Embed F.Kind)]
-                           -> [(F.Field, F.AbstractSig)]
+                           -> [(F.Field, F.SemanticSig)]
                            -> F.AbstractSig
     mkAbstractModuleSig tvks =
       F.AbstractSig . U.bind tvks . F.ModSem
 
-    signature' :: ToF m => Signature -> m ([(F.TyVar, Embed F.Kind)], [(F.Field, F.AbstractSig)])
+    signature' :: ToF m => Signature -> m ([(F.TyVar, Embed F.Kind)], [(F.Field, F.SemanticSig)])
     signature' UnitSig = return mempty
     signature' (ValueSig f t rest) = do
       (t', _) <- type' t
-      let s = ([], [(F.FUser f, valueSig t')])
+      let s = ([], [(F.FUser f, F.ValSem t')])
       rest' <- signature' rest
       return $ s <> rest'
     signature' (TypeSig f bnd) =
       U.lunbind bnd $ \((con, U.unembed -> tsd), rest) -> do
         case tsd of
          AliasTypeSigDecl alias -> do
-           alias' <- typeAlias alias
-           rest' <- local (tyConEnv %~ M.insert con alias') $ signature' rest
+           sig <- typeAlias alias
+           rest' <- local (tyConEnv %~ M.insert con sig) $ signature' rest
            let
-             s = ([], [(F.FType, trivialAbstractSig alias')])
+             s = ([], [(F.FUser f, sig)])
            return $ s <> rest'
-
-    trivialAbstractSig :: F.SemanticSig -> F.AbstractSig
-    trivialAbstractSig = F.AbstractSig . U.bind []
-
-    valueSig :: F.Type -> F.AbstractSig
-    valueSig = trivialAbstractSig . F.ValSem
-
+         AbstractTypeSigDecl k ->
+           withFreshName con $ \tv -> do
+             k' <- kind k
+             let sig = F.TypeSem (F.TV tv) k'
+             rest' <- local (tyConEnv %~ M.insert con sig) $ signature' rest
+             let
+               s = ([(tv, U.embed k')], [(F.FUser f, sig)])
+             return $ s <> rest'
 
 typeAlias :: ToF m => TypeAlias -> m F.SemanticSig
 typeAlias (TypeAlias bnd) =
