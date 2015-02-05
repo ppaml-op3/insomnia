@@ -17,7 +17,8 @@ data SemanticSig =
   ValSem !Type
   -- [= τ:κ]
   | TypeSem !Type !Kind
-  -- [= Ξ]
+  -- [= Ξ] -- We don't (yet) have nested signature definitions in
+  -- Insomnia, so this is not entirely necessary.
   | SigSem !AbstractSig
   -- [= σ:κ]
   | DataSem !Type !Kind
@@ -54,7 +55,7 @@ instance Subst Type AbstractSig
 --
 
 embedSemanticSig :: LFresh m => SemanticSig -> m Type
-embedSemanticSig (ValSem t) = return t
+embedSemanticSig (ValSem t) = return $ TRecord [(FVal, t)]
 embedSemanticSig (TypeSem t k) = do
   -- this is slightly tricky because we want to embed a higher-kinded
   -- constructor t of kind k into KType.  We don't care about the
@@ -66,11 +67,13 @@ embedSemanticSig (TypeSem t k) = do
   let
     tConsume = TApp (TV a) t
     tEmbed = TForall $ U.bind (a, U.embed $ k `KArr` KType) $ TArr tConsume tConsume
-  return tEmbed
+  return $ TRecord [(FType, tEmbed)]
 embedSemanticSig (SigSem absSig) = do
   s <- embedAbstractSig absSig
-  return s
+  return $ TRecord [(FSig, s)]
 embedSemanticSig (DataSem t k) = do
+  -- DataSem and ConSem are assumed to already be inside a record with distinguished fields, so
+  -- no extra layer of record wrapping.
   a <- U.lfresh $ U.s2n "δ"
   let
     tConsume = TApp (TV a) t

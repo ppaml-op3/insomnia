@@ -103,3 +103,18 @@ instance Pretty Term where pp = ppTerm
 kArrs :: [Kind] -> Kind -> Kind
 kArrs [] = id
 kArrs (k:ks) = KArr k . kArrs ks
+
+tForalls :: [(TyVar, Kind)] -> Type -> Type
+tForalls [] = id
+tForalls ((tv,k):tvks) =
+  TForall . bind (tv, embed k) . tForalls tvks
+
+tApps :: Type -> [Type] -> Type
+tApps = flip tApps'
+  where
+    tApps' [] = id
+    tApps' (t:ts) = tApps' ts . (`TApp` t)
+
+tArrs :: [Type] -> Type -> Type
+tArrs [] = id
+tArrs (t:ts) = (t `TArr`) . tArrs ts
