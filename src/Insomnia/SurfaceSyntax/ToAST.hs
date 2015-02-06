@@ -68,14 +68,15 @@ instance MonadState Ctx CTA where
 
 -- main function
 toAST :: Toplevel -> I.Toplevel
-toAST = runToAST baseCtx . toplevel
-  where
-    -- TODO: these really ought to be imported from somewhere, not built in.
-    baseCtx = Ctx (M.fromList
-                   [
-                     (QId [] "->", Fixity AssocRight 5)
-                   ])
-                  ModuleMK
+toAST = runToAST toASTbaseCtx . toplevel
+
+-- TODO: these really ought to be imported from somewhere, not built in.
+toASTbaseCtx :: Ctx
+toASTbaseCtx = Ctx (M.fromList
+                    [
+                      (QId [] "->", Fixity AssocRight 5)
+                    ])
+               ModuleMK
 
 
 runToAST :: Ctx -> TA a -> a

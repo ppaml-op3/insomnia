@@ -41,6 +41,7 @@ library
                        Insomnia.SurfaceSyntax.FixityParser
                        Insomnia.SurfaceSyntax.Parse
                        Insomnia.SurfaceSyntax.ToAST
+                       Insomnia.SurfaceSyntax.Interactive
                        --
                        Insomnia.Common.Literal
                        Insomnia.Common.Stochasticity

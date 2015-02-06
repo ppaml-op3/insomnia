@@ -15,7 +15,9 @@
 -- "∃α. Dist τ" which would correspond to all samples from a
 -- distribution sharing the identity of their abstract types.  That is
 -- not what we do in Insomnia, however.)
-{-# LANGUAGE ViewPatterns, TemplateHaskell, FlexibleContexts #-}
+{-# LANGUAGE ViewPatterns, TemplateHaskell,
+      FlexibleContexts, FlexibleInstances, TypeSynonymInstances
+  #-}
 module Insomnia.ToF where
 
 import Control.Lens
@@ -46,7 +48,28 @@ data Env = Env { _tyConEnv :: M.Map TyConName F.SemanticSig
 
 $(makeLenses ''Env)
 
+emptyToFEnv :: Env
+emptyToFEnv = Env initialTyConEnv mempty mempty mempty
+
+initialTyConEnv :: M.Map TyConName F.SemanticSig
+initialTyConEnv = M.fromList [(U.s2n "->",
+                               F.TypeSem arrowLam ([F.KType, F.KType] `F.kArrs` F.KType))
+                             ]
+  where
+    arrowLam = F.TLam $ U.bind (alpha, U.embed F.KType) $
+               F.TLam $ U.bind (beta, U.embed F.KType) $
+               F.TArr (F.TV alpha) (F.TV beta)
+    alpha = U.s2n "α"
+    beta = U.s2n "β"
+
 class (Functor m, LFresh m, MonadReader Env m) => ToF m
+
+type ToFM = ReaderT Env U.LFreshM
+
+instance ToF ToFM
+
+runToFM :: ToFM a -> a
+runToFM m = U.runLFreshM (runReaderT m emptyToFEnv)
 
 moduleType :: ToF m => ModuleType -> m F.AbstractSig
 moduleType modTy_ =
@@ -305,9 +328,11 @@ type' t_ =
 typeConstructor :: ToF m => TypeConstructor -> m (F.Type, F.Kind)
 typeConstructor (TCLocal tc) = do
   ma <- view (tyConEnv . at tc)
+  e <- view tyConEnv
   case ma of
    Just (F.TypeSem t k) -> return (t, k)
-   _ -> fail "ToF.typeConstructor: tyConEnv did not contain a TypeSem for a local type constructor"
+   Just f -> fail $ "ToF.typeConstructor: wanted a TypeSem, got a " ++ show f
+   Nothing -> fail $ "ToF.typeConstructor: tyConEnv did not contain a TypeSem for a local type constructor: " ++ show tc ++ " in " ++ show e
 typeConstructor (TCGlobal (TypePath p f)) = do
   let
     findIt ident = do
