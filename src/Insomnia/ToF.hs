@@ -1,3 +1,20 @@
+-- | Encoding of the Insomnia module calculus in System FΩ ala "F-ing
+-- Modules".
+--
+-- We proceed in two steps: we translate module types into "semantic
+-- signatures" which we then embed in FΩ.  Modules turn out to be
+-- terms of the embedded types corresponding to their signatures.  The
+-- key "trick" is that generativity is modeled by packing existential
+-- types, and dependency (of later module components on prior ones) is
+-- modeled by hoisting the scope of the existentials to enclose the
+-- definition and the subsequent dependencies.
+--
+-- In this encoding, models end up encoding as something like "Dist
+-- (∃α. τ)" where Dist is the probability distribution monad and τ is
+-- the encoding of the underlying structure.  (One could also imagine
+-- "∃α. Dist τ" which would correspond to all samples from a
+-- distribution sharing the identity of their abstract types.  That is
+-- not what we do in Insomnia, however.)
 {-# LANGUAGE ViewPatterns, TemplateHaskell, FlexibleContexts #-}
 module Insomnia.ToF where
 
@@ -15,6 +32,7 @@ import qualified FOmega.Syntax as F
 import qualified FOmega.SemanticSig as F
 
 import Insomnia.Common.ModuleKind
+import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn
@@ -35,6 +53,8 @@ moduleType modTy_ =
   case modTy_ of
    SigMT (SigV s ModuleMK) ->
      signature s
+   SigMT (SigV s ModelMK) ->
+     model s
    IdentMT sigId -> do
      ma <- view $ sigEnv . at sigId
      case ma of
@@ -43,9 +63,50 @@ moduleType modTy_ =
    WhereMT modTy whereClause -> do
      abstr <- moduleType modTy
      patchWhereClause abstr whereClause
+   FunMT bnd -> do
+     functor bnd
 
 -- ∃ αs:κs . fs:Σs
 type SigSummary = ([(F.TyVar, Embed F.Kind)], [(F.Field, F.SemanticSig)])
+
+functor :: ToF m
+           => (U.Bind (Telescope (FunctorArgument ModuleType)) ModuleType)
+           -> m F.AbstractSig
+functor bnd =
+  U.lunbind bnd $ \(teleArgs, body) ->
+  withFunctorArguments teleArgs $ \(abstr, sigArgs) -> do
+    abstrSigBody <- moduleType body
+    let
+      fctr = F.SemanticFunctor sigArgs abstrSigBody
+      s =  F.FunctorSem $ U.bind abstr fctr
+    return $ F.AbstractSig $ U.bind [] s
+
+withFunctorArguments :: ToF m =>
+                        Telescope (FunctorArgument ModuleType)
+                        -> (([(F.TyVar, Embed F.Kind)],
+                             [F.SemanticSig])
+                            -> m r)
+                        -> m r
+withFunctorArguments tele kont =
+  case tele of
+   NilT -> kont mempty
+   ConsT (U.unrebind -> (arg, teleArgs)) ->
+     withFunctorArgument arg $ \(abstArg, argSem) ->
+     withFunctorArguments teleArgs $ \(abstArgs, argsSem) ->
+     kont (abstArg <> abstArgs, argSem:argsSem)
+
+withFunctorArgument :: ToF m
+                       => FunctorArgument ModuleType
+                       -> (([(F.TyVar, Embed F.Kind)],
+                            F.SemanticSig)
+                           -> m r)
+                       -> m r
+withFunctorArgument (FunctorArgument argId _modK (U.unembed -> modTy)) kont = do
+  (F.AbstractSig bnd) <- moduleType modTy
+  U.lunbind bnd $ \(abstrs, modSig) ->
+    local (modEnv %~ M.insert argId modSig)
+    $ kont (abstrs, modSig)
+  
 
 patchWhereClause :: ToF m => F.AbstractSig -> WhereClause -> m F.AbstractSig
 patchWhereClause (F.AbstractSig bnd) (WhereTypeCls path rhsTy) = do
@@ -69,12 +130,12 @@ dropVarFromAbstrList vs v =
 followTypePath :: LFresh m => F.SemanticSig -> (U.Bind Identifier TypePath) -> m F.SemanticSig
 followTypePath mod0 bnd =
   U.lunbind bnd $ \(_, TypePath modsPath typeField) ->
-    followUserPathAnything mod0 (ProjP modsPath typeField)
+    followUserPathAnything (const $ return mod0) (ProjP modsPath typeField)
 
-followUserPathAnything :: Monad m => F.SemanticSig -> Path -> m F.SemanticSig
-followUserPathAnything mod0 (IdP _) = return mod0
-followUserPathAnything mod0 (ProjP path f) = do
-  mod1 <- followUserPathAnything mod0 path
+followUserPathAnything :: Monad m => (Identifier -> m F.SemanticSig) -> Path -> m F.SemanticSig
+followUserPathAnything rootLookup (IdP ident) = rootLookup ident
+followUserPathAnything rootLookup (ProjP path f) = do
+  mod1 <- followUserPathAnything rootLookup path
   case mod1 of
    (F.ModSem flds) -> do
      let p (F.FUser f', _) | f == f' = True
@@ -91,6 +152,12 @@ mkAbstractModuleSig (tvks, sig) =
 
 signature :: ToF m => Signature -> m F.AbstractSig
 signature = liftM mkAbstractModuleSig . signature'
+
+model :: ToF m => Signature -> m F.AbstractSig
+model sig = do
+  abstr <- signature sig
+  let s = F.ModelSem abstr
+  return $ F.AbstractSig $ U.bind [] s
 
 signature' :: ToF m => Signature -> m SigSummary
 signature' UnitSig = return mempty
@@ -183,13 +250,17 @@ withFreshName s kont = do
 
 withTyVars :: ToF m => [KindedTVar] -> ([(F.TyVar, F.Kind)] -> m r) -> m r
 withTyVars [] kont = kont []
-withTyVars ((tv, k):tvks) kont = do
+withTyVars (tvk:tvks) kont =
+  withTyVar tvk $ \tvk' -> 
+  withTyVars tvks $ \tvks' ->
+  kont $ tvk':tvks'
+
+withTyVar :: ToF m => KindedTVar -> ((F.TyVar, F.Kind) -> m r) -> m r
+withTyVar (tv, k) kont = do
   k' <- kind k
   withFreshName (U.name2String tv) $ \tv' -> 
     local (tyVarEnv %~ M.insert tv (tv', k'))
-    $ withTyVars tvks
-    $ \rest ->
-       kont $ (tv', k') : rest
+    $ kont $ (tv', k')
 
 kind :: Monad m => Kind -> m F.Kind
 kind KType = return F.KType
@@ -199,4 +270,54 @@ kind (KArr k1 k2) = do
   return $ F.KArr k1' k2'
 
 type' :: ToF m => Type -> m (F.Type, F.Kind)
-type' _ = fail "unimplemented ToF.type'"
+type' t_ =
+  case t_ of
+   TV tv -> do
+     mv <- view (tyVarEnv . at tv)
+     case mv of
+      Just (tv', k') -> return (F.TV tv', k')
+      Nothing -> fail "ToF.type' internal error: type variable not in environment"
+   TUVar _ -> fail "ToF.type' internal error: unexpected unification variable"
+   TC tc -> typeConstructor tc
+   TAnn t k -> do
+     (t', _) <- type' t
+     k' <- kind k
+     return (t', k')
+   TApp t1 t2 -> do
+     (t1', karr) <- type' t1
+     (t2', _) <- type' t2
+     case karr of
+      (F.KArr _ k2) -> return (F.TApp t1' t2', k2)
+      F.KType -> fail "ToF.type' internal error: unexpected KType in function position of type application"
+   TForall bnd ->
+     U.lunbind bnd $ \((tv, k), tbody) -> 
+     withTyVar (tv,k) $ \(tv', k') -> do
+       (tbody', _) <- type' tbody
+       let
+         tall = F.TForall $ U.bind (tv', U.embed k') $ tbody'
+       return (tall, F.KType)
+   TRecord (Row lts) -> do
+     fts <- forM lts $ \(l, t) -> do
+       (t', _) <- type' t
+       return (F.FUser $ labelName l, t')
+     return (F.TRecord fts, F.KType)
+
+typeConstructor :: ToF m => TypeConstructor -> m (F.Type, F.Kind)
+typeConstructor (TCLocal tc) = do
+  ma <- view (tyConEnv . at tc)
+  case ma of
+   Just (F.TypeSem t k) -> return (t, k)
+   _ -> fail "ToF.typeConstructor: tyConEnv did not contain a TypeSem for a local type constructor"
+typeConstructor (TCGlobal (TypePath p f)) = do
+  let
+    findIt ident = do
+      ma <- view (modEnv . at ident)
+      case ma of
+       Just sig -> return sig
+       Nothing -> fail "ToF.typeConstructor: type path has unbound module identifier at the root"
+  s <- followUserPathAnything findIt (ProjP p f)
+  case s of
+   F.TypeSem t k -> return (t, k)
+   _ -> fail "ToF.typeConstructor: type path maps to non-type semantic signature"
+  
+                      

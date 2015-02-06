@@ -38,6 +38,7 @@ data Type =
   | TExist !ExistPack
   | TRecord ![(Field, Type)]
   | TArr !Type !Type
+  | TDist !Type
   deriving (Show, Typeable, Generic)
 
 type ExistPack = Bind (TyVar, Embed Kind) Type
@@ -54,6 +55,8 @@ data Term =
   | Proj !Term !Field
   | Pack !Type !Term !ExistPack
   | Unpack !(Bind (TyVar, Var, Embed Term) Term)
+  | Return !Term
+  | LetSample (Bind (Var, Embed Term) Term)
   deriving (Show, Typeable, Generic)
 
 -- * Alpha equivalence and Substitution

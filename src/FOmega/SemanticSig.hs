@@ -28,11 +28,13 @@ data SemanticSig =
   | ModSem ![(Field, SemanticSig)]
     -- ∀ α1:κ1 ... αN:κN . Σ → Ξ
   | FunctorSem !(Bind [(TyVar, Embed Kind)] SemanticFunctor)
+    -- Dist Ξ
+  | ModelSem AbstractSig
     deriving (Show, Typeable, Generic)
 
 data SemanticFunctor =
-  -- Σ → Ξ
-  SemanticFunctor !SemanticSig !AbstractSig
+  -- Σ1 → ... Σn → Ξ
+  SemanticFunctor ![SemanticSig] !AbstractSig
   deriving (Show, Typeable, Generic)
 
 -- Ξ
@@ -87,10 +89,13 @@ embedSemanticSig (ModSem fas) = do
     return (f, t)
   return $ TRecord fts
 embedSemanticSig (FunctorSem bnd) =
-  U.lunbind bnd $ \(tvks, SemanticFunctor dom cod) -> do
-    domT <- embedSemanticSig dom
+  U.lunbind bnd $ \(tvks, SemanticFunctor doms cod) -> do
+    domTs <- mapM embedSemanticSig doms
     codT <- embedAbstractSig cod
-    return $ closeForalls tvks $ TArr domT codT
+    return $ closeForalls tvks $ domTs `tArrs` codT
+embedSemanticSig (ModelSem abstr) = do
+  t <- embedAbstractSig abstr
+  return $ TDist t
 
 embedAbstractSig :: LFresh m => AbstractSig -> m Type
 embedAbstractSig (AbstractSig bnd) =
@@ -101,7 +106,7 @@ embedAbstractSig (AbstractSig bnd) =
 closeForalls :: [(TyVar, Embed Kind)] -> Type -> Type
 closeForalls [] = id
 closeForalls (ak:aks) =
-  TExist . U.bind ak . closeExistentials aks
+  TForall . U.bind ak . closeExistentials aks
 
 closeExistentials :: [(TyVar, Embed Kind)] -> Type -> Type
 closeExistentials [] = id
