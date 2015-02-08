@@ -101,6 +101,7 @@ library
                        FOmega.Test
                        --
                        FOmega.SemanticSig
+                       FOmega.MatchSigs
                        --
                        Insomnia.ToF
                        --
