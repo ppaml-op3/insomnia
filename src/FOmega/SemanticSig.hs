@@ -101,14 +101,9 @@ embedAbstractSig :: LFresh m => AbstractSig -> m Type
 embedAbstractSig (AbstractSig bnd) =
   U.lunbind bnd $ \(tvks, sig) -> do
     t <- embedSemanticSig sig
-    return $ closeExistentials tvks t
+    return $ tExists' tvks t
 
 closeForalls :: [(TyVar, Embed Kind)] -> Type -> Type
 closeForalls [] = id
 closeForalls (ak:aks) =
-  TForall . U.bind ak . closeExistentials aks
-
-closeExistentials :: [(TyVar, Embed Kind)] -> Type -> Type
-closeExistentials [] = id
-closeExistentials (ak:aks) =
-  TExist . U.bind ak . closeExistentials aks
+  TForall . U.bind ak . closeForalls aks

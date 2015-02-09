@@ -49,6 +49,8 @@ ppType t_ =
      let
        ppF (f, t) = fsep [ppField f, indent coloncolon (ppType t)]
      in braces $ fsep $ punctuate "," $ map ppF fts
+   TDist t ->
+     fsep ["Dist", indent "" (ppType t)]
         
 withLowestPrec :: PM Doc -> PM Doc
 withLowestPrec = withPrec 0 AssocNone . Left
@@ -87,6 +89,17 @@ ppTerm m_ =
      in braces $ fsep $ punctuate "," $ map ppF fms
    Proj m f ->
      withPrec 2 AssocLeft (Left $ ppTerm m) <> "." <> ppField f
+   Let bnd ->
+     let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
+     in fsep ["let", pp x, "=", ppTerm m1,
+              indent "in" (ppTerm m2)]
+   Return m ->
+     fsep ["return", ppTerm m]
+   LetSample bnd ->
+     let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
+     in fsep ["let", pp x, "~", ppTerm m1,
+              indent "in" (ppTerm m2)]
+     
 
 ppExistPack :: ExistPack -> PM Doc
 ppExistPack bnd =

@@ -49,6 +49,7 @@ data Term =
   V !Var
   | Lam !(Bind (Var, Embed Type) Term)
   | App !Term !Term
+  | Let !(Bind (Var, Embed Term) Term)
   | PLam !(Bind (TyVar, Embed Kind) Term)
   | PApp !Term !Type
   | Record ![(Field, Term)]
@@ -56,7 +57,7 @@ data Term =
   | Pack !Type !Term !ExistPack
   | Unpack !(Bind (TyVar, Var, Embed Term) Term)
   | Return !Term
-  | LetSample (Bind (Var, Embed Term) Term)
+  | LetSample !(Bind (Var, Embed Term) Term)
   deriving (Show, Typeable, Generic)
 
 -- * Alpha equivalence and Substitution
@@ -112,6 +113,16 @@ tForalls [] = id
 tForalls ((tv,k):tvks) =
   TForall . bind (tv, embed k) . tForalls tvks
 
+tExists :: [(TyVar, Kind)] -> Type -> Type
+tExists [] = id
+tExists ((tv,k):tvks) =
+  TExist . bind (tv, embed k) . tExists tvks
+
+tExists' :: [(TyVar, Embed Kind)] -> Type -> Type
+tExists' [] = id
+tExists' (tvk:tvks) =
+  TExist . bind tvk . tExists' tvks
+
 tApps :: Type -> [Type] -> Type
 tApps = flip tApps'
   where
@@ -121,3 +132,24 @@ tApps = flip tApps'
 tArrs :: [Type] -> Type -> Type
 tArrs [] = id
 tArrs (t:ts) = (t `TArr`) . tArrs ts
+
+-- | packs τs, e as ∃αs.τ' defined as
+-- packs ε, e as ∃·.τ ≙ e
+-- packs τ:τs, e as ∃α,αs.τ' ≙ pack τ, packs τs, e ∃αs.τ'[τ/α] as ∃α,αs.τ'
+packs :: [Type] -> Term -> ([(TyVar, Embed Kind)], Type) -> Term
+packs taus_ m_ (tvks_, tbody_) =
+  go taus_ tvks_ tbody_ m_
+  where
+    go [] [] _t m = m
+    go (tau:taus) (tvk@(tv,_k):tvks') tbody m =
+      let m' = go taus tvks' (subst tv tau tbody) m
+          t' = tExists' tvks' tbody
+      in Pack tau m' (bind tvk t')
+    go _ _ _ _ = error "expected lists of equal length"
+
+unpacks :: LFresh m => [TyVar] -> Var -> Term -> Term -> m Term
+unpacks [] x e1 ebody = return $ Let $ bind (x, embed e1) ebody
+unpacks (tv:tvs) x e1 ebody = do
+  x1 <- lfresh x
+  ebody' <- avoid [AnyName x1] $ unpacks tvs x (V x1) ebody
+  return $ Unpack $ bind (tv, x1, embed e1) ebody'

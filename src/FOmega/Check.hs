@@ -47,6 +47,8 @@ data OmegaErr =
   | ProjectFromNonRecord !(Got Type) !(Expected Field)
   | FieldNotFound !(Expected Field) !(Got [Field])
   | MalformedStylizedRecord !(Got [Field])
+  | SampleBodyNotDist !(Got Type)
+  | SampleFromNonDist !(Got Type)
   | AppendErr !OmegaErr !OmegaErr
   | NoErr
   deriving (Show)
@@ -101,6 +103,10 @@ inferK t_ =
        expectKType t k
      ensureDistinctFields $ map fst fts
      wellFormedStylizedRecord fts
+     return KType
+   TDist t -> do
+     k <- inferK t
+     expectKType t k
      return KType
 
 checkExistPack :: MonadTC m => ExistPack -> m ()
@@ -178,6 +184,23 @@ inferTy m_ =
       TRecord fts ->
         lookupField fts f
       _ -> throwError $ ProjectFromNonRecord (Got t) (Expected f)
+   Let bnd ->
+     U.lunbind bnd $ \((x, U.unembed -> m1), m2) -> do
+       t <- inferTy m1
+       extendEnv (CVal x t) $ inferTy m2
+   Return m -> do
+     t <- inferTy m
+     return $ TDist t
+   LetSample bnd ->
+     U.lunbind bnd $ \((x, U.unembed -> m1), m2) -> do
+       t <- inferTy m1
+       case t of
+        TDist t' -> do
+          t'' <- extendEnv (CVal x t') $ inferTy m2
+          case t'' of
+           TDist {} -> return t''
+           _ -> throwError $ SampleBodyNotDist (Got t'')
+        _ -> throwError $ SampleFromNonDist (Got t)
    
 instExistPack :: MonadTC m => Type -> Kind -> ExistPack -> m Type
 instExistPack t k bnd =
