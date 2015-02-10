@@ -102,6 +102,7 @@ library
                        --
                        FOmega.SemanticSig
                        FOmega.MatchSigs
+                       FOmega.SubSig
                        --
                        Insomnia.ToF
                        --
