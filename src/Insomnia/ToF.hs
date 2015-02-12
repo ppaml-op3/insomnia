@@ -22,6 +22,7 @@ module Insomnia.ToF where
 
 import Control.Lens
 import Control.Monad.Reader
+import Control.Monad.Trans.Maybe (MaybeT(..))
 import qualified Data.List as List
 import Data.Monoid (Monoid(..), (<>))
 import Data.Typeable (Typeable)
@@ -39,17 +40,20 @@ import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn
 import Insomnia.ModuleType
-
+import Insomnia.Module
+import Insomnia.Expr
+  
 data Env = Env { _tyConEnv :: M.Map TyConName F.SemanticSig
                , _sigEnv   :: M.Map SigIdentifier F.AbstractSig
-               , _modEnv   :: M.Map Identifier F.SemanticSig
+               , _modEnv   :: M.Map Identifier (F.SemanticSig, F.Var)
                , _tyVarEnv :: M.Map TyVar (F.TyVar, F.Kind)
+               , _valEnv    :: M.Map Var (F.Var, F.Type)
                }
 
 $(makeLenses ''Env)
 
 emptyToFEnv :: Env
-emptyToFEnv = Env initialTyConEnv mempty mempty mempty
+emptyToFEnv = Env initialTyConEnv mempty mempty mempty mempty
 
 initialTyConEnv :: M.Map TyConName F.SemanticSig
 initialTyConEnv = M.fromList [(U.s2n "->",
@@ -62,14 +66,20 @@ initialTyConEnv = M.fromList [(U.s2n "->",
     alpha = U.s2n "α"
     beta = U.s2n "β"
 
-class (Functor m, LFresh m, MonadReader Env m) => ToF m
+class (Functor m, LFresh m, MonadReader Env m, MonadPlus m) => ToF m
 
-type ToFM = ReaderT Env U.LFreshM
+type ToFM = MaybeT (ReaderT Env U.LFreshM)
 
 instance ToF ToFM
 
 runToFM :: ToFM a -> a
-runToFM m = U.runLFreshM (runReaderT m emptyToFEnv)
+runToFM m =
+  case U.runLFreshM (runReaderT (runMaybeT m) emptyToFEnv) of
+   Nothing -> error "unexpected failure in ToF.runToFM"
+   Just a -> a
+
+---------------------------------------- Module Types
+
 
 moduleType :: ToF m => ModuleType -> m F.AbstractSig
 moduleType modTy_ =
@@ -124,11 +134,12 @@ withFunctorArgument :: ToF m
                             F.SemanticSig)
                            -> m r)
                        -> m r
-withFunctorArgument (FunctorArgument argId _modK (U.unembed -> modTy)) kont = do
-  (F.AbstractSig bnd) <- moduleType modTy
-  U.lunbind bnd $ \(abstrs, modSig) ->
-    local (modEnv %~ M.insert argId modSig)
-    $ kont (abstrs, modSig)
+withFunctorArgument (FunctorArgument argId _modK (U.unembed -> modTy)) kont =
+  withFreshName (U.name2String argId) $ \modVar -> do
+    (F.AbstractSig bnd) <- moduleType modTy
+    U.lunbind bnd $ \(abstrs, modSig) ->
+      local (modEnv %~ M.insert argId (modSig, modVar))
+      $ kont (abstrs, modSig)
   
 
 patchWhereClause :: ToF m => F.AbstractSig -> WhereClause -> m F.AbstractSig
@@ -150,21 +161,24 @@ dropVarFromAbstrList vs v =
    ([_], rest) -> return rest
    _ -> fail "dropVarFromAbstrList expected exactly one type variable to match"
 
-followTypePath :: LFresh m => F.SemanticSig -> (U.Bind Identifier TypePath) -> m F.SemanticSig
+followTypePath :: ToF m => F.SemanticSig -> (U.Bind Identifier TypePath) -> m F.SemanticSig
 followTypePath mod0 bnd =
-  U.lunbind bnd $ \(_, TypePath modsPath typeField) ->
-    followUserPathAnything (const $ return mod0) (ProjP modsPath typeField)
+  U.lunbind bnd $ \(dkId, TypePath modsPath typeField) ->
+  withFreshName (U.name2String dkId) $ \x ->
+    liftM fst $ followUserPathAnything (const $ return (mod0, F.V x)) (ProjP modsPath typeField)
 
-followUserPathAnything :: Monad m => (Identifier -> m F.SemanticSig) -> Path -> m F.SemanticSig
+followUserPathAnything :: Monad m =>
+                          (Identifier -> m (F.SemanticSig, F.Term))
+                          -> Path -> m (F.SemanticSig, F.Term)
 followUserPathAnything rootLookup (IdP ident) = rootLookup ident
 followUserPathAnything rootLookup (ProjP path f) = do
-  mod1 <- followUserPathAnything rootLookup path
+  (mod1, m) <- followUserPathAnything rootLookup path
   case mod1 of
    (F.ModSem flds) -> do
      let p (F.FUser f', _) | f == f' = True
          p _ = False
      case List.find p flds of
-      Just (_, mod2) -> return mod2
+      Just (_, mod2) -> return (mod2, F.Proj m (F.FUser f))
       Nothing -> fail "unexpectd failure in followUserPathAnything: field not found"
    _ -> fail "unexpected failure in followUserPathAnything: not a module record"
   
@@ -193,8 +207,9 @@ signature' (TypeSig f bnd) =
   U.lunbind bnd $ \((con, U.unembed -> tsd), rest) ->
   typeSigDecl f tsd $ \sig -> local (tyConEnv %~ M.insert con sig) (signature' rest)
 signature' (SubmoduleSig f bnd) =
+  withFreshName f $ \x -> 
   U.lunbind bnd $ \((subModId, U.unembed -> modTy), rest) ->
-  submodule f modTy $ \subSig -> local (modEnv %~ M.insert subModId subSig) (signature' rest)
+  submodule f modTy $ \subSig -> local (modEnv %~ M.insert subModId (subSig, x)) (signature' rest)
 
 submodule :: ToF m => Field -> ModuleType -> (F.SemanticSig -> m SigSummary) -> m SigSummary
 submodule f modTy kont = do
@@ -338,11 +353,132 @@ typeConstructor (TCGlobal (TypePath p f)) = do
     findIt ident = do
       ma <- view (modEnv . at ident)
       case ma of
-       Just sig -> return sig
+       Just (sig, x) -> return (sig, F.V x)
        Nothing -> fail "ToF.typeConstructor: type path has unbound module identifier at the root"
-  s <- followUserPathAnything findIt (ProjP p f)
+  (s, _m) <- followUserPathAnything findIt (ProjP p f)
   case s of
    F.TypeSem t k -> return (t, k)
    _ -> fail "ToF.typeConstructor: type path maps to non-type semantic signature"
   
                       
+---------------------------------------- Modules
+
+moduleExpr :: ToF m => ModuleExpr -> m (F.AbstractSig, F.Term)
+moduleExpr mdl_ =
+  case mdl_ of
+   ModuleStruct mdl -> structure mdl
+   ModuleSeal {} -> fail "unimplemented ToF.moduleExpr ModuleSeal"
+   ModuleAssume {} -> fail "unimplemented ToF.moduleExpr ModuleAssume"
+   ModuleId p -> do
+     (sig, m) <- modulePath p
+     return (F.AbstractSig $ U.bind [] sig, m)
+   ModuleFun {} -> fail "unimplemented ToF.moduleExpr ModuleFun"
+   ModuleApp {} -> fail "unimplemented ToF.moduleExpr ModuleApp"
+   ModuleModel {} -> fail "unimplemented ToF.moduleExpr ModuleModel"
+
+structure :: ToF m => Module -> m (F.AbstractSig, F.Term)
+structure (Module decls) = do
+  declarations decls $ \(summary@(tvks,_), fields) -> do
+    let absSig = mkAbstractModuleSig summary
+    ty <- F.embedAbstractSig absSig
+    let r = F.Record fields
+        m = F.packs (map (F.TV . fst) tvks) r (tvks, ty)
+    return (absSig, m)
+
+-- | Translation declarations.
+-- This is a bit different from how F-ing modules does it in order to avoid producing quite so many
+-- administrative redices, at the expense of being slightly more complex.
+--
+-- So the idea is that each declaration is going to produce two
+-- things: A term with a hole and a description of the extra variable
+-- bindings that it introduces in the scope of the hole.
+--
+-- For example, a type alias "type β = τ" will produce the term
+--    let xβ = ↓[τ] in •   and the description {user field β : [τ]} ⇝ {user field β = xβ}
+-- The idea is that the "SigSummary" part of the description is the abstract semantic signature of the
+-- final structure in which this declaration appears, and the field↦term part is the record value that
+-- will be produced.
+--
+-- For nested submodules we'll have to do a bit more work in order to
+-- extrude the scope of the existential variables (ie, the term with
+-- the hole is an "unpacks" instead of a "let"), but it's the same
+-- idea.
+--
+-- For value bindings we go in two steps: the signature (which was inserted by the type checker if omitted)
+-- just extends the SigSummary, while the actual definition extends the record.
+-- TODO: (This gets mutually recursive functions wrong.  Need a letrec form in fomega)
+declarations :: ToF m => [Decl] -> ((SigSummary, [(F.Field, F.Term)]) -> m (a, F.Term)) -> m (a, F.Term)
+declarations [] kont = kont ((mempty, mempty), mempty)
+declarations (d:ds) kont =
+  case d of
+   ValueDecl f vd -> valueDecl f vd ds kont
+   SubmoduleDefn f me -> submoduleDefn f me ds kont
+   SampleModuleDefn {} -> fail "unimplemented ToF.declarations SubmoduleDefn"
+   TypeAliasDefn {} -> fail "unimplemented ToF.declarations TypeAliasDefn"
+   ImportDecl {} -> fail "unimplemented ToF.declarations ImportDecl"
+   TypeDefn {} -> fail "unimplemented ToF.declarations TypeDefn"
+   
+
+submoduleDefn :: ToF m
+                 => Field
+                 -> ModuleExpr
+                 -> [Decl]
+                 -> ((SigSummary, [(F.Field, F.Term)]) -> m (a, F.Term))
+                 -> m (a, F.Term)
+submoduleDefn f me ds kont = do
+  let modId = U.s2n f
+  (F.AbstractSig bnd, msub) <- moduleExpr me
+  U.lunbind bnd $ \(tvks, modsig) -> do
+    let xv = U.s2n f
+    local (modEnv %~ M.insert modId (modsig, xv))
+      $ declarations ds
+      $ \ans -> do
+        (a, mstruct) <- kont $ ((tvks, [(F.FUser f, modsig)]), [(F.FUser f, F.V xv)]) <> ans
+        let tvs = map fst tvks
+        m <- F.unpacks tvs xv msub mstruct
+        return (a, m)
+
+valueDecl :: ToF m => Field -> ValueDecl -> [Decl]
+             -> ((SigSummary, [(F.Field, F.Term)]) -> m (a, F.Term))
+             -> m (a, F.Term)
+valueDecl f vd ds kont =
+  let v = U.s2n f :: Var
+  in case vd of
+   SigDecl _stoch ty -> do
+     (ty', _k) <- type' ty
+     let vsig = F.ValSem ty'
+         xv = U.s2n f :: F.Var
+     tr <- F.embedSemanticSig vsig
+     local (valEnv %~ M.insert v (xv, tr))
+       $ U.avoid [U.AnyName v]
+       $ declarations ds
+       $ \ans ->
+          kont $ ((mempty, [(F.FUser f, vsig)]), mempty) <> ans
+   FunDecl e -> do
+     mt <- view (valEnv . at v)
+     (xv, _ty) <- case mt of
+       Nothing -> fail "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
+       Just xty -> return xty
+     m <- expr e
+     let mr = F.Record [(F.FVal, m)]
+     declarations ds $ \ans -> do
+       (a, mstruct) <- kont $ (mempty, [(F.FUser f, F.V xv)]) <> ans
+       return (a, F.Let $ U.bind (xv, U.embed mr) $ mstruct)
+   _ -> fail "unimplemented ToF.valueDecl"
+
+modulePath :: ToF m => Path
+              -> m (F.SemanticSig, F.Term)
+modulePath = let
+  rootLookup modId = do
+    ma <- view (modEnv . at modId)
+    case ma of
+     Nothing -> fail "unexpected failure in ToF.modulePath - unbound module identifier"
+     Just (sig, x) -> return (sig, F.V x)
+  in
+   followUserPathAnything rootLookup
+
+
+---------------------------------------- Core language
+
+expr :: ToF m => Expr -> m F.Term
+expr _ = fail "unimplemented: ToF.expr"
