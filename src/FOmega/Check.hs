@@ -8,7 +8,7 @@ import Control.Monad.Reader
 import Data.Monoid
 import qualified Data.List as List
 import qualified Data.Set as S
-import Insomnia.Except
+import Control.Monad.Except
 
 
 import qualified Unbound.Generics.LocallyNameless as U

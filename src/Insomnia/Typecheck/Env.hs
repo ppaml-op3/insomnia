@@ -22,7 +22,7 @@ import Data.Monoid (Monoid(..), (<>))
 import qualified Unbound.Generics.LocallyNameless as U
 import Unbound.Generics.LocallyNameless.LFresh (LFreshMT, runLFreshMT)
 
-import Insomnia.Except (Except, runExcept)
+import Control.Monad.Except (Except, runExcept)
 
 import Insomnia.Identifier
 import Insomnia.Types

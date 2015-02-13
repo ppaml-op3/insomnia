@@ -6,7 +6,7 @@ import Control.Applicative
 import Control.Monad.Reader
 import Control.Monad.Error.Class
 import qualified Control.Monad.State.Lazy as LazyST
-import Insomnia.Except
+import Control.Monad.Except
 
 import qualified Data.Map as M
 import Data.Monoid (Endo(..))
