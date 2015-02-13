@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings, NamedFieldPuns #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
-module Insomnia.SurfaceSyntax.Parse (parseFile, parseText, moduleTypeExpr, toplevel) where
+module Insomnia.SurfaceSyntax.Parse (parseFile, parseText, moduleTypeExpr, moduleExpr, toplevel) where
 
 import Control.Applicative
 import Control.Monad (guard)

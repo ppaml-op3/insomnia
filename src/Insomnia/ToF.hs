@@ -22,7 +22,7 @@ module Insomnia.ToF where
 
 import Control.Lens
 import Control.Monad.Reader
-import Control.Monad.Trans.Maybe (MaybeT(..))
+import Control.Monad.Except (ExceptT(..))
 import qualified Data.List as List
 import Data.Monoid (Monoid(..), (<>))
 import Data.Typeable (Typeable)
@@ -68,15 +68,15 @@ initialTyConEnv = M.fromList [(U.s2n "->",
 
 class (Functor m, LFresh m, MonadReader Env m, MonadPlus m) => ToF m
 
-type ToFM = MaybeT (ReaderT Env U.LFreshM)
+type ToFM = ExceptT String (ReaderT Env U.LFreshM)
 
 instance ToF ToFM
 
 runToFM :: ToFM a -> a
 runToFM m =
-  case U.runLFreshM (runReaderT (runMaybeT m) emptyToFEnv) of
-   Nothing -> error "unexpected failure in ToF.runToFM"
-   Just a -> a
+  case U.runLFreshM (runReaderT (runExceptT m) emptyToFEnv) of
+   Left s -> error $ "unexpected failure in ToF.runToFM: " ++ s
+   Right a -> a
 
 ---------------------------------------- Module Types
 
@@ -455,6 +455,7 @@ valueDecl f vd ds kont =
        $ \ans ->
           kont $ ((mempty, [(F.FUser f, vsig)]), mempty) <> ans
    FunDecl e -> do
+     -- XXX todo: need to add universally quantified type variables to the context.
      mt <- view (valEnv . at v)
      (xv, _ty) <- case mt of
        Nothing -> fail "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
@@ -481,4 +482,32 @@ modulePath = let
 ---------------------------------------- Core language
 
 expr :: ToF m => Expr -> m F.Term
-expr _ = fail "unimplemented: ToF.expr"
+expr e_ =
+  case e_ of
+   V x -> do
+     mx <- view (valEnv . at x)
+     case mx of
+      Nothing -> fail "unexpected failure: ToF.expr variable not in scope"
+      Just (x',_t) -> return $ F.V x'
+   Q (QVar p f) -> do
+     let
+       findIt ident = do
+         ma <- view (modEnv . at ident)
+         case ma of
+          Just (sig, x) -> return (sig, F.V x)
+          Nothing -> fail "ToF.expr: type path has unbound module identifier at the root"
+     (_sig, m) <- followUserPathAnything findIt (ProjP p f)
+     -- assume _sig is a F.ValSem
+     return $ F.Proj m F.FVal
+   Lam bnd ->
+     U.lunbind bnd $ \((x, U.unembed -> (Annot mt)), e) -> do
+       t <- case mt of
+        Nothing -> fail "unexpected failure: ToF.expr lambda without type annotation"
+        Just t -> return t
+       (t', _k) <- type' t
+       withFreshName (U.name2String x) $ \x' ->
+         local (valEnv %~ M.insert x (x', t')) $ do
+           m <- expr e
+           return $ F.Lam $ U.bind (x', U.embed t') m
+   -- XXX: In the App case, also need to deal with polymorphic instantiation.  sucks!
+   _ -> fail "unimplemented ToF.expr"

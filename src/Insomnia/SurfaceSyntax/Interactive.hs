@@ -5,11 +5,17 @@ import qualified Data.Text as T
 
 import Data.Format (docToString, Format(format))
 
+import qualified Unbound.Generics.LocallyNameless as U
+
+import FOmega.Syntax as F
 import FOmega.SemanticSig as F
 
 import qualified Insomnia.SurfaceSyntax.Parse as P
 import qualified Insomnia.SurfaceSyntax.ToAST as ToAST
 import qualified Insomnia.ToF as ToF
+import Insomnia.Typecheck.Env as TC
+import Insomnia.Typecheck.Module as TC
+import Insomnia.Identifier (Path(..))
 
 -- | Parse a module type expression (most commonly a signature),
 -- convert it to an Insomnia AST, then convert it to an FOmega
@@ -27,3 +33,17 @@ moduleType txt = do
   let modTy = ToAST.runToAST ToAST.toASTbaseCtx (ToAST.moduleType syn)
       abstr = ToF.runToFM $ ToF.moduleType modTy
   return abstr
+
+moduleExpr :: T.Text -> IO (F.AbstractSig, F.Term)
+moduleExpr txt = do
+  let okOrErr = P.parseText "-" txt P.moduleExpr
+  syn <- case okOrErr of
+    Left err -> fail (docToString $ format err)
+    Right ok -> return ok
+  let modExpr = ToAST.runToAST ToAST.toASTbaseCtx (ToAST.moduleExpr syn)
+      tc = TC.runTC $ TC.inferModuleExpr (IdP $ U.s2n "M") modExpr (\modExpr' _ -> return modExpr')
+  modExpr' <- case tc of
+    Left err -> fail (docToString $ format err)
+    Right (ok, _) -> return ok
+  let z = ToF.runToFM $ ToF.moduleExpr modExpr'
+  return z
