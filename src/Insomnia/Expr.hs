@@ -40,7 +40,18 @@ data Expr = V !Var
           | Let !(Bind Bindings Expr)
           | Ann !Expr !Type
           | Return !Expr
+            -- | internal node for explicit instantiation.  The type
+            -- unification algorithm inserts these.
+          | Instantiate !Expr !InstantiationCoercion
             deriving (Show, Typeable, Generic)
+
+type TypeScheme = Type
+
+-- | Instantiation coercions record evidence for the instantiation of
+-- a polymorphic function with some (perhaps zero) arguments.
+data InstantiationCoercion =
+  InstantiationSynthesisCoercion !TypeScheme ![Type] !Type -- ∀αs.ρ ≤ [αs↦τs]ρ
+  deriving (Show, Typeable, Generic)
 
 type AnnVar = (Var, Embed Annot)
 
@@ -105,6 +116,7 @@ isStochasticBinding (ValB {}) = False
 -- All these types have notions of alpha equivalence upto bound
 -- term and type variables.
 instance Alpha Expr
+instance Alpha InstantiationCoercion
 instance Alpha QVar
 instance Alpha Pattern
 instance Alpha Clause
@@ -132,6 +144,7 @@ instance Subst Expr TabulatedFun
 instance Subst Expr TabSample
 
 -- Capture avoid substitution of types for type variables in the following.
+instance Subst Type InstantiationCoercion
 instance Subst Type Clause
 instance Subst Type Pattern
 instance Subst Type Expr
@@ -142,6 +155,7 @@ instance Subst Type TabulatedFun
 instance Subst Type TabSample
 
 instance Subst Path Expr
+instance Subst Path InstantiationCoercion
 instance Subst Path QVar
 instance Subst Path Annot
 instance Subst Path Bindings
@@ -161,6 +175,7 @@ instance Subst ValueConstructor Clause
 instance Subst ValueConstructor TabSelector
 
 instance Subst TypeConstructor Expr
+instance Subst TypeConstructor InstantiationCoercion
 instance Subst TypeConstructor Pattern
 instance Subst TypeConstructor Annot
 instance Subst TypeConstructor Bindings
@@ -213,6 +228,9 @@ instance Subst Path TabSelector where
   subst _ _ = id
   substs _ = id
 
+instance Subst ValueConstructor InstantiationCoercion where
+  subst _ _ = id
+  substs _ = id
 instance Subst ValueConstructor QVar where
   subst _ _ = id
   substs _ = id
@@ -228,6 +246,9 @@ instance Subst TypeConstructor TabSelector where
   subst _ _ = id
   substs _ = id
 
+instance Subst Expr InstantiationCoercion where
+  subst _ _ = id
+  substs _ = id
 
 -- ========================================
 -- Traversals
@@ -252,6 +273,7 @@ instance Plated Expr where
     let (bindings, e) = UU.unsafeUnbind bnd
     in Let <$> (bind <$> traverseExprs f bindings <*> f e)
   plate f (Return e) = Return <$> f e
+  plate f (Instantiate e co) = Instantiate <$> f e <*> pure co
 
 class TraverseExprs s t where
   traverseExprs :: Traversal s t Expr Expr
@@ -298,7 +320,12 @@ instance TraverseTypes Expr Expr where
     in Let <$> (bind <$> traverseTypes f bindings <*> pure e)
   traverseTypes f (Ann e t) =
     Ann e <$> f t
-    
+  traverseTypes f (Instantiate e co) =
+    Instantiate <$> pure e <*> traverseTypes f co
+
+instance TraverseTypes InstantiationCoercion InstantiationCoercion where
+  traverseTypes f (InstantiationSynthesisCoercion sigma ts rho) =
+    InstantiationSynthesisCoercion <$> f sigma <*> traverse f ts <*> f rho
 
 instance TraverseTypes Annot Annot where
   traverseTypes _ (Annot Nothing) = pure (Annot Nothing)

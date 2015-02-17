@@ -263,12 +263,12 @@ instance (MonadUnify TypeUnificationError Type m,
             constraintMap <- reflectCollectedConstraints
             throwUnificationFailure
               $ Unsimplifiable (SimplificationFail constraintMap t1 t2)
-      (TForall bnd1, _) ->
-        lunbind bnd1 $ \ ((v1, _), t1_) -> do
-          tu1 <- freshUVarT
-          let t1' = subst v1 tu1 t1_
-          t1' =?= t2
-      (_, TForall {}) -> t2 =?= t1
+      -- (TForall bnd1, _) ->
+      --   lunbind bnd1 $ \ ((v1, _), t1_) -> do
+      --     tu1 <- freshUVarT
+      --     let t1' = subst v1 tu1 t1_
+      --     t1' =?= t2
+      -- (_, TForall {}) -> t2 =?= t1
       (TRecord row1, TRecord row2) -> row1 =?= row2
       (TUVar u1, TUVar u2) | u1 == u2 -> return ()
       (TUVar u1, _)                   -> u1 -?= t2

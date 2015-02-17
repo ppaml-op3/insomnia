@@ -68,6 +68,7 @@ library
                        --
                        Insomnia.Typecheck.Type
                        Insomnia.Typecheck.Expr
+                       Insomnia.Typecheck.Polymorphism
                        --
                        Insomnia.Typecheck.WhnfModuleType
                        --

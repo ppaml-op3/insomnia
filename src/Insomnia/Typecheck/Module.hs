@@ -17,7 +17,7 @@ import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
 import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
-                       Type(..), freshUVarT)
+                       Type(..), freshUVarT, transformEveryTypeM)
 import Insomnia.Expr (Var, Expr, TabulatedFun)
 import Insomnia.ModuleType (ModuleTypeNF(..),
                             Signature(..),
@@ -288,7 +288,8 @@ checkFunDecl fname mty_ e = do
       case mty of
         Just ty -> tu =?= ty
         Nothing -> return ()
-      checkExpr e tu
+      e_ <- checkExpr e tu
+      transformEveryTypeM applyCurrentSubstitution e_
     let
       funDecl = singleCheckedValueDecl $ FunDecl e'
     sigDecl <- case mty_ of
@@ -339,7 +340,8 @@ checkSampleDecl fld mty e = do
     case mty of
       Just ty -> tu =?= ty
       Nothing -> return ()
-    e' <- checkExpr e (distT tu)
+    e_ <- checkExpr e (distT tu)
+    e' <- transformEveryTypeM applyCurrentSubstitution e_
     let
       sampleDecl = singleCheckedValueDecl $ SampleDecl e'
     sigDecl <- case mty of
@@ -360,7 +362,8 @@ checkParameterDecl fld mty e = do
     case mty of
      Just ty -> tu =?= ty
      Nothing -> return ()
-    e' <- checkExpr e tu
+    e_ <- checkExpr e tu
+    e' <- transformEveryTypeM applyCurrentSubstitution e_
     let
       paramDecl = singleCheckedValueDecl $ ParameterDecl e'
     sigDecl <- case mty of

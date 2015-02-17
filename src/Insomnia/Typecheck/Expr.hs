@@ -7,7 +7,7 @@ import Control.Applicative ((<$>))
 import Control.Monad (forM, when, unless, void, zipWithM)
 
 import Data.List (foldl')
-import Data.Monoid (Monoid(..), (<>))
+import Data.Monoid (Monoid(..), (<>), Endo(..))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
@@ -41,9 +41,9 @@ checkVariable lookupV mkV v t_ = do
   mt <- lookupV v
   case mt of
     Nothing -> typeError ("unbound variable " <> formatErr v)
-    Just tv -> instantiate tv $ \t' -> do
+    Just tv -> instantiate tv $ \t' mkCo -> do
       t_ =?= t'
-      return $ mkV v
+      return $ mkCo (mkV v)
 
 checkExpr :: Expr -> Type -> TC Expr
 checkExpr e_ t_ = case e_ of
@@ -62,13 +62,13 @@ checkExpr e_ t_ = case e_ of
   C c -> do
     constr <- lookupValueConstructor c
     ty <- mkConstructorType constr
-    instantiate ty $ \ty' -> do
+    instantiate ty $ \ty' mkCo -> do
       ty' =?= t_
-      return $ C c
+      return $ mkCo (C c)
   App e1_ e2_ -> do
     (t1, e1') <- inferExpr e1_
     (tdom, tcod) <- unifyFunctionT t1
-                    <??@ ("while trying to apply " <> formatErr e1_
+                    <??@ ("while trying to apply " <> formatErr e1'
                           <> " to " <> formatErr e2_)
     e2' <- checkExpr e2_ tdom
            <??@ ("when checking argument " <> formatErr e2_
@@ -231,14 +231,14 @@ inferExpr e_ = case e_ of
     mt <- lookupLocal v
     case mt of
       Nothing -> typeError ("unbound variable " <> formatErr v)
-      Just tv -> instantiate tv $ \t' -> 
-        return (t', V v)
+      Just tv -> instantiate tv $ \t' mkCo -> 
+        return (t', mkCo $ V v)
   Q qvar -> do
     mt <- lookupGlobal qvar
     case mt of
       Nothing -> typeError ("unbound variable " <> formatErr qvar)
-      Just tv -> instantiate tv $ \t' ->
-        return (t', Q qvar)
+      Just tv -> instantiate tv $ \t' mkCo ->
+        return (t', mkCo $ Q qvar)
   App e1_ e2_ -> do
     (t1, e1') <- inferExpr e1_
     (tdom, tcod) <- unifyFunctionT t1
@@ -253,7 +253,8 @@ inferExpr e_ = case e_ of
   C c -> do
     constr <- lookupValueConstructor c
     ty <- mkConstructorType constr
-    return (ty, C c)
+    instantiate ty $ \ty' mkCo -> 
+      return (ty', mkCo $ C c)
   Ann e1_ t_ -> do
     t <- checkType t_ KType
          <??@ ("while checking type annotation " <> formatErr e_)
@@ -303,16 +304,20 @@ ensureVisibleSelector v = do
 
 -- | Given a type ∀ α1∷K1 ⋯ αN∷KN . τ, pick fresh unification vars u1,…,uN
 -- and pass τ[u/α] to the given continuation.
-instantiate :: Type -> (Type -> TC a) -> TC a
-instantiate ty kont =
-  case ty of
-    TForall bnd -> U.lunbind bnd $ \ ((tv, _), ty') -> do
-      tu <- TUVar<$> unconstrained
-      instantiate (U.subst tv tu ty') kont
-    _ -> kont ty
+instantiate :: Type -> (Type -> (Expr -> Expr) -> TC a) -> TC a
+instantiate ty_ kont =
+  instantiate' ty_ mempty
+  where
+    instantiate' ty args = case ty of
+      TForall bnd -> U.lunbind bnd $ \ ((tv, _), ty') -> do
+        tu <- TUVar<$> unconstrained
+        instantiate' (U.subst tv tu ty') (args <> Endo (tu:))
+      _ -> kont ty (let tus = appEndo args []
+                    in if null tus then id else
+                         (\e -> Instantiate e $ InstantiationSynthesisCoercion ty_ tus ty))
 
 -- | Given α1∷ ⋯ αN.KN . 〈τ1, …, τM〉, pick fresh unification vars u1,…,uN
--- and pass 〈u1,…,uN〉 and 〈τ1[u/α], …, τM[u/α]〉 to the continuation
+-- and pass 〈u1,…,uN〉 and 〈τ1[us/αs], …, τM[us/αs]〉 to the continuation
 instantiateConstructorArgs :: ConstructorArgs -> ([Type] -> [Type] -> TC a) -> TC a
 instantiateConstructorArgs bnd kont =
   U.lunbind bnd $ \ (tvks, targs) -> do

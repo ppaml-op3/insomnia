@@ -22,7 +22,7 @@ module Insomnia.ToF where
 
 import Control.Lens
 import Control.Monad.Reader
-import Control.Monad.Except (ExceptT(..))
+import Control.Monad.Except (ExceptT, runExceptT)
 import qualified Data.List as List
 import Data.Monoid (Monoid(..), (<>))
 import Data.Typeable (Typeable)
