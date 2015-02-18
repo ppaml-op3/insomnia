@@ -59,6 +59,7 @@ ppTerm :: Term -> PM Doc
 ppTerm m_ =
   case m_ of
    V v -> pp v
+   L l -> pp l
    Lam bnd ->
      let ((v, U.unembed -> t), body) = UU.unsafeUnbind bnd
      in precParens 1

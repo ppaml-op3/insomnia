@@ -33,6 +33,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import qualified FOmega.Syntax as F
 import qualified FOmega.SemanticSig as F
+import qualified FOmega.SubSig as F
 
 import Insomnia.Common.ModuleKind
 import Insomnia.Common.Telescope
@@ -374,7 +375,7 @@ moduleExpr :: ToF m => ModuleExpr -> m (F.AbstractSig, F.Term)
 moduleExpr mdl_ =
   case mdl_ of
    ModuleStruct mdl -> structure mdl
-   ModuleSeal {} -> fail "unimplemented ToF.moduleExpr ModuleSeal"
+   ModuleSeal me mt -> sealing me mt
    ModuleAssume {} -> fail "unimplemented ToF.moduleExpr ModuleAssume"
    ModuleId p -> do
      (sig, m) <- modulePath p
@@ -391,6 +392,27 @@ structure (Module decls) = do
     let r = F.Record fields
         m = F.packs (map (F.TV . fst) tvks) r (tvks, ty)
     return (absSig, appEndo termHole m)
+
+-- | In the F-ing modules paper, (M:>S) is syntactic sugar, and only
+-- (X :> S) is primitive.  But if we expand out the sugar and apply
+-- some commuting conversions, we get something in nice form and we
+-- choose to implement that nice form.
+--
+--    
+--  〚(M :> S)〛 = 〚({ X = M ; X' = (X :> S) }.X')〛
+--    = unpack (βs, y) = 〚{ X = M ; X' = (X :> S)}〛in pack (βs, y.lX')
+--    = unpack (βs, y) = (unpack (γ1s, z1) = 〚M〛in unpack (γ2s, z2) = 〚(X :> S)〛[z1 / X] in pack (γ1s++γ2s, { lX = z1 ; lX' = z2 })) in pack (βs, y.lX')
+--    = unpack (γ1s, z1) = 〚M〛in unpack (γ2s, z2) = 〚(X :> S)〛[z1/X] in unpack (βs,y) = pack (γ1s++γ2s, { lX = X ; lX' = z2 }) in pack (βs, y.lX')
+--    = unpack (γ1s, z1) = 〚M〛 in unpack (γ2s, z2) = 〚(X :> S)〛[z1/X] in pack (γ1s++γ2s, z2)
+--    = unpack (γ1s, z1) = 〚M〛 in unpack (γ2s, z2) = pack (τs, f z1) in pack (γ1s++γ2s, z2) where Σ ≤ Ξ ↑ τs ⇝ f where Σ is the type of z1 and Ξ is 〚S〛
+--    = unpack (γ1s, z1) = 〚M〛 in pack (γ1s++τs, f z1)
+--
+-- In other words, elaborate M and S and construct the coercion f and
+-- discover the sealed types τs, then pack anything that M abstracted
+-- together with anything that S seals.  (The one missing bit is the
+-- type annotation on the "pack" term.)
+sealing :: ToF m => ModuleExpr -> ModuleType -> m (F.AbstractSig, F.Term)
+sealing me mt = fail "finish me ToF.sealing"
 
 -- | Translation declarations.
 -- This is a bit different from how F-ing modules does it in order to avoid producing quite so many
@@ -416,42 +438,62 @@ structure (Module decls) = do
 -- TODO: (This gets mutually recursive functions wrong.  Need a letrec form in fomega)
 declarations :: ToF m => [Decl] -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans) -> m ans
 declarations [] kont = kont mempty 
-declarations (d:ds) kont =
-  case d of
-   ValueDecl f vd -> valueDecl f vd ds kont
-   SubmoduleDefn f me -> submoduleDefn f me ds kont
-   SampleModuleDefn {} -> fail "unimplemented ToF.declarations SubmoduleDefn"
-   TypeAliasDefn {} -> fail "unimplemented ToF.declarations TypeAliasDefn"
-   ImportDecl {} -> fail "unimplemented ToF.declarations ImportDecl"
-   TypeDefn {} -> fail "unimplemented ToF.declarations TypeDefn"
+declarations (d:ds) kont = let
+  kont1 out1 = declarations ds $ \outs -> kont $ out1 <> outs
+  in case d of
+      ValueDecl f vd -> valueDecl f vd kont1
+      SubmoduleDefn f me -> submoduleDefn f me kont1
+      SampleModuleDefn {} -> fail "unimplemented ToF.declarations SubmoduleDefn"
+      TypeAliasDefn f al -> typeAliasDefn f al kont1
+      ImportDecl {} -> fail "unimplemented ToF.declarations ImportDecl"
+      TypeDefn {} -> fail "unimplemented ToF.declarations TypeDefn"
    
+typeAliasDefn :: ToF m
+                 => Field
+                 -> TypeAlias
+                 -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
+                 -> m ans
+typeAliasDefn f (TypeAlias bnd) kont =
+  U.lunbind bnd $ \ (tvks, rhs) -> do
+    (tlam, tK) <- withTyVars tvks $ \tvks' -> do
+      (rhs', kcod) <- type' rhs
+      return (F.tLams tvks' rhs', F.kArrs (map snd tvks') kcod)
+    let tsig = F.TypeSem tlam tK
+        tc = U.s2n f :: TyConName
+        xc = U.s2n f :: F.Var
+    msig <- F.typeSemTerm tlam tK
+    let
+      mr = F.Record [(F.FType, msig)]
+      mhole = Endo $ F.Let . U.bind (xc, U.embed mr)
+      thisOne = ((mempty, [(F.FUser f, tsig)]),
+                 [(F.FUser f, F.V xc)],
+                 mhole)
+    local (tyConEnv %~ M.insert tc tsig) $
+      kont thisOne
 
 submoduleDefn :: ToF m
                  => Field
                  -> ModuleExpr
-                 -> [Decl]
                  -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
                  -> m ans
-submoduleDefn f me ds kont = do
+submoduleDefn f me kont = do
   let modId = U.s2n f
   (F.AbstractSig bnd, msub) <- moduleExpr me
   U.lunbind bnd $ \(tvks, modsig) -> do
     let xv = U.s2n f
-    local (modEnv %~ M.insert modId (modsig, xv))
-      $ declarations ds
-      $ \ans -> do
-        let tvs = map fst tvks
-        munp <- F.unpacksM tvs xv
-        let m = Endo $ munp msub
-            thisOne = ((tvks, [(F.FUser f, modsig)]),
-                       [(F.FUser f, F.V xv)],
-                       m)
-        kont $ thisOne <> ans
+    local (modEnv %~ M.insert modId (modsig, xv)) $ do
+      let tvs = map fst tvks
+      munp <- F.unpacksM tvs xv
+      let m = Endo $ munp msub
+          thisOne = ((tvks, [(F.FUser f, modsig)]),
+                     [(F.FUser f, F.V xv)],
+                     m)
+      kont thisOne
 
-valueDecl :: ToF m => Field -> ValueDecl -> [Decl]
+valueDecl :: ToF m => Field -> ValueDecl
              -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
              -> m ans
-valueDecl f vd ds kont =
+valueDecl f vd kont =
   let v = U.s2n f :: Var
   in case vd of
    SigDecl _stoch ty -> do
@@ -459,16 +501,13 @@ valueDecl f vd ds kont =
      let vsig = F.ValSem ty'
          xv = U.s2n f :: F.Var
      tr <- F.embedSemanticSig vsig
+     let thisOne = ((mempty, [(F.FUser f, vsig)]),
+                    mempty,
+                    mempty)
      local (valEnv %~ M.insert v (xv, tr))
        $ U.avoid [U.AnyName v]
-       $ declarations ds
-       $ \ans ->
-          let thisOne = ((mempty, [(F.FUser f, vsig)]),
-                         mempty,
-                         mempty)
-          in kont $ thisOne <> ans
+       $ kont thisOne
    FunDecl e -> do
-     -- XXX todo: need to add universally quantified type variables to the context.
      mt <- view (valEnv . at v)
      (xv, ty_) <- case mt of
        Nothing -> fail "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
@@ -477,14 +516,13 @@ valueDecl f vd ds kont =
      m <- tyVarsAbstract ty $ \tvks _ty' -> do
        m_ <- expr e
        return $ F.pLams tvks m_
-     let mr = F.Record [(F.FVal, m)]
-     declarations ds $ \ans -> do
-       let
-         mhole = Endo $ F.Let . U.bind (xv, U.embed mr)
-         thisOne = (mempty,
-                    [(F.FUser f, F.V xv)],
-                    mhole)
-       kont $ thisOne <> ans
+     let
+       mr = F.Record [(F.FVal, m)]
+       mhole = Endo $ F.Let . U.bind (xv, U.embed mr)
+       thisOne = (mempty,
+                  [(F.FUser f, F.V xv)],
+                  mhole)
+     kont thisOne
    _ -> fail "unimplemented ToF.valueDecl"
 
 matchSemValRecord :: Monad m => F.Type -> m F.Type
@@ -529,6 +567,7 @@ expr e_ =
      case mx of
       Nothing -> fail "unexpected failure: ToF.expr variable not in scope"
       Just (x',_t) -> return $ F.V x'
+   L l -> return $ F.L l
    Q (QVar p f) -> do
      let
        findIt ident = do
@@ -557,7 +596,14 @@ expr e_ =
      m1 <- expr e1
      m2 <- expr e2
      return $ F.App m1 m2
-   -- XXX: In the App case, also need to deal with polymorphic instantiation.  sucks!
+   Record les -> do
+     fms <- forM les $ \(Label l, e) -> do
+       m <- expr e
+       return (F.FUser l, m)
+     return $ F.Record fms
+   Ann {} -> fail "unexpected failure: ToF.expr saw an Ann term"
+   Return e -> liftM F.Return $ expr e
+   
    _ -> fail "unimplemented ToF.expr"
 
 -- | Given an instantiation coerction ∀αs.ρ ≤ [αs↦τs]ρ construct a function

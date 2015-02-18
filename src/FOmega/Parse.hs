@@ -13,6 +13,8 @@ import Text.Parsec.Text hiding (Parser)
 import qualified Text.Parsec.Token as Tok
 import Text.Parsec.Token (GenLanguageDef(..), GenTokenParser)
 
+import Insomnia.Common.Literal
+
 import FOmega.Syntax
 
 type Parser = Parsec Text ()
@@ -42,7 +44,7 @@ Tok.TokenParser {braces, brackets
                    , operator, reservedOp
                    , lexeme
                    , parens, whiteSpace
-                   , integer, natural, float
+                   , integer, natural, float, naturalOrFloat
                    , comma, colon, dot
                    , commaSep, semiSep
                    } = Tok.makeTokenParser fomegaLang
@@ -151,6 +153,7 @@ termExpr = buildExpressionParser table termSummand
     -- (E) or v or \\x:t.E or /\x:t.E or {...} or E.f
     termFactor = parens termExpr
                  <|> varTerm
+                 <|> litTerm
                  <|> lamOrPlamTerm
                  <|> recordTerm
                  <|> packTerm
@@ -167,6 +170,13 @@ termExpr = buildExpressionParser table termSummand
 
 varTerm :: Parser Term
 varTerm = V <$> variableIdentifier
+
+litTerm :: Parser Term
+litTerm = L <$> literal
+  where
+    literal = toLiteral <$> naturalOrFloat
+    toLiteral (Right d) = RealL d
+    toLiteral (Left i) = IntL i
 
 -- λ (x1:t1) [a1:k1] ... (xN:tN) . e
 lamOrPlamTerm :: Parser Term

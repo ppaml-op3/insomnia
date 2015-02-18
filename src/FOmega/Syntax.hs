@@ -4,6 +4,8 @@ module FOmega.Syntax where
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
+import Insomnia.Common.Literal
+
 import Unbound.Generics.LocallyNameless
 import {-# SOURCE #-} FOmega.Pretty (ppType, ppTerm, ppKind)
 import Insomnia.Pretty (Pretty(..))
@@ -47,6 +49,7 @@ type Var = Name Term
 
 data Term =
   V !Var
+  | L !Literal
   | Lam !(Bind (Var, Embed Type) Term)
   | App !Term !Term
   | Let !(Bind (Var, Embed Term) Term)
@@ -96,6 +99,10 @@ instance Subst Term Kind where
   subst _ _ = id
   substs _ = id
 
+instance Subst Term Literal where
+  subst _ _ = id
+  substs _ = id
+
 -- * Pretty printing
 
 instance Pretty Kind where pp = ppKind
@@ -107,6 +114,11 @@ instance Pretty Term where pp = ppTerm
 kArrs :: [Kind] -> Kind -> Kind
 kArrs [] = id
 kArrs (k:ks) = KArr k . kArrs ks
+
+tLams :: [(TyVar, Kind)] -> Type -> Type
+tLams [] = id
+tLams ((tv,k):tvks) =
+  TLam . bind (tv, embed k) . tLams tvks
 
 tForalls :: [(TyVar, Kind)] -> Type -> Type
 tForalls [] = id
