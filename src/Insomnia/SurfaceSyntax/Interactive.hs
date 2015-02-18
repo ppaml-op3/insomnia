@@ -3,7 +3,7 @@ module Insomnia.SurfaceSyntax.Interactive where
 
 import qualified Data.Text as T
 
-import Data.Format (docToString, Format(format))
+import Data.Format (putStrDoc, docToString, Format(format))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
@@ -16,6 +16,7 @@ import qualified Insomnia.ToF as ToF
 import Insomnia.Typecheck.Env as TC
 import Insomnia.Typecheck.Module as TC
 import Insomnia.Identifier (Path(..))
+import Insomnia.Pretty (ppDefault)
 
 -- | Parse a module type expression (most commonly a signature),
 -- convert it to an Insomnia AST, then convert it to an FOmega
@@ -45,5 +46,9 @@ moduleExpr txt = do
   modExpr' <- case tc of
     Left err -> fail (docToString $ format err)
     Right (ok, _) -> return ok
-  let z = ToF.runToFM $ ToF.moduleExpr modExpr'
+  putStrDoc (format $ ppDefault modExpr')
+  putStrLn "\n-----"
+  let z@(_, tm) = ToF.runToFM $ ToF.moduleExpr modExpr'
+  putStrDoc (format $ ppDefault tm)
+  putStrLn "\n"
   return z

@@ -133,6 +133,17 @@ tArrs :: [Type] -> Type -> Type
 tArrs [] = id
 tArrs (t:ts) = (t `TArr`) . tArrs ts
 
+pLams :: [(TyVar, Kind)] -> Term -> Term
+pLams [] = id
+pLams ((tv,k):tvks) =
+  PLam . bind (tv, embed k) . pLams tvks
+
+pApps :: Term -> [Type] -> Term
+pApps = flip pApps'
+  where
+    pApps' [] = id
+    pApps' (t:ts) = pApps' ts . (`PApp` t)
+
 -- | packs τs, e as ∃αs.τ' defined as
 -- packs ε, e as ∃·.τ ≙ e
 -- packs τ:τs, e as ∃α,αs.τ' ≙ pack τ, packs τs, e ∃αs.τ'[τ/α] as ∃α,αs.τ'
@@ -147,9 +158,15 @@ packs taus_ m_ (tvks_, tbody_) =
       in Pack tau m' (bind tvk t')
     go _ _ _ _ = error "expected lists of equal length"
 
-unpacks :: LFresh m => [TyVar] -> Var -> Term -> Term -> m Term
-unpacks [] x e1 ebody = return $ Let $ bind (x, embed e1) ebody
-unpacks (tv:tvs) x e1 ebody = do
+unpacksM :: LFresh m => [TyVar] -> Var -> m (Term -> Term -> Term)
+unpacksM [] x = return $ \e1 ebody -> Let $ bind (x, embed e1) ebody
+unpacksM (tv:tvs) x = do
   x1 <- lfresh x
-  ebody' <- avoid [AnyName x1] $ unpacks tvs x (V x1) ebody
-  return $ Unpack $ bind (tv, x1, embed e1) ebody'
+  rest <- avoid [AnyName x1] (unpacksM tvs x)
+  return $ \e1 -> Unpack . bind (tv, x1, embed e1) . rest (V x1)
+
+unpacks :: LFresh m => [TyVar] -> Var -> Term -> Term -> m Term
+unpacks tvs x e1 ebody = do
+  rest <- unpacksM tvs x
+  return $ rest e1 ebody
+

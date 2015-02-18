@@ -24,7 +24,7 @@ import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.Except (ExceptT, runExceptT)
 import qualified Data.List as List
-import Data.Monoid (Monoid(..), (<>))
+import Data.Monoid (Monoid(..), (<>), Endo(..))
 import Data.Typeable (Typeable)
 import qualified Data.Map as M
 
@@ -58,6 +58,8 @@ emptyToFEnv = Env initialTyConEnv mempty mempty mempty mempty
 initialTyConEnv :: M.Map TyConName F.SemanticSig
 initialTyConEnv = M.fromList [(U.s2n "->",
                                F.TypeSem arrowLam ([F.KType, F.KType] `F.kArrs` F.KType))
+                             , (U.s2n "Real", F.TypeSem (F.TV $ U.s2n "Real") F.KType)
+                             , (U.s2n "Int", F.TypeSem (F.TV $ U.s2n "Int") F.KType) 
                              ]
   where
     arrowLam = F.TLam $ U.bind (alpha, U.embed F.KType) $
@@ -314,7 +316,12 @@ type' t_ =
      mv <- view (tyVarEnv . at tv)
      case mv of
       Just (tv', k') -> return (F.TV tv', k')
-      Nothing -> fail "ToF.type' internal error: type variable not in environment"
+      Nothing -> do
+        env <- view tyVarEnv
+        env' <- view valEnv
+        fail ("ToF.type' internal error: type variable " <> show tv
+              <> " not in environment " <> show env
+              <> " and value env " <> show env')
    TUVar _ -> fail "ToF.type' internal error: unexpected unification variable"
    TC tc -> typeConstructor tc
    TAnn t k -> do
@@ -378,12 +385,12 @@ moduleExpr mdl_ =
 
 structure :: ToF m => Module -> m (F.AbstractSig, F.Term)
 structure (Module decls) = do
-  declarations decls $ \(summary@(tvks,_), fields) -> do
+  declarations decls $ \(summary@(tvks,_), fields, termHole) -> do
     let absSig = mkAbstractModuleSig summary
     ty <- F.embedAbstractSig absSig
     let r = F.Record fields
         m = F.packs (map (F.TV . fst) tvks) r (tvks, ty)
-    return (absSig, m)
+    return (absSig, appEndo termHole m)
 
 -- | Translation declarations.
 -- This is a bit different from how F-ing modules does it in order to avoid producing quite so many
@@ -407,8 +414,8 @@ structure (Module decls) = do
 -- For value bindings we go in two steps: the signature (which was inserted by the type checker if omitted)
 -- just extends the SigSummary, while the actual definition extends the record.
 -- TODO: (This gets mutually recursive functions wrong.  Need a letrec form in fomega)
-declarations :: ToF m => [Decl] -> ((SigSummary, [(F.Field, F.Term)]) -> m (a, F.Term)) -> m (a, F.Term)
-declarations [] kont = kont ((mempty, mempty), mempty)
+declarations :: ToF m => [Decl] -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans) -> m ans
+declarations [] kont = kont mempty 
 declarations (d:ds) kont =
   case d of
    ValueDecl f vd -> valueDecl f vd ds kont
@@ -423,8 +430,8 @@ submoduleDefn :: ToF m
                  => Field
                  -> ModuleExpr
                  -> [Decl]
-                 -> ((SigSummary, [(F.Field, F.Term)]) -> m (a, F.Term))
-                 -> m (a, F.Term)
+                 -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
+                 -> m ans
 submoduleDefn f me ds kont = do
   let modId = U.s2n f
   (F.AbstractSig bnd, msub) <- moduleExpr me
@@ -433,14 +440,17 @@ submoduleDefn f me ds kont = do
     local (modEnv %~ M.insert modId (modsig, xv))
       $ declarations ds
       $ \ans -> do
-        (a, mstruct) <- kont $ ((tvks, [(F.FUser f, modsig)]), [(F.FUser f, F.V xv)]) <> ans
         let tvs = map fst tvks
-        m <- F.unpacks tvs xv msub mstruct
-        return (a, m)
+        munp <- F.unpacksM tvs xv
+        let m = Endo $ munp msub
+            thisOne = ((tvks, [(F.FUser f, modsig)]),
+                       [(F.FUser f, F.V xv)],
+                       m)
+        kont $ thisOne <> ans
 
 valueDecl :: ToF m => Field -> ValueDecl -> [Decl]
-             -> ((SigSummary, [(F.Field, F.Term)]) -> m (a, F.Term))
-             -> m (a, F.Term)
+             -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
+             -> m ans
 valueDecl f vd ds kont =
   let v = U.s2n f :: Var
   in case vd of
@@ -453,19 +463,49 @@ valueDecl f vd ds kont =
        $ U.avoid [U.AnyName v]
        $ declarations ds
        $ \ans ->
-          kont $ ((mempty, [(F.FUser f, vsig)]), mempty) <> ans
+          let thisOne = ((mempty, [(F.FUser f, vsig)]),
+                         mempty,
+                         mempty)
+          in kont $ thisOne <> ans
    FunDecl e -> do
      -- XXX todo: need to add universally quantified type variables to the context.
      mt <- view (valEnv . at v)
-     (xv, _ty) <- case mt of
+     (xv, ty_) <- case mt of
        Nothing -> fail "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
        Just xty -> return xty
-     m <- expr e
+     ty <- matchSemValRecord ty_
+     m <- tyVarsAbstract ty $ \tvks _ty' -> do
+       m_ <- expr e
+       return $ F.pLams tvks m_
      let mr = F.Record [(F.FVal, m)]
      declarations ds $ \ans -> do
-       (a, mstruct) <- kont $ (mempty, [(F.FUser f, F.V xv)]) <> ans
-       return (a, F.Let $ U.bind (xv, U.embed mr) $ mstruct)
+       let
+         mhole = Endo $ F.Let . U.bind (xv, U.embed mr)
+         thisOne = (mempty,
+                    [(F.FUser f, F.V xv)],
+                    mhole)
+       kont $ thisOne <> ans
    _ -> fail "unimplemented ToF.valueDecl"
+
+matchSemValRecord :: Monad m => F.Type -> m F.Type
+matchSemValRecord (F.TRecord [(F.FVal, t)]) = return t
+matchSemValRecord _ = fail "internal error: expected a record type encoding a value binding"
+
+tyVarsAbstract :: ToF m => F.Type -> ([(F.TyVar, F.Kind)] -> F.Type -> m r) -> m r
+tyVarsAbstract t_ kont_ = tyVarsAbstract' t_ (\tvks -> kont_ (appEndo tvks []))
+  where
+    tyVarsAbstract' :: ToF m => F.Type -> (Endo [(F.TyVar, F.Kind)] -> F.Type -> m r) -> m r
+    tyVarsAbstract' t kont =
+      case t of
+       F.TForall bnd ->
+         U.lunbind bnd $ \((tv', U.unembed -> k), t') -> do
+           let tv = (U.s2n $ U.name2String tv') :: TyVar
+           id {- U.avoid [U.AnyName tv] -}
+             $ local (tyVarEnv %~ M.insert tv (tv', k))
+             $ tyVarsAbstract' t' $ \tvks t'' ->
+             kont (tvks <> Endo ((tv', k):)) t''
+       _ -> kont mempty t
+             
 
 modulePath :: ToF m => Path
               -> m (F.SemanticSig, F.Term)
@@ -509,5 +549,25 @@ expr e_ =
          local (valEnv %~ M.insert x (x', t')) $ do
            m <- expr e
            return $ F.Lam $ U.bind (x', U.embed t') m
+   Instantiate e co -> do
+     m <- expr e
+     f <- instantiationCoercion co
+     return $ F.App f m
+   App e1 e2 -> do
+     m1 <- expr e1
+     m2 <- expr e2
+     return $ F.App m1 m2
    -- XXX: In the App case, also need to deal with polymorphic instantiation.  sucks!
    _ -> fail "unimplemented ToF.expr"
+
+-- | Given an instantiation coerction ∀αs.ρ ≤ [αs↦τs]ρ construct a function
+-- of type  (∀αs.ρ) → [αs↦τs]ρ. Namely λx:(∀αs.ρ). x [τs]
+instantiationCoercion :: ToF m => InstantiationCoercion -> m F.Term
+instantiationCoercion (InstantiationSynthesisCoercion scheme args _result) = do
+  (scheme', _) <- type' scheme
+  args' <- mapM (liftM fst . type') args
+  x <- U.lfresh $ U.s2n "x"
+  let
+    body = F.pApps (F.V x) args'
+  return $ F.Lam $ U.bind (x, U.embed scheme') body
+    
