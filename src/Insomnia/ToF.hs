@@ -114,14 +114,14 @@ functor bnd =
   withFunctorArguments teleArgs $ \(abstr, sigArgs) -> do
     abstrSigBody <- moduleType body
     let
-      fctr = F.SemanticFunctor sigArgs abstrSigBody
+      fctr = F.SemanticFunctor (map snd sigArgs) abstrSigBody
       s =  F.FunctorSem $ U.bind abstr fctr
     return $ F.AbstractSig $ U.bind [] s
 
 withFunctorArguments :: ToF m =>
                         Telescope (FunctorArgument ModuleType)
                         -> (([(F.TyVar, Embed F.Kind)],
-                             [F.SemanticSig])
+                             [(F.Var, F.SemanticSig)])
                             -> m r)
                         -> m r
 withFunctorArguments tele kont =
@@ -135,7 +135,7 @@ withFunctorArguments tele kont =
 withFunctorArgument :: ToF m
                        => FunctorArgument ModuleType
                        -> (([(F.TyVar, Embed F.Kind)],
-                            F.SemanticSig)
+                            (F.Var, F.SemanticSig))
                            -> m r)
                        -> m r
 withFunctorArgument (FunctorArgument argId _modK (U.unembed -> modTy)) kont =
@@ -143,7 +143,7 @@ withFunctorArgument (FunctorArgument argId _modK (U.unembed -> modTy)) kont =
     (F.AbstractSig bnd) <- moduleType modTy
     U.lunbind bnd $ \(abstrs, modSig) ->
       local (modEnv %~ M.insert argId (modSig, modVar))
-      $ kont (abstrs, modSig)
+      $ kont (abstrs, (modVar, modSig))
   
 
 patchWhereClause :: ToF m => F.AbstractSig -> WhereClause -> m F.AbstractSig
@@ -381,7 +381,9 @@ moduleExpr mdl_ =
    ModuleId p -> do
      (sig, m) <- modulePath p
      return (F.AbstractSig $ U.bind [] sig, m)
-   ModuleFun {} -> fail "unimplemented ToF.moduleExpr ModuleFun"
+   ModuleFun bnd ->
+     U.lunbind bnd $ \(tele, bodyMe) ->
+     moduleFunctor tele bodyMe
    ModuleApp {} -> fail "unimplemented ToF.moduleExpr ModuleApp"
    ModuleModel {} -> fail "unimplemented ToF.moduleExpr ModuleModel"
 
@@ -433,6 +435,25 @@ sealing me mt = do
       return (xi', bdy)
     term <- F.unpacks (map fst betas) z1 m bdy
     return (xi', term)
+
+-- | (X1 : S1, ... Xn : Sn) -> { ... Xs ... }
+-- translates to    Λα1s,...αns.λX1:Σ1,...,Xn:Σn. mbody : ∀αs.Σ1→⋯Σn→Ξ
+-- where 〚Si〛= ∃αi.Σi and 〚{... Xs ... }〛= mbody : Ξ
+moduleFunctor :: ToF m
+                 => (Telescope (FunctorArgument ModuleType))
+                 -> ModuleExpr
+                 -> m (F.AbstractSig, F.Term)
+moduleFunctor teleArgs bodyMe =
+  withFunctorArguments teleArgs $ \(tvks, argSigs) -> do
+    (resultAbs, mbody) <- moduleExpr bodyMe
+    let funSig = F.SemanticFunctor (map snd argSigs) resultAbs
+        s = F.FunctorSem $ U.bind tvks funSig
+    args <- forM argSigs $ \(v,argSig) -> do
+      argTy <- F.embedSemanticSig argSig
+      return (v, argTy)
+    let fnc = F.pLams' tvks $ F.lams args mbody
+    return (F.AbstractSig $ U.bind [] s,
+            fnc)
 
 -- | Translation declarations.
 -- This is a bit different from how F-ing modules does it in order to avoid producing quite so many

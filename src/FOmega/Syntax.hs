@@ -145,10 +145,26 @@ tArrs :: [Type] -> Type -> Type
 tArrs [] = id
 tArrs (t:ts) = (t `TArr`) . tArrs ts
 
+lams :: [(Var, Type)] -> Term -> Term
+lams [] = id
+lams ((v,t):vts) =
+  Lam . bind (v, embed t) . lams vts
+
+lams' :: [(Var, Embed Type)] -> Term -> Term
+lams' [] = id
+lams' (vt:vts) =
+  Lam . bind vt . lams' vts
+
 pLams :: [(TyVar, Kind)] -> Term -> Term
 pLams [] = id
 pLams ((tv,k):tvks) =
   PLam . bind (tv, embed k) . pLams tvks
+
+pLams' :: [(TyVar, Embed Kind)] -> Term -> Term
+pLams' [] = id
+pLams' (tvk:tvks) =
+  PLam . bind tvk . pLams' tvks
+
 
 pApps :: Term -> [Type] -> Term
 pApps = flip pApps'
