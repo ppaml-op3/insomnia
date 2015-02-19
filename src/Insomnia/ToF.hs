@@ -33,6 +33,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import qualified FOmega.Syntax as F
 import qualified FOmega.SemanticSig as F
+import qualified FOmega.MatchSigs as F
 import qualified FOmega.SubSig as F
 
 import Insomnia.Common.ModuleKind
@@ -400,19 +401,36 @@ structure (Module decls) = do
 --
 --    
 --  〚(M :> S)〛 = 〚({ X = M ; X' = (X :> S) }.X')〛
---    = unpack (βs, y) = 〚{ X = M ; X' = (X :> S)}〛in pack (βs, y.lX')
---    = unpack (βs, y) = (unpack (γ1s, z1) = 〚M〛in unpack (γ2s, z2) = 〚(X :> S)〛[z1 / X] in pack (γ1s++γ2s, { lX = z1 ; lX' = z2 })) in pack (βs, y.lX')
---    = unpack (γ1s, z1) = 〚M〛in unpack (γ2s, z2) = 〚(X :> S)〛[z1/X] in unpack (βs,y) = pack (γ1s++γ2s, { lX = X ; lX' = z2 }) in pack (βs, y.lX')
---    = unpack (γ1s, z1) = 〚M〛 in unpack (γ2s, z2) = 〚(X :> S)〛[z1/X] in pack (γ1s++γ2s, z2)
---    = unpack (γ1s, z1) = 〚M〛 in unpack (γ2s, z2) = pack (τs, f z1) in pack (γ1s++γ2s, z2) where Σ ≤ Ξ ↑ τs ⇝ f where Σ is the type of z1 and Ξ is 〚S〛
---    = unpack (γ1s, z1) = 〚M〛 in pack (γ1s++τs, f z1)
+--    = unpack (αs, y) = 〚{ X = M ; X' = (X :> S)}〛in pack (αs, y.lX')
+--    = unpack (αs, y) = (unpack (βs, z1) = 〚M〛in unpack (γs, z2) = 〚(X :> S)〛[z1 / X] in pack (βs++γs, { lX = z1 ; lX' = z2 })) in pack (αs, y.lX')
+--    = unpack (βs, z1) = 〚M〛in unpack (γs, z2) = 〚(X :> S)〛[z1/X] in unpack (αs,y) = pack (βs++γs, { lX = X ; lX' = z2 }) in pack (αs, y.lX')
+--    = unpack (βs, z1) = 〚M〛 in unpack (γs, z2) = 〚(X :> S)〛[z1/X] in pack (βs++γs, z2)
+--    = unpack (βs, z1) = 〚M〛 in unpack (γs, z2) = pack (τs, f z1) in pack (βs++γs, z2) where Σ₁ ≤ Ξ ↑ τs ⇝ f where Σ₁ is the type of z1 and Ξ is 〚S〛
+--    = unpack (βs, z1) = 〚M〛 in pack (βs++τs, f z1)
 --
 -- In other words, elaborate M and S and construct the coercion f and
 -- discover the sealed types τs, then pack anything that M abstracted
 -- together with anything that S seals.  (The one missing bit is the
--- type annotation on the "pack" term.)
+-- type annotation on the "pack" term, but it's easy.  Suppose Ξ is
+-- ∃δs.Σ₂, then the result has type ∃βs,δs.Σ₂)
 sealing :: ToF m => ModuleExpr -> ModuleType -> m (F.AbstractSig, F.Term)
-sealing me mt = fail "finish me ToF.sealing"
+sealing me mt = do
+  xi@(F.AbstractSig xiBnd) <- moduleType mt
+  (F.AbstractSig sigBnd, m) <- moduleExpr me
+  term <- U.lunbind sigBnd $ \(betas, sigma) -> do
+    (taus, f) <- do
+      (sig2, taus) <- F.matchSubst sigma xi
+      coercion <- F.sigSubtyping sigma sig2
+      return (taus, coercion)
+    z1 <- U.lfresh (U.s2n "z")
+    let
+      packedTys = (map (F.TV . fst) betas)
+                  ++ taus
+    bdy <- U.lunbind xiBnd $ \(deltas,sigma2) -> do
+      sigma2emb <- F.embedSemanticSig sigma2
+      return $ F.packs packedTys (F.App f $ F.V z1) (betas++deltas, sigma2emb)
+    F.unpacks (map fst betas) z1 m bdy
+  return (xi, term)
 
 -- | Translation declarations.
 -- This is a bit different from how F-ing modules does it in order to avoid producing quite so many

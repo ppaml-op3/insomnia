@@ -35,6 +35,7 @@ moduleType txt = do
       abstr = ToF.runToFM $ ToF.moduleType modTy
   return abstr
 
+-- | >>> moduleExpr "{ module X :: {\n type T :: *\n sig t :: T -> T\n } {\n type T = Int\n sig t :: T -> T\n fun t x = x } }"
 moduleExpr :: T.Text -> IO (F.AbstractSig, F.Term)
 moduleExpr txt = do
   let okOrErr = P.parseText "-" txt P.moduleExpr
