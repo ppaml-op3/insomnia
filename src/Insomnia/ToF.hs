@@ -387,12 +387,12 @@ moduleExpr mdl_ =
 
 structure :: ToF m => Module -> m (F.AbstractSig, F.Term)
 structure (Module decls) = do
-  declarations decls $ \(summary@(tvks,_), fields, termHole) -> do
-    let absSig = mkAbstractModuleSig summary
-    ty <- F.embedAbstractSig absSig
+  declarations decls $ \(summary@(tvks,sig), fields, termHole) -> do
+    let semSig = F.ModSem sig
+    ty <- F.embedSemanticSig semSig
     let r = F.Record fields
         m = F.packs (map (F.TV . fst) tvks) r (tvks, ty)
-    return (absSig, appEndo termHole m)
+    return (mkAbstractModuleSig summary, appEndo termHole m)
 
 -- | In the F-ing modules paper, (M:>S) is syntactic sugar, and only
 -- (X :> S) is primitive.  But if we expand out the sugar and apply
@@ -417,7 +417,7 @@ sealing :: ToF m => ModuleExpr -> ModuleType -> m (F.AbstractSig, F.Term)
 sealing me mt = do
   xi@(F.AbstractSig xiBnd) <- moduleType mt
   (F.AbstractSig sigBnd, m) <- moduleExpr me
-  term <- U.lunbind sigBnd $ \(betas, sigma) -> do
+  U.lunbind sigBnd $ \(betas, sigma) -> do
     (taus, f) <- do
       (sig2, taus) <- F.matchSubst sigma xi
       coercion <- F.sigSubtyping sigma sig2
@@ -426,11 +426,13 @@ sealing me mt = do
     let
       packedTys = (map (F.TV . fst) betas)
                   ++ taus
-    bdy <- U.lunbind xiBnd $ \(deltas,sigma2) -> do
+    (xi', bdy) <- U.lunbind xiBnd $ \(deltas,sigma2) -> do
       sigma2emb <- F.embedSemanticSig sigma2
-      return $ F.packs packedTys (F.App f $ F.V z1) (betas++deltas, sigma2emb)
-    F.unpacks (map fst betas) z1 m bdy
-  return (xi, term)
+      let bdy = F.packs packedTys (F.App f $ F.V z1) (betas++deltas, sigma2emb)
+          xi' = F.AbstractSig $ U.bind (betas++deltas) sigma2
+      return (xi', bdy)
+    term <- F.unpacks (map fst betas) z1 m bdy
+    return (xi', term)
 
 -- | Translation declarations.
 -- This is a bit different from how F-ing modules does it in order to avoid producing quite so many

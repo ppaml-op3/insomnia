@@ -156,9 +156,9 @@ pApps = flip pApps'
     pApps' [] = id
     pApps' (t:ts) = pApps' ts . (`PApp` t)
 
--- | packs τs, e as ∃αs.τ' defined as
--- packs ε, e as ∃·.τ ≙ e
--- packs τ:τs, e as ∃α,αs.τ' ≙ pack τ, packs τs, e ∃αs.τ'[τ/α] as ∃α,αs.τ'
+-- | packs τs, e as αs.τ' defined as
+-- packs ε, e as ·.τ ≙ e
+-- packs τ:τs, e as α,αs.τ' ≙ pack τ, (packs τs, e as αs.τ'[τ/α]) as α.∃αs.τ'
 packs :: [Type] -> Term -> ([(TyVar, Embed Kind)], Type) -> Term
 packs taus_ m_ (tvks_, tbody_) =
   go taus_ tvks_ tbody_ m_
