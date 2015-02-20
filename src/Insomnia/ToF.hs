@@ -375,7 +375,7 @@ typeConstructor (TCGlobal (TypePath p f)) = do
 moduleExpr :: ToF m => ModuleExpr -> m (F.AbstractSig, F.Term)
 moduleExpr mdl_ =
   case mdl_ of
-   ModuleStruct mdl -> structure mdl
+   ModuleStruct mdl -> structure ModuleMK mdl
    ModuleSeal me mt -> sealing me mt
    ModuleAssume {} -> fail "unimplemented ToF.moduleExpr ModuleAssume"
    ModuleId p -> do
@@ -385,16 +385,82 @@ moduleExpr mdl_ =
      U.lunbind bnd $ \(tele, bodyMe) ->
      moduleFunctor tele bodyMe
    ModuleApp pfun pargs -> moduleApp pfun pargs
-   ModuleModel {} -> fail "unimplemented ToF.moduleExpr ModuleModel"
+   ModuleModel mdl -> modelExpr mdl
 
-structure :: ToF m => Module -> m (F.AbstractSig, F.Term)
-structure (Module decls) = do
-  declarations decls $ \(summary@(tvks,sig), fields, termHole) -> do
+modelExpr :: ToF m => ModelExpr -> m (F.AbstractSig, F.Term)
+modelExpr mdle =
+  case mdle of
+   ModelStruct str -> do
+     (sigStr, mstr) <- structure ModelMK str
+     let
+       sig = F.ModelSem sigStr
+       s = F.AbstractSig $ U.bind [] sig
+       m = F.Return mstr
+     return (s, m)
+   ModelId p -> do
+     (sig, m) <- modulePath p
+     return (F.AbstractSig $ U.bind [] sig, m)
+   ModelLocal lcl bdy mt ->
+     modelLocal lcl bdy mt
+
+structure :: ToF m => ModuleKind -> Module -> m (F.AbstractSig, F.Term)
+structure mk (Module decls) = do
+  declarations mk decls $ \(summary@(tvks,sig), fields, termHole) -> do
     let semSig = F.ModSem sig
     ty <- F.embedSemanticSig semSig
     let r = F.Record fields
-        m = F.packs (map (F.TV . fst) tvks) r (tvks, ty)
+        m = retMK mk $ F.packs (map (F.TV . fst) tvks) r (tvks, ty)
     return (mkAbstractModuleSig summary, appEndo termHole m)
+  where
+    retMK :: ModuleKind -> F.Term -> F.Term
+    retMK ModuleMK = id
+    retMK ModelMK = F.Return
+    
+-- | 〚let { decls } in M : S〛 Unlike the F-ing modules calculus
+-- where "let B in M" is explained as "{ B ; X = M}.X", because we're
+-- in a monadic language in the model fragment, this is a primitive
+-- construct.  Suppose 〚 {decls} 〛 = e₁ : Dist ∃αs.Σ₁  and 〚S〛= ∃βs.Σ₂
+-- and 〚Γ,αs,X:Σ₁⊢ M[X.ℓs/ℓs]〛= e₂ : Dist ∃γs.Σ₃ then
+-- the local module translates as:
+--
+--   let Y ~ e₁ in unpack αs,X = Y in
+--   let Z ~ e₂ in unpack γs,W = Z in
+--   return (pack τs (f W) as ∃βs.Σ₂)
+--
+-- where αs,γs⊢ Σ₃ ≤ ∃βs.Σ₂ ↑ τs ⇝ f is the signature sealing coercion;
+-- all the locals are fresh; and the [X.ℓs/ℓs] means to put in
+-- projections from X for all the declarations in decls that appear in
+-- e₂
+--
+-- The big picture is: we have two "monads", the distribution monad
+-- and the existential packing "monad", so we use the elim forms to
+-- take them both apart, and then return/pack the resulting modules.
+modelLocal :: ToF m => Module -> ModelExpr -> ModuleType -> m (F.AbstractSig, F.Term)
+modelLocal lcl_ body_ mt_ = do
+  ascribedSig <- moduleType mt_
+  let (Module lclDecls) = lcl_
+  declarations ModelMK lclDecls $ \(_lclSummary, _lclFields, lclTermHole) -> do
+    (F.AbstractSig bodySigBnd, bodyTerm) <- modelExpr body_
+    U.lunbind bodySigBnd $ \(gammas,bodySig) -> do
+      (taus, f) <- do
+        (sig2, taus) <- F.matchSubst bodySig ascribedSig
+        coercion <- F.sigSubtyping bodySig sig2
+        return (taus, coercion)
+      z <- U.lfresh (U.string2Name "z")
+      w <- U.lfresh (U.string2Name "w")
+      packsAnnotation <- do
+        let (F.AbstractSig bnd) = ascribedSig
+        U.lunbind bnd $ \ (betas, s) -> do
+          ty <- F.embedSemanticSig s
+          return (betas, ty)
+      let
+        finalOut = F.Return $ F.packs taus (F.App f (F.V w)) packsAnnotation
+      unpackedGammas <- F.unpacks (map fst gammas) w (F.V z) $ finalOut
+      let
+        withE2 = F.Let $ U.bind (z, U.embed bodyTerm) unpackedGammas
+        localTerm = appEndo lclTermHole withE2
+        localSig = F.AbstractSig $ U.bind [] $ F.ModelSem ascribedSig
+      return (localSig, localTerm)
 
 -- | In the F-ing modules paper, (M:>S) is syntactic sugar, and only
 -- (X :> S) is primitive.  But if we expand out the sugar and apply
@@ -498,10 +564,10 @@ moduleApp pfn pargs = do
 -- For value bindings we go in two steps: the signature (which was inserted by the type checker if omitted)
 -- just extends the SigSummary, while the actual definition extends the record.
 -- TODO: (This gets mutually recursive functions wrong.  Need a letrec form in fomega)
-declarations :: ToF m => [Decl] -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans) -> m ans
-declarations [] kont = kont mempty 
-declarations (d:ds) kont = let
-  kont1 out1 = declarations ds $ \outs -> kont $ out1 <> outs
+declarations :: ToF m => ModuleKind -> [Decl] -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans) -> m ans
+declarations _mk [] kont = kont mempty 
+declarations mk (d:ds) kont = let
+  kont1 out1 = declarations mk ds $ \outs -> kont $ out1 <> outs
   in case d of
       ValueDecl f vd -> valueDecl f vd kont1
       SubmoduleDefn f me -> submoduleDefn f me kont1
