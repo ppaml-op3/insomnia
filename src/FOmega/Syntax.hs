@@ -172,6 +172,12 @@ pApps = flip pApps'
     pApps' [] = id
     pApps' (t:ts) = pApps' ts . (`PApp` t)
 
+apps :: Term -> [Term] -> Term
+apps = flip apps'
+  where
+    apps' [] = id
+    apps' (m:ms) = apps' ms . (`App` m)
+
 -- | packs τs, e as αs.τ' defined as
 -- packs ε, e as ·.τ ≙ e
 -- packs τ:τs, e as α,αs.τ' ≙ pack τ, (packs τs, e as αs.τ'[τ/α]) as α.∃αs.τ'

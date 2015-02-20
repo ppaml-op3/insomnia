@@ -384,7 +384,7 @@ moduleExpr mdl_ =
    ModuleFun bnd ->
      U.lunbind bnd $ \(tele, bodyMe) ->
      moduleFunctor tele bodyMe
-   ModuleApp {} -> fail "unimplemented ToF.moduleExpr ModuleApp"
+   ModuleApp pfun pargs -> moduleApp pfun pargs
    ModuleModel {} -> fail "unimplemented ToF.moduleExpr ModuleModel"
 
 structure :: ToF m => Module -> m (F.AbstractSig, F.Term)
@@ -454,6 +454,27 @@ moduleFunctor teleArgs bodyMe =
     let fnc = F.pLams' tvks $ F.lams args mbody
     return (F.AbstractSig $ U.bind [] s,
             fnc)
+
+-- | p (p1, .... pn) becomes  m [τ1s,…,τNs] (f1 m1) ⋯ (fn mn) : Ξ[τs/αs]
+-- where 〚p〛 = m : ∀αs.Σ1′→⋯→Σn′→Ξ and 〚pi〛 = mi : Σi  and (Σ1,…,Σn)≤∃αs.(Σ1′,…,Σn′) ↑ τs ⇝ fs
+moduleApp :: ToF m
+             => Path
+             -> [Path]
+             -> m (F.AbstractSig, F.Term)
+moduleApp pfn pargs = do
+  (semFn, mfn) <- modulePath pfn
+  (argSigs, margs) <- mapAndUnzipM modulePath pargs
+  case semFn of
+   F.FunctorSem bnd ->
+     U.lunbind bnd $ \(tvks, F.SemanticFunctor paramSigs sigResult) -> do
+       let alphas = map fst tvks
+       (paramSigs', taus) <- F.matchSubsts argSigs (alphas, paramSigs)
+       coercions <- zipWithM F.sigSubtyping argSigs paramSigs'
+       let
+         m = (F.pApps mfn taus) `F.apps` (zipWith F.App coercions margs)
+         s = U.substs (zip alphas taus) sigResult
+       return (s, m)
+   _ -> fail "internal failure: ToF.moduleApp expected a functor"
 
 -- | Translation declarations.
 -- This is a bit different from how F-ing modules does it in order to avoid producing quite so many

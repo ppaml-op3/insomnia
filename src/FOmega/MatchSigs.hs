@@ -28,6 +28,7 @@
 -- and instead of non-deterministically guessing, we thread a "looking
 -- for" set of variables in a state monad and write out τ,α pairs when
 -- we find something appropriate.
+{-# LANGUAGE FlexibleContexts #-}
 module FOmega.MatchSigs where
 
 import Control.Monad.State
@@ -53,12 +54,24 @@ matchSubst :: (MonadPlus m, LFresh m) => SemanticSig -> AbstractSig -> m (Semant
 matchSubst lhs (AbstractSig bnd) =
   U.lunbind bnd $ \(tvks, rhs) -> do
     let alphas = map fst tvks
-        lookingFor = S.fromList alphas
-    (w, notFound) <- runStateT (execWriterT (lookupMatch lhs rhs)) lookingFor
-    guard (S.null notFound)
-    let subst = appEndo w []
-        ans = (rhs, map TV alphas)
-    return $ U.substs subst ans
+    runMatch lookupMatch lhs (alphas, rhs)
+
+matchSubsts :: (MonadPlus m, LFresh m) => [SemanticSig] -> ([TyVar], [SemanticSig]) -> m ([SemanticSig], [Type])
+matchSubsts ls ars =
+  runMatch (zipWithM_ lookupMatch) ls ars
+
+runMatch :: (MonadPlus m, LFresh m, U.Subst Type b)
+            => (a -> b -> M m ())
+            -> a
+            -> ([TyVar], b)
+            -> m (b, [Type])
+runMatch comp lhs (alphas, rhs) = do
+  let lookingFor = S.fromList alphas
+  (w, notFound) <- runStateT (execWriterT (comp lhs rhs)) lookingFor
+  guard (S.null notFound)
+  let subst = appEndo w []
+      ans = (rhs, map TV alphas)
+  return $ U.substs subst ans
 
 lookupMatch :: Monad m => SemanticSig -> SemanticSig -> M m ()
 lookupMatch (TypeSem tau _k1) (TypeSem (TV a) _k2) = do
