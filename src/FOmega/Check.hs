@@ -201,6 +201,10 @@ inferTy m_ =
            TDist {} -> return t''
            _ -> throwError $ SampleBodyNotDist (Got t'')
         _ -> throwError $ SampleFromNonDist (Got t)
+   Assume t -> do
+     k <- inferK t
+     expectKType t k
+     return t
    
 instExistPack :: MonadTC m => Type -> Kind -> ExistPack -> m Type
 instExistPack t k bnd =

@@ -76,7 +76,7 @@ embedSemanticSig (SigSem absSig) = do
 embedSemanticSig (DataSem t k) = do
   -- DataSem and ConSem are assumed to already be inside a record with distinguished fields, so
   -- no extra layer of record wrapping.
-  a <- U.lfresh $ U.s2n "δ"
+  a <- U.lfresh $ U.s2n "γ"
   let
     tConsume = TApp (TV a) t
     tEmbed = TForall $ U.bind (a, U.embed $ k `KArr` KType) $ TArr tConsume tConsume

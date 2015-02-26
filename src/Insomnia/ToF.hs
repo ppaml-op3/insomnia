@@ -44,12 +44,19 @@ import Insomnia.TypeDefn
 import Insomnia.ModuleType
 import Insomnia.Module
 import Insomnia.Expr
+
+-- | when we translate insomnia term variables, we keep track of
+-- whether they came from a local binding or from a previous
+-- definition in the current module.
+data TermVarProvenance = LocalTermVar
+                       | StructureTermVar
+                       deriving (Show)
   
 data Env = Env { _tyConEnv :: M.Map TyConName F.SemanticSig
                , _sigEnv   :: M.Map SigIdentifier F.AbstractSig
                , _modEnv   :: M.Map Identifier (F.SemanticSig, F.Var)
                , _tyVarEnv :: M.Map TyVar (F.TyVar, F.Kind)
-               , _valEnv    :: M.Map Var (F.Var, F.Type)
+               , _valEnv    :: M.Map Var (F.Var, TermVarProvenance, F.Type)
                }
 
 $(makeLenses ''Env)
@@ -60,6 +67,7 @@ emptyToFEnv = Env initialTyConEnv mempty mempty mempty mempty
 initialTyConEnv :: M.Map TyConName F.SemanticSig
 initialTyConEnv = M.fromList [(U.s2n "->",
                                F.TypeSem arrowLam ([F.KType, F.KType] `F.kArrs` F.KType))
+                             , (U.s2n "Dist", F.TypeSem distLam (F.KType `F.KArr` F.KType))
                              , (U.s2n "Real", F.TypeSem (F.TV $ U.s2n "Real") F.KType)
                              , (U.s2n "Int", F.TypeSem (F.TV $ U.s2n "Int") F.KType) 
                              ]
@@ -67,6 +75,7 @@ initialTyConEnv = M.fromList [(U.s2n "->",
     arrowLam = F.TLam $ U.bind (alpha, U.embed F.KType) $
                F.TLam $ U.bind (beta, U.embed F.KType) $
                F.TArr (F.TV alpha) (F.TV beta)
+    distLam = F.TLam $ U.bind (alpha, U.embed F.KType) $ F.TDist (F.TV alpha)
     alpha = U.s2n "α"
     beta = U.s2n "β"
 
@@ -258,14 +267,14 @@ typeDefn td_ =
    DataDefn bnd ->
      U.lunbind bnd $ \(tvks, constrs) ->
      withTyVars tvks $ \tvks' ->
-     withFreshName "<datatype>" $ \tv -> do
+     withFreshName "δ" $ \tv -> do
        let kdoms = map snd tvks'
            k = kdoms `F.kArrs` F.KType
            abstr = [(tv, U.embed k)]
            -- fully apply data type abstract var to parameter vars
            tCod = (F.TV tv) `F.tApps` map (F.TV . fst) tvks'
        constrSigs <- mapM (mkConstr tvks' tCod) constrs
-       let sig = F.ModSem ([(F.FData, F.TypeSem (F.TV tv) k)]
+       let sig = F.ModSem ([(F.FData, F.DataSem (F.TV tv) k)]
                            ++ constrSigs)
        return (abstr, sig)
   where
@@ -355,6 +364,10 @@ typeConstructor (TCLocal tc) = do
   e <- view tyConEnv
   case ma of
    Just (F.TypeSem t k) -> return (t, k)
+   Just (F.ModSem semanticModule) ->
+     case findDataInMod semanticModule of
+      Just (t,k) -> return (t,k)
+      Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
    Just f -> fail $ "ToF.typeConstructor: wanted a TypeSem, got a " ++ show f
    Nothing -> fail $ "ToF.typeConstructor: tyConEnv did not contain a TypeSem for a local type constructor: " ++ show tc ++ " in " ++ show e
 typeConstructor (TCGlobal (TypePath p f)) = do
@@ -367,9 +380,19 @@ typeConstructor (TCGlobal (TypePath p f)) = do
   (s, _m) <- followUserPathAnything findIt (ProjP p f)
   case s of
    F.TypeSem t k -> return (t, k)
+   F.ModSem semanticModule ->
+     case findDataInMod semanticModule of
+      Just (t,k) -> return (t,k)
+      Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
    _ -> fail "ToF.typeConstructor: type path maps to non-type semantic signature"
   
                       
+findDataInMod :: [(F.Field, F.SemanticSig)]
+                 -> Maybe (F.Type, F.Kind)
+findDataInMod [] = Nothing
+findDataInMod ((F.FData, F.DataSem t k) : _) = Just (t, k)
+findDataInMod (_ : rest) = findDataInMod rest
+
 ---------------------------------------- Modules
 
 moduleExpr :: ToF m => ModuleExpr -> m (F.AbstractSig, F.Term)
@@ -377,7 +400,7 @@ moduleExpr mdl_ =
   case mdl_ of
    ModuleStruct mdl -> structure ModuleMK mdl
    ModuleSeal me mt -> sealing me mt
-   ModuleAssume {} -> fail "unimplemented ToF.moduleExpr ModuleAssume"
+   ModuleAssume mty -> moduleAssume mty
    ModuleId p -> do
      (sig, m) <- modulePath p
      return (F.AbstractSig $ U.bind [] sig, m)
@@ -391,17 +414,24 @@ modelExpr :: ToF m => ModelExpr -> m (F.AbstractSig, F.Term)
 modelExpr mdle =
   case mdle of
    ModelStruct str -> do
-     (sigStr, mstr) <- structure ModelMK str
+     (sigStr, m) <- structure ModelMK str
      let
        sig = F.ModelSem sigStr
        s = F.AbstractSig $ U.bind [] sig
-       m = F.Return mstr
      return (s, m)
    ModelId p -> do
      (sig, m) <- modulePath p
      return (F.AbstractSig $ U.bind [] sig, m)
    ModelLocal lcl bdy mt ->
      modelLocal lcl bdy mt
+
+moduleAssume :: ToF m
+                => ModuleType
+                -> m (F.AbstractSig, F.Term)
+moduleAssume modTy = do
+  absSig <- moduleType modTy
+  ty <- F.embedAbstractSig absSig
+  return (absSig, F.Assume ty)
 
 structure :: ToF m => ModuleKind -> Module -> m (F.AbstractSig, F.Term)
 structure mk (Module decls) = do
@@ -564,24 +594,32 @@ moduleApp pfn pargs = do
 -- For value bindings we go in two steps: the signature (which was inserted by the type checker if omitted)
 -- just extends the SigSummary, while the actual definition extends the record.
 -- TODO: (This gets mutually recursive functions wrong.  Need a letrec form in fomega)
-declarations :: ToF m => ModuleKind -> [Decl] -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans) -> m ans
+declarations :: ToF m
+                => ModuleKind
+                -> [Decl]
+                -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
+                -> m ans
 declarations _mk [] kont = kont mempty 
 declarations mk (d:ds) kont = let
   kont1 out1 = declarations mk ds $ \outs -> kont $ out1 <> outs
   in case d of
-      ValueDecl f vd -> valueDecl f vd kont1
-      SubmoduleDefn f me -> submoduleDefn f me kont1
-      SampleModuleDefn {} -> fail "unimplemented ToF.declarations SubmoduleDefn"
-      TypeAliasDefn f al -> typeAliasDefn f al kont1
+      ValueDecl f vd -> valueDecl mk f vd kont1
+      SubmoduleDefn f me -> submoduleDefn mk f me kont1
+      SampleModuleDefn f me -> do
+        when (mk /= ModelMK) $
+          fail "internal error: ToF.declarations SampleModuleDecl in a module"
+        sampleModuleDefn f me kont1
+      TypeAliasDefn f al -> typeAliasDefn mk f al kont1
       ImportDecl {} -> fail "unimplemented ToF.declarations ImportDecl"
       TypeDefn {} -> fail "unimplemented ToF.declarations TypeDefn"
    
 typeAliasDefn :: ToF m
-                 => Field
+                 => ModuleKind
+                 -> Field
                  -> TypeAlias
                  -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
                  -> m ans
-typeAliasDefn f (TypeAlias bnd) kont =
+typeAliasDefn _mk f (TypeAlias bnd) kont =
   U.lunbind bnd $ \ (tvks, rhs) -> do
     (tlam, tK) <- withTyVars tvks $ \tvks' -> do
       (rhs', kcod) <- type' rhs
@@ -600,11 +638,12 @@ typeAliasDefn f (TypeAlias bnd) kont =
       kont thisOne
 
 submoduleDefn :: ToF m
-                 => Field
+                 => ModuleKind
+                 -> Field
                  -> ModuleExpr
                  -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
                  -> m ans
-submoduleDefn f me kont = do
+submoduleDefn _mk f me kont = do
   let modId = U.s2n f
   (F.AbstractSig bnd, msub) <- moduleExpr me
   U.lunbind bnd $ \(tvks, modsig) -> do
@@ -618,10 +657,35 @@ submoduleDefn f me kont = do
                      m)
       kont thisOne
 
-valueDecl :: ToF m => Field -> ValueDecl
+sampleModuleDefn :: ToF m
+                    => Field
+                    -> ModuleExpr
+                    -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
+                    -> m ans
+sampleModuleDefn f me kont = do
+  let modId = U.s2n f
+  (F.AbstractSig bndMdl, msub) <- moduleExpr me
+  bnd <- U.lunbind bndMdl $ \(tvNull, semMdl) ->
+    case (tvNull, semMdl) of
+     ([], F.ModelSem (F.AbstractSig bnd)) -> return bnd
+     _ -> fail "internal error: ToF.sampleModelDefn expected a model with no applicative tyvars"
+  U.lunbind bnd $ \(tvks, modSig) -> do
+    let xv = U.s2n f
+    local (modEnv %~ M.insert modId (modSig, xv)) $ do
+      munp <- F.unpacksM (map fst tvks) xv
+      let m = Endo $ F.LetSample . U.bind (xv, U.embed msub) . munp (F.V xv)
+          thisOne = ((tvks, [(F.FUser f, modSig)]),
+                     [(F.FUser f, F.V xv)],
+                     m)
+      kont thisOne
+
+valueDecl :: ToF m
+             => ModuleKind
+             -> Field
+             -> ValueDecl
              -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
              -> m ans
-valueDecl f vd kont =
+valueDecl mk f vd kont =
   let v = U.s2n f :: Var
   in case vd of
    SigDecl _stoch ty -> do
@@ -632,12 +696,14 @@ valueDecl f vd kont =
      let thisOne = ((mempty, [(F.FUser f, vsig)]),
                     mempty,
                     mempty)
-     local (valEnv %~ M.insert v (xv, tr))
+     local (valEnv %~ M.insert v (xv, StructureTermVar , tr))
        $ U.avoid [U.AnyName v]
        $ kont thisOne
    FunDecl e -> do
+     when (mk /= ModuleMK) $
+       fail "internal error: ToF.valueDecl FunDecl in a model"
      mt <- view (valEnv . at v)
-     (xv, ty_) <- case mt of
+     (xv, _prov, ty_) <- case mt of
        Nothing -> fail "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
        Just xty -> return xty
      ty <- matchSemValRecord ty_
@@ -650,6 +716,24 @@ valueDecl f vd kont =
        thisOne = (mempty,
                   [(F.FUser f, F.V xv)],
                   mhole)
+     kont thisOne
+   SampleDecl e -> do
+     when (mk /= ModelMK) $
+       fail "internal error: ToF.valueDecl SampleDecl in a module"
+     mt <- view (valEnv . at v)
+     (xv, _prov, _ty_) <- case mt of
+       Nothing -> fail "internal error: ToF.valueDecl SampleDecl did not find and type declaration for field"
+       Just xty -> return xty
+     -- ty <- matchSemValRecord ty_
+     m <- expr e
+     let
+       mhole body =
+         F.LetSample $ U.bind (xv, U.embed m)
+         $ F.Let $ U.bind (xv, U.embed $ F.Record [(F.FVal, F.V xv)])
+         $ body
+       thisOne = (mempty,
+                  [(F.FUser f, F.V xv)],
+                  Endo mhole)
      kont thisOne
    _ -> fail "unimplemented ToF.valueDecl"
 
@@ -694,7 +778,10 @@ expr e_ =
      mx <- view (valEnv . at x)
      case mx of
       Nothing -> fail "unexpected failure: ToF.expr variable not in scope"
-      Just (x',_t) -> return $ F.V x'
+      Just (xv, prov, _t) ->
+        return $ case prov of
+                  LocalTermVar -> F.V xv
+                  StructureTermVar -> F.Proj (F.V xv) F.FVal
    L l -> return $ F.L l
    Q (QVar p f) -> do
      let
@@ -713,7 +800,7 @@ expr e_ =
         Just t -> return t
        (t', _k) <- type' t
        withFreshName (U.name2String x) $ \x' ->
-         local (valEnv %~ M.insert x (x', t')) $ do
+         local (valEnv %~ M.insert x (x', LocalTermVar, t')) $ do
            m <- expr e
            return $ F.Lam $ U.bind (x', U.embed t') m
    Instantiate e co -> do

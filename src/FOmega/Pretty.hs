@@ -50,7 +50,7 @@ ppType t_ =
        ppF (f, t) = fsep [ppField f, indent coloncolon (ppType t)]
      in braces $ fsep $ punctuate "," $ map ppF fts
    TDist t ->
-     fsep ["Dist", indent "" (ppType t)]
+     fsep ["Dist", indent mempty (ppType t)]
         
 withLowestPrec :: PM Doc -> PM Doc
 withLowestPrec = withPrec 0 AssocNone . Left
@@ -75,15 +75,15 @@ ppTerm m_ =
    PApp m t ->
      fsep [withPrec 2 AssocRight $ Left $ ppTerm m, brackets $ ppType t]
    Pack t m ep ->
-     withLowestPrec 
+     precParens 2
      $ fsep ["pack", ppType t, indent "," (ppTerm m),
              indent "as" (ppExistPack ep)]
    Unpack bnd ->
      let ((tv, xv, U.unembed -> m), body) = UU.unsafeUnbind bnd
-     in withLowestPrec
+     in precParens 2
         $ fsep ["unpack", pp tv, ",", pp xv,
-                indent "=" (ppTerm m),
-                indent "in" (ppTerm body)]
+                indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m),
+                "in" <+> (ppTerm body)]
    Record fms ->
      let
        ppF (f, m) = fsep [ppField f, indent "=" (ppTerm m)]
@@ -92,15 +92,18 @@ ppTerm m_ =
      withPrec 2 AssocLeft (Left $ ppTerm m) <> "." <> ppField f
    Let bnd ->
      let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
-     in fsep ["let", pp x, "=", ppTerm m1,
-              indent "in" (ppTerm m2)]
+     in precParens 1
+        $ fsep ["let", pp x, indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m1),
+                "in" <+> (withLowestPrec $ ppTerm m2)]
    Return m ->
      fsep ["return", ppTerm m]
    LetSample bnd ->
      let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
-     in fsep ["let", pp x, "~", ppTerm m1,
-              indent "in" (ppTerm m2)]
-     
+     in precParens 1
+        $ fsep ["let", pp x, indent "~" (withPrec 2 AssocNone $ Left $ ppTerm m1),
+                "in" <+> (withLowestPrec $ ppTerm m2)]
+   Assume t ->
+     fsep ["assume", ppType t]
 
 ppExistPack :: ExistPack -> PM Doc
 ppExistPack bnd =

@@ -61,6 +61,7 @@ data Term =
   | Unpack !(Bind (TyVar, Var, Embed Term) Term)
   | Return !Term
   | LetSample !(Bind (Var, Embed Term) Term)
+  | Assume !Type
   deriving (Show, Typeable, Generic)
 
 -- * Alpha equivalence and Substitution
