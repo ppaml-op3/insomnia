@@ -32,6 +32,7 @@ import Insomnia.Module
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.LookupModuleSigPath (lookupModuleSigPath)
 import Insomnia.Typecheck.ModuleType (extendModuleCtxFunctorArgs)
+import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtxNF)
 import Insomnia.Typecheck.WhnfModuleType (whnfModuleType)
 
 -- | Returns the "natural" signature of a module.
@@ -70,17 +71,18 @@ naturalSignature = go . moduleDecls
         SubmoduleDefn fld moduleExpr -> do
           -- TODO: proper error message
           submodNF <- naturalSignatureModuleExpr moduleExpr
-          sig' <- kont 
           let ident = U.s2n fld
-              moduleTy = moduleTypeNormalFormEmbed submodNF
+          sig' <- extendModuleCtxNF (IdP ident) submodNF $ kont 
+          let moduleTy = moduleTypeNormalFormEmbed submodNF
           return $ SubmoduleSig fld (U.bind (ident, U.embed moduleTy) sig')
         SampleModuleDefn fld moduleExpr -> do
           subSigV <- naturalSignatureModuleExpr moduleExpr
           case subSigV of
            (SigMTNF (SigV subSig ModelMK)) -> do
-             sig' <- kont
              let ident = U.s2n fld
                  moduleTy = SigMT (SigV subSig ModuleMK)
+                 submodNF = SigMTNF (SigV subSig ModelMK)
+             sig' <- extendModuleCtxNF (IdP ident) submodNF $ kont
              return $ SubmoduleSig fld (U.bind (ident, U.embed moduleTy) sig')
            (SigMTNF (SigV _ ModuleMK)) ->
              typeError ("(internal error?) submodule " <> formatErr fld
