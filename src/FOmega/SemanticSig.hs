@@ -20,8 +20,8 @@ data SemanticSig =
   -- [= Ξ] -- We don't (yet) have nested signature definitions in
   -- Insomnia, so this is not entirely necessary.
   | SigSem !AbstractSig
-  -- [= σ:κ]
-  | DataSem !Type !Kind
+  -- [= σ = {f1:τ1 | … | fN:τN} : κ]
+  | DataSem !Type !Type !Kind
   -- [∀β1...βM . τ1 → ... → τN → σ]
   | ConSem !Type
   -- { f1 = Σ1, ..., fn = Σn }
@@ -73,16 +73,16 @@ embedSemanticSig (TypeSem t k) = do
 embedSemanticSig (SigSem absSig) = do
   s <- embedAbstractSig absSig
   return $ TRecord [(FSig, s)]
-embedSemanticSig (DataSem t k) = do
-  -- DataSem and ConSem are assumed to already be inside a record with distinguished fields, so
-  -- no extra layer of record wrapping.
+embedSemanticSig (DataSem tabs tconc k) = do
+  -- the embedding for a datatype witnesses the coercion from δ to {c1 : τ1 | ⋯ | cN : τN }
   a <- U.lfresh $ U.s2n "γ"
   let
-    tConsume = TApp (TV a) t
-    tEmbed = TForall $ U.bind (a, U.embed $ k `KArr` KType) $ TArr tConsume tConsume
-  return tEmbed
+    tConsume = TApp (TV a) tabs
+    tProduce = TApp (TV a) tconc
+    tEmbed = TForall $ U.bind (a, U.embed $ k `KArr` KType) $ TArr tConsume tProduce
+  return $ TRecord [(FData, tEmbed)]
 embedSemanticSig (ConSem t) =
-  return t
+  return $ TRecord [(FCon, t)]
 embedSemanticSig (ModSem fas) = do
   fts <- forM fas $ \(f, s) -> do
     t <- embedSemanticSig s

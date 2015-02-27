@@ -56,13 +56,14 @@ data Env = Env { _tyConEnv :: M.Map TyConName F.SemanticSig
                , _sigEnv   :: M.Map SigIdentifier F.AbstractSig
                , _modEnv   :: M.Map Identifier (F.SemanticSig, F.Var)
                , _tyVarEnv :: M.Map TyVar (F.TyVar, F.Kind)
+               , _valConEnv :: M.Map ValConName F.Var
                , _valEnv    :: M.Map Var (F.Var, TermVarProvenance, F.Type)
                }
 
 $(makeLenses ''Env)
 
 emptyToFEnv :: Env
-emptyToFEnv = Env initialTyConEnv mempty mempty mempty mempty
+emptyToFEnv = Env initialTyConEnv mempty mempty mempty mempty mempty
 
 initialTyConEnv :: M.Map TyConName F.SemanticSig
 initialTyConEnv = M.fromList [(U.s2n "->",
@@ -218,7 +219,7 @@ signature' (ValueSig f t rest) = do
   return $ s <> rest'
 signature' (TypeSig f bnd) =
   U.lunbind bnd $ \((con, U.unembed -> tsd), rest) ->
-  typeSigDecl f tsd $ \sig -> local (tyConEnv %~ M.insert con sig) (signature' rest)
+  typeSigDecl f con tsd $ signature' rest
 signature' (SubmoduleSig f bnd) =
   withFreshName f $ \x -> 
   U.lunbind bnd $ \((subModId, U.unembed -> modTy), rest) ->
@@ -234,14 +235,15 @@ submodule f modTy kont = do
 
 typeSigDecl :: ToF m
                => Field
+               -> TyConName
                -> TypeSigDecl
-               -> (F.SemanticSig -> m SigSummary)
                -> m SigSummary
-typeSigDecl f tsd kont = do           
+               -> m SigSummary
+typeSigDecl f selfTc tsd kont = do           
   case tsd of
    AliasTypeSigDecl alias -> do
      sig <- typeAlias alias
-     rest' <- kont sig
+     rest' <- local (tyConEnv %~ M.insert selfTc sig) kont
      let
        s = ([], [(F.FUser f, sig)])
      return $ s <> rest'
@@ -249,42 +251,78 @@ typeSigDecl f tsd kont = do
      withFreshName f $ \tv -> do
        k' <- kind k
        let sig = F.TypeSem (F.TV tv) k'
-       rest' <- kont sig
+       rest' <- local (tyConEnv %~ M.insert selfTc sig) kont
        let
          s = ([(tv, U.embed k')], [(F.FUser f, sig)])
        return $ s <> rest'
    ManifestTypeSigDecl td -> do
-     (abstr, sig) <- typeDefn td
-     rest' <- kont sig
-     let
-       s = (abstr, [(F.FUser f, sig)])
-     return $ s <> rest'
+     typeDefn f selfTc td $ \(s, _m, _mhole) -> do
+       rest' <- kont
+       return $ s <> rest'
 
-typeDefn :: ToF m =>  TypeDefn -> m ([(F.TyVar, Embed F.Kind)], F.SemanticSig)
-typeDefn td_ =
+typeDefn :: ToF m
+            => Field
+            -> TyConName
+            -> TypeDefn
+            -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
+            -> m ans
+typeDefn f selfTc td_ kont =
   case td_ of
    EnumDefn _n -> fail "unimplemented ToF.typeDefn EnumDefn"
    DataDefn bnd ->
      U.lunbind bnd $ \(tvks, constrs) ->
      withTyVars tvks $ \tvks' ->
+     withFreshName "Δ" $ \dataTyModV ->
      withFreshName "δ" $ \tv -> do
-       let kdoms = map snd tvks'
+       let selfTc = U.s2n f
+           kdoms = map snd tvks'
            k = kdoms `F.kArrs` F.KType
-           abstr = [(tv, U.embed k)]
-           -- fully apply data type abstract var to parameter vars
-           tCod = (F.TV tv) `F.tApps` map (F.TV . fst) tvks'
-       constrSigs <- mapM (mkConstr tvks' tCod) constrs
-       let sig = F.ModSem ([(F.FData, F.DataSem (F.TV tv) k)]
-                           ++ constrSigs)
-       return (abstr, sig)
+       local (tyConEnv %~ M.insert selfTc (F.TypeSem (F.TV tv) k)) $ do
+         -- fully apply data type abstract var to parameter vars
+         let tCod = (F.TV tv) `F.tApps` map (F.TV . fst) tvks'
+         (constrSems, summands) <- liftM (unzip . map (\(f,y,z) -> ((f,y), (F.FUser f, z))))
+                                   $ mapM (mkConstr tvks' tCod)
+                                   $ constrs
+         let tConc = F.tLams tvks' $ F.TSum summands
+             cSems = map (\(f, sem) -> (U.s2n f, sem)) constrSems
+             constrSigs = map (\(f, sem) -> (F.FUser f, F.ModSem [(F.FCon, sem)])) constrSems
+             dataSem = F.DataSem (F.TV tv) tConc k
+             dataSig = (F.FUser f, dataSem)
+             abstr = [(tv, U.embed k)]
+         dataTy <- F.embedSemanticSig dataSem
+         let dataModSem = F.ModSem $ (F.FUser f, dataSem) : constrSigs
+             dataModAbs = F.AbstractSig $ U.bind [(tv, U.embed k)] dataModSem
+         dataModTy <- F.embedAbstractSig dataModAbs
+         let dataModTm = F.Assume dataModTy -- not specifying how datatypes are implemented.
+             -- unpack δ,Δ = assume { D = {data = ...}, C1 = {con = ...}, ..., CN = {con = ...}} in []
+             unpackHole = Endo (F.Unpack . U.bind (tv, dataTyModV, U.embed dataModTm))
+         (fxvs, conholes) <- liftM unzip $ forM constrSems $ \(f, sem) -> do
+           ty <- F.embedSemanticSig sem
+           let
+             xv = U.s2n f :: F.Var
+             mhole = Endo (F.Let . U.bind (xv, U.embed $ F.Proj (F.V dataTyModV) (F.FUser f)))
+           return ((f, xv), mhole)
+         let
+           xdata = U.s2n f
+           dTm = (F.FUser f, F.V xdata)
+           dHole = Endo (F.Let . U.bind (xdata, U.embed $ F.Proj (F.V dataTyModV) (F.FUser f)))
+           conTms = map (\(f, x) -> (F.FUser f, F.V x)) fxvs
+           conVs = M.fromList $ map (\(f, x) -> (U.s2n f, x)) fxvs
+           absSig = (abstr, dataSig : constrSigs)
+           thisOne = (absSig, dTm : conTms, unpackHole <> dHole <> mconcat conholes)
+         local (tyConEnv %~ M.insert selfTc dataSem)
+           . local (valConEnv %~ M.union conVs)
+           $ kont thisOne
   where
-    mkConstr :: ToF m => [(F.TyVar, F.Kind)] -> F.Type -> ConstructorDef -> m (F.Field, F.SemanticSig)
+    mkConstr :: ToF m => [(F.TyVar, F.Kind)] -> F.Type -> ConstructorDef -> m (Field, F.SemanticSig, F.Type)
     mkConstr tvks tCod (ConstructorDef cname tDoms) = do
       (tDoms', _) <- liftM unzip $ mapM type' tDoms
       let f = U.name2String cname
           t = F.tForalls tvks $ tDoms' `F.tArrs` tCod
-      return (F.FCon f, F.ConSem t)
-    
+          tsummand = F.tupleT tDoms'
+      return (f, F.ConSem t, tsummand)
+
+
 typeAlias :: ToF m => TypeAlias -> m F.SemanticSig
 typeAlias (TypeAlias bnd) =
   U.lunbind bnd $ \(tvks, t) ->
@@ -364,10 +402,11 @@ typeConstructor (TCLocal tc) = do
   e <- view tyConEnv
   case ma of
    Just (F.TypeSem t k) -> return (t, k)
-   Just (F.ModSem semanticModule) ->
-     case findDataInMod semanticModule of
-      Just (t,k) -> return (t,k)
-      Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
+   Just (F.DataSem t _ k) -> return (t, k)
+   -- Just (F.ModSem semanticModule) ->
+   --   case findDataInMod semanticModule of
+   --    Just (t,k) -> return (t,k)
+   --    Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
    Just f -> fail $ "ToF.typeConstructor: wanted a TypeSem, got a " ++ show f
    Nothing -> fail $ "ToF.typeConstructor: tyConEnv did not contain a TypeSem for a local type constructor: " ++ show tc ++ " in " ++ show e
 typeConstructor (TCGlobal (TypePath p f)) = do
@@ -380,17 +419,18 @@ typeConstructor (TCGlobal (TypePath p f)) = do
   (s, _m) <- followUserPathAnything findIt (ProjP p f)
   case s of
    F.TypeSem t k -> return (t, k)
-   F.ModSem semanticModule ->
-     case findDataInMod semanticModule of
-      Just (t,k) -> return (t,k)
-      Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
+   F.DataSem t _ k -> return (t, k)
+   -- F.ModSem semanticModule ->
+   --   case findDataInMod semanticModule of
+   --    Just (tabs, k) -> return (tabs, k)
+   --    Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
    _ -> fail "ToF.typeConstructor: type path maps to non-type semantic signature"
   
                       
 findDataInMod :: [(F.Field, F.SemanticSig)]
                  -> Maybe (F.Type, F.Kind)
 findDataInMod [] = Nothing
-findDataInMod ((F.FData, F.DataSem t k) : _) = Just (t, k)
+findDataInMod ((F.FData, F.DataSem tabs _tconc k) : _) = Just (tabs, k)
 findDataInMod (_ : rest) = findDataInMod rest
 
 ---------------------------------------- Modules
@@ -611,8 +651,8 @@ declarations mk (d:ds) kont = let
         sampleModuleDefn f me kont1
       TypeAliasDefn f al -> typeAliasDefn mk f al kont1
       ImportDecl {} -> fail "unimplemented ToF.declarations ImportDecl"
-      TypeDefn {} -> fail "unimplemented ToF.declarations TypeDefn"
-   
+      TypeDefn f td -> typeDefn f (U.s2n f) td kont1
+
 typeAliasDefn :: ToF m
                  => ModuleKind
                  -> Field
@@ -783,6 +823,7 @@ expr e_ =
                   LocalTermVar -> F.V xv
                   StructureTermVar -> F.Proj (F.V xv) F.FVal
    L l -> return $ F.L l
+   C vc -> valueConstructor vc
    Q (QVar p f) -> do
      let
        findIt ident = do
@@ -820,6 +861,25 @@ expr e_ =
    Return e -> liftM F.Return $ expr e
    
    _ -> fail "unimplemented ToF.expr"
+
+valueConstructor :: ToF m
+                    => ValueConstructor
+                    -> m F.Term
+valueConstructor (VCLocal valCon) = do
+  mv <- view (valConEnv . at valCon)
+  xv <- case mv of
+    Just xv -> return xv
+    Nothing -> fail "internal error: ToF.valueConstructor VCLocal valCon not in environment"
+  return (F.Proj (F.V xv) F.FCon)
+valueConstructor (VCGlobal (ValConPath modPath f)) = do
+  let
+    findIt ident = do
+      ma <- view (modEnv . at ident)
+      case ma of
+       Just (sig, x) -> return (sig, F.V x)
+       Nothing -> fail "ToF.valueConstructor: constructor path has unbound module identifier at the root"
+  (_sig, m) <- followUserPathAnything findIt (ProjP modPath f)
+  return (F.Proj m F.FCon)
 
 -- | Given an instantiation coerction ∀αs.ρ ≤ [αs↦τs]ρ construct a function
 -- of type  (∀αs.ρ) → [αs↦τs]ρ. Namely λx:(∀αs.ρ). x [τs]

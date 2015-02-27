@@ -19,7 +19,9 @@ data Field =
   -- data type definition field
   | FData
   -- data type constructor field
-  | FCon !String
+  | FCon
+  -- integer indexed field
+  | FTuple !Int
   -- user defined record fields
   | FUser !String
     deriving (Show, Eq, Ord, Typeable, Generic)
@@ -39,6 +41,7 @@ data Type =
   | TForall !(Bind (TyVar, Embed Kind) Type)
   | TExist !ExistPack
   | TRecord ![(Field, Type)]
+  | TSum ![(Field, Type)]
   | TArr !Type !Type
   | TDist !Type
   deriving (Show, Typeable, Generic)
@@ -62,7 +65,12 @@ data Term =
   | Return !Term
   | LetSample !(Bind (Var, Embed Term) Term)
   | Assume !Type
+  | Inj !Field !Term !Type
+  | Case !Term ![Clause]
   deriving (Show, Typeable, Generic)
+
+data Clause = Clause !(Bind (Embed Field, Var) Term)
+            deriving (Show, Typeable, Generic)
 
 -- * Alpha equivalence and Substitution
 
@@ -71,6 +79,7 @@ instance Alpha Field
 instance Alpha Kind
 instance Alpha Type
 instance Alpha Term
+instance Alpha Clause
 
 instance Subst Type Type where
   isvar (TV a) = Just (SubstName a)
@@ -87,6 +96,8 @@ instance Subst Type Field where
 instance Subst Term Term where
   isvar (V a) = Just (SubstName a)
   isvar _ = Nothing
+
+instance Subst Term Clause
 
 instance Subst Term Type where
   subst _ _ = id
@@ -145,6 +156,11 @@ tApps = flip tApps'
 tArrs :: [Type] -> Type -> Type
 tArrs [] = id
 tArrs (t:ts) = (t `TArr`) . tArrs ts
+
+tupleT :: [Type] -> Type
+tupleT ts =
+  let fts = zipWith (\t i -> (FTuple i, t)) ts [0..]
+  in TRecord fts
 
 lams :: [(Var, Type)] -> Term -> Term
 lams [] = id

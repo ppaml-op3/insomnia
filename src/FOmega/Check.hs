@@ -47,6 +47,7 @@ data OmegaErr =
   | ProjectFromNonRecord !(Got Type) !(Expected Field)
   | FieldNotFound !(Expected Field) !(Got [Field])
   | MalformedStylizedRecord !(Got [Field])
+  | MalformedSumType !(Got [Field])
   | SampleBodyNotDist !(Got Type)
   | SampleFromNonDist !(Got Type)
   | AppendErr !OmegaErr !OmegaErr
@@ -103,6 +104,13 @@ inferK t_ =
        expectKType t k
      ensureDistinctFields $ map fst fts
      wellFormedStylizedRecord fts
+     return KType
+   TSum fts -> do
+     forM_ fts $ \(_f, t) -> do
+       k <- inferK t
+       expectKType t k
+     ensureDistinctFields $ map fst fts
+     wellFormedSumType fts
      return KType
    TDist t -> do
      k <- inferK t
@@ -336,6 +344,15 @@ wellFormedStylizedRecord fs = do
     isUser _ = False
     isData (FData, _) = True
     isData _ = False
+    isCon (FCon {}, _) = True
+    isCon _ = False
+
+wellFormedSumType :: MonadTC m => [(Field, a)] -> m ()
+wellFormedSumType fs = do
+  let allCons = all isCon fs
+  unless allCons $
+    throwError $ MalformedSumType (Got $ map fst fs)
+  where
     isCon (FCon {}, _) = True
     isCon _ = False
 

@@ -17,7 +17,8 @@ ppField FVal = "val"
 ppField FType = "type"
 ppField FSig = "sig"
 ppField FData = "data"
-ppField (FCon s) = "con" <+> text s 
+ppField FCon = "con"
+ppField (FTuple i) = "#" <> int i
 ppField (FUser s) = text s
 
 ppKind :: Kind -> PM Doc
@@ -49,6 +50,11 @@ ppType t_ =
      let
        ppF (f, t) = fsep [ppField f, indent coloncolon (ppType t)]
      in braces $ fsep $ punctuate "," $ map ppF fts
+   TSum fts ->
+     let
+       ppF (f, t) = fsep [ppField f, indent coloncolon (ppType t)]
+     in
+      braces $ fsep $ prePunctuate "|" $ map ppF fts
    TDist t ->
      fsep ["Dist", indent mempty (ppType t)]
         
@@ -90,11 +96,18 @@ ppTerm m_ =
      in braces $ fsep $ punctuate "," $ map ppF fms
    Proj m f ->
      withPrec 2 AssocLeft (Left $ ppTerm m) <> "." <> ppField f
+   Inj f m t ->
+     precParens 2
+     $ fsep ["inj", ppField f, ppTerm m, "as" <+> (ppType t)]
    Let bnd ->
      let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
      in precParens 1
         $ fsep ["let", pp x, indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m1),
                 "in" <+> (withLowestPrec $ ppTerm m2)]
+   Case m clauses ->
+     precParens 1
+     $ fsep ["case", pp m, "of",
+             braces $ sep $ prePunctuate ";" $ map ppClause clauses]
    Return m ->
      fsep ["return", ppTerm m]
    LetSample bnd ->
@@ -104,6 +117,12 @@ ppTerm m_ =
                 "in" <+> (withLowestPrec $ ppTerm m2)]
    Assume t ->
      fsep ["assume", ppType t]
+
+ppClause :: Clause -> PM Doc
+ppClause (Clause bnd) =
+  let ((U.unembed -> f, v), m) = UU.unsafeUnbind bnd
+  in
+   fsep [parens $ fsep [ppField f, pp v], indent "→" (withLowestPrec $ ppTerm m)]
 
 ppExistPack :: ExistPack -> PM Doc
 ppExistPack bnd =

@@ -56,7 +56,7 @@ fieldName =
   <|> (FType <$ reserved "type")
   <|> (FSig <$ reserved "sig")
   <|> (FData <$ reserved "data")
-  <|> (FCon <$ reserved "con" <*> identifier)
+  <|> (FCon <$ reserved "con")
   <|> (FUser <$> identifier)
 
 kindExpr :: Parser Kind
