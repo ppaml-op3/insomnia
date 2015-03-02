@@ -268,7 +268,34 @@ typeDefn :: ToF m
             -> m ans
 typeDefn f selfTc td_ kont =
   case td_ of
-   EnumDefn _n -> fail "unimplemented ToF.typeDefn EnumDefn"
+   EnumDefn numeracy ->
+     withFreshName "Δ" $ \enumTyModV ->
+     withFreshName ("δ" ++ show numeracy) $ \tv -> do
+       let
+         -- enum becomes: δ → (∀ α : ⋆ . α → (δ → α) → α)
+         -- that is, it's isomorphic to primitive recursion over a nat.
+         tFold = let a = U.s2n "α"
+                 in (F.TForall $ U.bind (a, U.embed F.KType)
+                     $ F.tArrs [F.TV a
+                               , F.TV tv `F.TArr` F.TV a
+                               ]
+                     $ (F.TV a))
+         dataSem = F.DataSem (F.TV tv) tFold F.KType
+         dataSig = [(F.FUser f, dataSem)]
+         abstr = [(tv, U.embed F.KType)]
+       dataTy <- F.embedSemanticSig dataSem
+       let dataModSem = F.ModSem [(F.FUser f, dataSem)]
+           dataModAbs = F.AbstractSig $ U.bind [(tv, U.embed F.KType)] dataModSem
+       dataModTy <- F.embedAbstractSig dataModAbs
+       let dataModTm = F.Assume dataModTy
+           unpackHole = Endo (F.Unpack . U.bind (tv, enumTyModV, U.embed dataModTm))
+           xenum = U.s2n f
+           dTm = [(F.FUser f, F.V xenum)]
+           dHole = Endo (F.Let . U.bind (xenum, U.embed $ F.Proj (F.V enumTyModV) (F.FUser f)))
+           absSig = (abstr, dataSig)
+           thisOne = (absSig, dTm, unpackHole <> dHole)
+       local (tyConEnv %~ M.insert selfTc dataSem)
+         $ kont thisOne
    DataDefn bnd ->
      U.lunbind bnd $ \(tvks, constrs) ->
      withTyVars tvks $ \tvks' ->
