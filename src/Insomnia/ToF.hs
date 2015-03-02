@@ -274,8 +274,7 @@ typeDefn f selfTc td_ kont =
      withTyVars tvks $ \tvks' ->
      withFreshName "Δ" $ \dataTyModV ->
      withFreshName "δ" $ \tv -> do
-       let selfTc = U.s2n f
-           kdoms = map snd tvks'
+       let kdoms = map snd tvks'
            k = kdoms `F.kArrs` F.KType
        local (tyConEnv %~ M.insert selfTc (F.TypeSem (F.TV tv) k)) $ do
          -- fully apply data type abstract var to parameter vars
@@ -285,7 +284,7 @@ typeDefn f selfTc td_ kont =
                                    $ constrs
          let tConc = F.tLams tvks' $ F.TSum summands
              cSems = map (\(f, sem) -> (U.s2n f, sem)) constrSems
-             constrSigs = map (\(f, sem) -> (F.FUser f, F.ModSem [(F.FCon, sem)])) constrSems
+             constrSigs = map (\(f, sem) -> (F.FUser f, sem)) constrSems
              dataSem = F.DataSem (F.TV tv) tConc k
              dataSig = (F.FUser f, dataSem)
              abstr = [(tv, U.embed k)]
@@ -740,8 +739,6 @@ valueDecl mk f vd kont =
        $ U.avoid [U.AnyName v]
        $ kont thisOne
    FunDecl e -> do
-     when (mk /= ModuleMK) $
-       fail "internal error: ToF.valueDecl FunDecl in a model"
      mt <- view (valEnv . at v)
      (xv, _prov, ty_) <- case mt of
        Nothing -> fail "internal error: ToF.valueDecl FunDecl did not find type declaration for field"

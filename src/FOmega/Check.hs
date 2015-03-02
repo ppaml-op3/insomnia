@@ -17,9 +17,7 @@ import Unbound.Generics.LocallyNameless.LFresh (LFresh, LFreshMT, runLFreshMT)
 import FOmega.Syntax
 
 
-data Ctx =
-  CNil
-  | CCons !CBind !Ctx
+data Ctx = Ctx { ctxBinds :: [CBind] }
 
 data CBind =
   CVal !Var !Type 
@@ -67,8 +65,13 @@ class (LFresh m, MonadReader Ctx m, MonadError OmegaErr m, MonadPlus m) => Monad
 instance Monad m => MonadTC (TC m)
 
 runTC :: TC m a -> m (Either OmegaErr a)
-runTC c = runLFreshMT $ runExceptT (runReaderT c CNil)
-
+runTC c = runLFreshMT $ runExceptT (runReaderT c initialCtx)
+  where
+    initialCtx = Ctx
+      [ CType (U.s2n "Int") KType
+      , CType (U.s2n "Real") KType
+      ]
+          
 inferK :: MonadTC m => Type -> m Kind
 inferK t_ =
   case t_ of
@@ -233,7 +236,7 @@ whnfTy t k_ =
      case t1N of
       TLam bnd ->
         U.lunbind bnd $ \((v, _), tbody) ->
-        whnfTy (U.subst v t2 tbody) KType
+        whnfTy (U.subst v t2 tbody) k_
       _ -> return $ TApp t1N t2
    TLam bnd ->
      U.lunbind bnd $ \(vk@(v, _), tbody) ->
@@ -241,7 +244,7 @@ whnfTy t k_ =
       (KArr k1 k2) -> do
         tbodyN <- extendEnv (CType v k1) $ whnfTy tbody k2
         return $ TLam $ U.bind vk tbodyN
-      KType -> fail "impossible for well-kinded terms"
+      KType -> fail $ "whnfTy lambda of base kind impossible for well-kinded types, but saw " ++ show t
    _ -> return t
 
 tyEquiv :: MonadTC m => Expected Type -> Got Type -> Kind -> m Type
@@ -287,6 +290,17 @@ tyEquiv' t1_ t2_ k = do
        tN <- tyEquiv' t1 t2 KType
        return (f, tN)
      return $ TRecord ftsN
+   (TSum fts, TSum gts, KType) -> do
+     let allFieldNames = S.toList $ mconcat $ map (S.fromList . map fst) [fts, gts]
+     ftsN <- forM allFieldNames $ \f -> do
+       t1 <- lookupField fts f
+       t2 <- lookupField gts f
+       tN <- tyEquiv' t1 t2 KType
+       return (f, tN)
+     return $ TSum ftsN
+   (TDist t1, TDist t2, KType) -> do
+     tN <- tyEquiv' t1 t2 KType
+     return $ TDist tN
    (_, _, KArr k1 k2) -> do
      v <- U.lfresh (U.s2n "a")
      let
@@ -330,6 +344,8 @@ ensureDistinctFields _ = return () -- TODO: actually ensure
 wellFormedStylizedRecord :: MonadTC m => [(Field, a)] -> m ()
 wellFormedStylizedRecord [(FVal, _)] = return ()
 wellFormedStylizedRecord [(FType, _)] = return ()
+wellFormedStylizedRecord [(FData, _)] = return ()
+wellFormedStylizedRecord [(FCon, _)] = return ()
 wellFormedStylizedRecord [(FSig, _)] = return ()
 wellFormedStylizedRecord fs = do
   let userRecord = all isUser fs
@@ -337,7 +353,8 @@ wellFormedStylizedRecord fs = do
         case List.partition isData fs of
          ([_d], cs) -> all isCon cs
          _ -> False
-  unless (userRecord || isDatatype) $
+      isTuple = all isTupleIdx fs
+  unless (userRecord || isDatatype || isTuple) $
     throwError $ MalformedStylizedRecord (Got $ map fst fs)
   where
     isUser (FUser {}, _) = True
@@ -346,15 +363,17 @@ wellFormedStylizedRecord fs = do
     isData _ = False
     isCon (FCon {}, _) = True
     isCon _ = False
+    isTupleIdx (FTuple {}, _) = True
+    isTupleIdx _ = False
 
 wellFormedSumType :: MonadTC m => [(Field, a)] -> m ()
 wellFormedSumType fs = do
-  let allCons = all isCon fs
-  unless allCons $
+  let allUser = all isUser fs
+  unless allUser $
     throwError $ MalformedSumType (Got $ map fst fs)
   where
-    isCon (FCon {}, _) = True
-    isCon _ = False
+    isUser (FUser {}, _) = True
+    isUser _ = False
 
 lookupField :: MonadTC m => [(Field, a)] -> Field -> m a
 lookupField fs_ f = go fs_
@@ -364,7 +383,7 @@ lookupField fs_ f = go fs_
                    | otherwise = go fs
 
 extendEnv :: MonadTC m => CBind -> m a -> m a
-extendEnv b = local (CCons b)
+extendEnv b = local (Ctx . (b:) . ctxBinds)
 
 expectKType :: MonadTC m => Type -> Kind -> m ()
 expectKType t k =
@@ -387,19 +406,19 @@ lookupVar v = do
    Just t -> return t
 
 findTyVar :: TyVar -> Ctx -> Maybe Kind
-findTyVar v = go
+findTyVar v = go . ctxBinds
   where
-    go CNil = Nothing
-    go (CCons b c) =
+    go [] = Nothing
+    go (b:c) =
       case b of
       CType v' k | v == v' -> Just k
       _ -> go c
 
 findVar :: Var -> Ctx -> Maybe Type
-findVar v = go
+findVar v = go . ctxBinds
   where
-    go CNil = Nothing
-    go (CCons b c) =
+    go [] = Nothing
+    go (b:c) =
       case b of
        CVal v' t | v == v' -> Just t
        _ -> go c

@@ -9,6 +9,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import FOmega.Syntax as F
 import FOmega.SemanticSig as F
+import FOmega.Check as F
 
 import qualified Insomnia.SurfaceSyntax.Parse as P
 import qualified Insomnia.SurfaceSyntax.ToAST as ToAST
@@ -17,6 +18,7 @@ import Insomnia.Typecheck.Env as TC
 import Insomnia.Typecheck.Module as TC
 import Insomnia.Identifier (Path(..))
 import Insomnia.Pretty (ppDefault)
+
 
 -- | Parse a module type expression (most commonly a signature),
 -- convert it to an Insomnia AST, then convert it to an FOmega
@@ -52,4 +54,11 @@ moduleExpr txt = do
   let z@(_, tm) = ToF.runToFM $ ToF.moduleExpr modExpr'
   putStrDoc (format $ ppDefault tm)
   putStrLn "\n"
+  mty <- F.runTC (F.inferTy tm)
+  case mty of
+   Left err -> putStrLn ("typechecking FOmega failed: " ++ show err)
+   Right ty -> do
+     putStrLn "FOmega type is: "
+     putStrDoc (format $ ppDefault ty)
+     putStrLn "\n-------"
   return z
