@@ -676,8 +676,73 @@ declarations mk (d:ds) kont = let
           fail "internal error: ToF.declarations SampleModuleDecl in a module"
         sampleModuleDefn f me kont1
       TypeAliasDefn f al -> typeAliasDefn mk f al kont1
-      ImportDecl {} -> fail "unimplemented ToF.declarations ImportDecl"
+      ImportDecl p ->
+        fail "internal error: ToF.declarations ImportDecl should have been desugared by the Insomnia typechecker"
+        {- importDecl p kont1 -}
       TypeDefn f td -> typeDefn f (U.s2n f) td kont1
+
+-- | In Insomnia, the typechecker changed the import declaration into a
+-- sequence of declarations.  But we could actually support it
+-- natively in the translation here, if we wanted.  In fact, in the
+-- F-ing modules paper, "include M" is a primitive construct and we
+-- could use it to explain, for example, how data types work.  (There
+-- are differences here. In F-ing modules, the include takes a module
+-- expression, not a path, as an argument, and consequently it would
+-- require unpacking an abstract sig, but we already have all the
+-- functions to do that correctly, anyway.)
+importDecl :: ToF m
+              => Path
+              -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
+              -> m ans
+importDecl importPath kont = do
+  (semImp, m) <- modulePath importPath
+  case semImp of
+   F.ModSem fsigs -> do
+     fsems <- forM fsigs $ \(f, sem) ->
+       case f of
+        F.FUser fld -> return (fld, sem)
+        _ -> fail "internal error: ToF.importDecl expected a module of user fields"
+     withFreshName "imp" $ \ ximp -> do
+       let
+         fs = map fst fsems
+         impHole = Endo (F.Let . U.bind (ximp, U.embed m))
+         fxs = map (\f -> (f, U.s2n f)) fs
+         holes = map (\(f, x) ->
+                       Endo (F.Let . U.bind (x, U.embed $ F.Proj (F.V ximp) (F.FUser f))))
+                 fxs
+         sigSummary = ([], fsigs)
+         xtms = map (\(f, x) -> (F.FUser f, F.V x)) fxs
+         coord = zipWith (\(f, x) (_f, sem) -> (f, x, sem)) fxs fsems
+         hole = impHole <> mconcat holes
+         thisOne = (sigSummary, xtms, hole)
+       -- XXX: need to add everything in the sig to the environment
+       local (extendEnvForImports coord) $
+         kont thisOne
+   _ -> fail "internal error: ToF.importDecl expected a module path"
+
+extendEnvForImports :: [(Field, F.Var, F.SemanticSig)]
+                       -> Env
+                       -> Env
+extendEnvForImports [] = id
+extendEnvForImports (c:coord) =
+  extendEnvForImport c
+  . extendEnvForImports coord
+  where
+    extendEnvForImport :: (Field, F.Var, F.SemanticSig) -> Env -> Env
+    extendEnvForImport (f, x, sem) =
+      let
+        addToModEnv = modEnv %~ M.insert (U.s2n f) (sem, x)
+        addToTyConEnv = tyConEnv %~ M.insert (U.s2n f) sem
+      in case sem of
+       F.ValSem ty -> valEnv %~ M.insert (U.s2n f) (x, StructureTermVar, ty)
+       F.TypeSem {} -> addToTyConEnv
+       F.SigSem absSig -> error "internal error: ToF.extendEnvForImports Insomnia doesn't have local signature definitions, this unexpected."
+       F.DataSem {} -> addToTyConEnv
+       F.ConSem {} -> valConEnv %~ M.insert (U.s2n f) x
+       F.ModSem {} -> addToModEnv
+       F.FunctorSem {} -> addToModEnv
+       F.ModelSem {} -> addToModEnv
+
 
 typeAliasDefn :: ToF m
                  => ModuleKind
