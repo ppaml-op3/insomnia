@@ -924,11 +924,8 @@ expr e_ =
      -- assume _sig is a F.ValSem
      return $ F.Proj m F.FVal
    Lam bnd ->
-     U.lunbind bnd $ \((x, U.unembed -> (Annot mt)), e) -> do
-       t <- case mt of
-        Nothing -> fail "unexpected failure: ToF.expr lambda without type annotation"
-        Just t -> return t
-       (t', _k) <- type' t
+     U.lunbind bnd $ \((x, U.unembed -> ann), e) -> do
+       (t', _k) <- annot ann
        withFreshName (U.name2String x) $ \x' ->
          local (valEnv %~ M.insert x (x', LocalTermVar, t')) $ do
            m <- expr e
@@ -948,8 +945,53 @@ expr e_ =
      return $ F.Record fms
    Ann {} -> fail "unexpected failure: ToF.expr saw an Ann term"
    Return e -> liftM F.Return $ expr e
-   
-   _ -> fail "unimplemented ToF.expr"
+   Case {} -> fail "unimplemented ToF.expr Case"
+   Let bnd -> do
+     U.lunbind bnd $ \(bndings, body) ->
+       letBindings bndings $ expr body
+
+letBindings :: ToF m
+               => Bindings
+               -> m F.Term
+               -> m F.Term
+letBindings (Bindings tele) kont =
+  traverseTelescopeContT (\bnding rest -> letBinding bnding $ rest ()) tele $ \_ -> kont
+
+letBinding :: ToF m
+                => Binding
+                -> m F.Term
+                -> m F.Term
+letBinding bnding kont =
+  case bnding of
+   ValB (x, U.unembed -> ann) (U.unembed -> e) ->
+     letSimple F.Let x ann e kont
+   SampleB (x, U.unembed -> ann) (U.unembed -> e) -> 
+     letSimple F.LetSample x ann e kont
+   TabB {} -> fail "unimplemented ToF.letBinding TabB"
+
+annot :: ToF m
+         => Annot -> m (F.Type, F.Kind)
+annot (Annot mt) =
+  case mt of
+   Nothing -> fail "unexpected failure: ToF.annot expected an annotation"
+   Just t -> type' t
+
+letSimple :: ToF m
+             => (U.Bind (F.Var, Embed F.Term) F.Term -> F.Term)
+             -> Var
+             -> Annot
+             -> Expr
+             -> m F.Term
+             -> m F.Term
+letSimple mkLet x ann e kont = do
+  (ty, _k) <- annot ann
+  m <- expr e
+  x' <- U.lfresh (U.s2n $ U.name2String x)
+  mbody <- U.avoid [U.AnyName x']
+           $ local (valEnv %~ M.insert x (x', LocalTermVar, ty))
+           $ kont
+  return $ mkLet $ U.bind (x', U.embed m) mbody
+
 
 valueConstructor :: ToF m
                     => ValueConstructor
