@@ -849,22 +849,41 @@ valueDecl mk f vd kont =
    SampleDecl e -> do
      when (mk /= ModelMK) $
        fail "internal error: ToF.valueDecl SampleDecl in a module"
-     mt <- view (valEnv . at v)
-     (xv, _prov, _ty_) <- case mt of
-       Nothing -> fail "internal error: ToF.valueDecl SampleDecl did not find and type declaration for field"
-       Just xty -> return xty
-     -- ty <- matchSemValRecord ty_
-     m <- expr e
-     let
-       mhole body =
-         F.LetSample $ U.bind (xv, U.embed m)
-         $ F.Let $ U.bind (xv, U.embed $ F.Record [(F.FVal, F.V xv)])
-         $ body
-       thisOne = (mempty,
-                  [(F.FUser f, F.V xv)],
-                  Endo mhole)
-     kont thisOne
-   _ -> fail "unimplemented ToF.valueDecl"
+     simpleValueBinding F.LetSample f v e kont
+   ParameterDecl e -> do
+     when (mk /= ModuleMK) $
+       fail "internal error: ToF.valueDecl ParameterDecl in a model"
+     simpleValueBinding F.Let f v e kont
+   ValDecl e -> fail ("internal error: unexpected ValDecl in ToF.valueDecl;"
+                      ++" Insomnia typechecker should have converted into a SampleDecl or a ParameterDecl")
+   TabulatedSampleDecl tabfun -> fail "unimplemented ToF.valueDecl TabulatedSampelDecl"
+   
+simpleValueBinding :: ToF m
+                      => (U.Bind (F.Var, U.Embed F.Term) F.Term -> F.Term)
+                      -> Field
+                      -> Var
+                      -> Expr
+                      -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
+                      -> m ans
+simpleValueBinding mkValueBinding f v e kont = do
+  mt <- view (valEnv . at v)
+  (xv, _prov, _ty_) <- case mt of
+    Nothing -> fail "internal error: ToF.valueDecl SampleDecl did not find and type declaration for field"
+    Just xty -> return xty
+  -- ty <- matchSemValRecord ty_
+  m <- expr e
+  let
+    mhole body =
+      mkValueBinding $ U.bind (xv, U.embed m)
+      $ F.Let $ U.bind (xv, U.embed $ F.Record [(F.FVal, F.V xv)])
+      $ body
+    thisOne = (mempty,
+               [(F.FUser f, F.V xv)],
+               Endo mhole)
+  kont thisOne
+
+
+
 
 matchSemValRecord :: Monad m => F.Type -> m F.Type
 matchSemValRecord (F.TRecord [(F.FVal, t)]) = return t
