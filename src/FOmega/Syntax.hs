@@ -40,8 +40,8 @@ data Type =
   | TApp !Type !Type
   | TForall !(Bind (TyVar, Embed Kind) Type)
   | TExist !ExistPack
-  | TRecord ![(Field, Type)]
-  | TSum ![(Field, Type)]
+  | TRecord ![(Field, Type)] -- TRecord [] is the unit type
+  | TSum ![(Field, Type)] -- TSum [] is the void type
   | TArr !Type !Type
   | TDist !Type
   deriving (Show, Typeable, Generic)
@@ -58,7 +58,7 @@ data Term =
   | Let !(Bind (Var, Embed Term) Term)
   | PLam !(Bind (TyVar, Embed Kind) Term)
   | PApp !Term !Type
-  | Record ![(Field, Term)]
+  | Record ![(Field, Term)] -- Record [] is the unit value
   | Proj !Term !Field
   | Pack !Type !Term !ExistPack
   | Unpack !(Bind (TyVar, Var, Embed Term) Term)
@@ -66,7 +66,8 @@ data Term =
   | LetSample !(Bind (Var, Embed Term) Term)
   | Assume !Type
   | Inj !Field !Term !Type
-  | Case !Term ![Clause]
+  | Case !Term ![Clause] !(Maybe Term)
+  | Abort !Type
   deriving (Show, Typeable, Generic)
 
 data Clause = Clause !(Bind (Embed Field, Var) Term)
@@ -126,6 +127,12 @@ instance Pretty Term where pp = ppTerm
 kArrs :: [Kind] -> Kind -> Kind
 kArrs [] = id
 kArrs (k:ks) = KArr k . kArrs ks
+
+intT :: Type
+intT = TV (s2n "Int")
+
+realT :: Type
+realT = TV (s2n "Real")
 
 tLams :: [(TyVar, Kind)] -> Type -> Type
 tLams [] = id
@@ -220,4 +227,19 @@ unpacks :: LFresh m => [TyVar] -> Var -> Term -> Term -> m Term
 unpacks tvs x e1 ebody = do
   rest <- unpacksM tvs x
   return $ rest e1 ebody
+
+unitT :: Type
+unitT = TRecord []
+
+unitVal :: Term
+unitVal = Record []
+
+
+voidT :: Type
+voidT = TSum []
+
+
+-- | λ _ : ()  . abort T
+abortThunk :: Type -> Term
+abortThunk = Lam . bind (s2n "_abort", embed unitT) . Abort
 

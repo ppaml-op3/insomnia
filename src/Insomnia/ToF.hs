@@ -15,10 +15,10 @@
 -- "∃α. Dist τ" which would correspond to all samples from a
 -- distribution sharing the identity of their abstract types.  That is
 -- not what we do in Insomnia, however.)
-{-# LANGUAGE ViewPatterns, TemplateHaskell,
+{-# LANGUAGE ViewPatterns,
       FlexibleContexts, FlexibleInstances, TypeSynonymInstances
   #-}
-module Insomnia.ToF where
+module Insomnia.ToF (Insomnia.ToF.Env.runToFM, moduleExpr, moduleType) where
 
 import Control.Lens
 import Control.Monad.Reader
@@ -30,6 +30,7 @@ import qualified Data.Map as M
 
 import Unbound.Generics.LocallyNameless (LFresh, Embed)
 import qualified Unbound.Generics.LocallyNameless as U
+import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import qualified FOmega.Syntax as F
 import qualified FOmega.SemanticSig as F
@@ -45,52 +46,10 @@ import Insomnia.ModuleType
 import Insomnia.Module
 import Insomnia.Expr
 
--- | when we translate insomnia term variables, we keep track of
--- whether they came from a local binding or from a previous
--- definition in the current module.
-data TermVarProvenance = LocalTermVar
-                       | StructureTermVar
-                       deriving (Show)
-  
-data Env = Env { _tyConEnv :: M.Map TyConName F.SemanticSig
-               , _sigEnv   :: M.Map SigIdentifier F.AbstractSig
-               , _modEnv   :: M.Map Identifier (F.SemanticSig, F.Var)
-               , _tyVarEnv :: M.Map TyVar (F.TyVar, F.Kind)
-               , _valConEnv :: M.Map ValConName F.Var
-               , _valEnv    :: M.Map Var (F.Var, TermVarProvenance, F.Type)
-               }
-
-$(makeLenses ''Env)
-
-emptyToFEnv :: Env
-emptyToFEnv = Env initialTyConEnv mempty mempty mempty mempty mempty
-
-initialTyConEnv :: M.Map TyConName F.SemanticSig
-initialTyConEnv = M.fromList [(U.s2n "->",
-                               F.TypeSem arrowLam ([F.KType, F.KType] `F.kArrs` F.KType))
-                             , (U.s2n "Dist", F.TypeSem distLam (F.KType `F.KArr` F.KType))
-                             , (U.s2n "Real", F.TypeSem (F.TV $ U.s2n "Real") F.KType)
-                             , (U.s2n "Int", F.TypeSem (F.TV $ U.s2n "Int") F.KType) 
-                             ]
-  where
-    arrowLam = F.TLam $ U.bind (alpha, U.embed F.KType) $
-               F.TLam $ U.bind (beta, U.embed F.KType) $
-               F.TArr (F.TV alpha) (F.TV beta)
-    distLam = F.TLam $ U.bind (alpha, U.embed F.KType) $ F.TDist (F.TV alpha)
-    alpha = U.s2n "α"
-    beta = U.s2n "β"
-
-class (Functor m, LFresh m, MonadReader Env m, MonadPlus m) => ToF m
-
-type ToFM = ExceptT String (ReaderT Env U.LFreshM)
-
-instance ToF ToFM
-
-runToFM :: ToFM a -> a
-runToFM m =
-  case U.runLFreshM (runReaderT (runExceptT m) emptyToFEnv) of
-   Left s -> error $ "unexpected failure in ToF.runToFM: " ++ s
-   Right a -> a
+import Insomnia.ToF.Env
+import Insomnia.ToF.Type
+import Insomnia.ToF.Pattern
+import Insomnia.ToF.Expr
 
 ---------------------------------------- Module Types
 
@@ -181,20 +140,6 @@ followTypePath mod0 bnd =
   withFreshName (U.name2String dkId) $ \x ->
     liftM fst $ followUserPathAnything (const $ return (mod0, F.V x)) (ProjP modsPath typeField)
 
-followUserPathAnything :: Monad m =>
-                          (Identifier -> m (F.SemanticSig, F.Term))
-                          -> Path -> m (F.SemanticSig, F.Term)
-followUserPathAnything rootLookup (IdP ident) = rootLookup ident
-followUserPathAnything rootLookup (ProjP path f) = do
-  (mod1, m) <- followUserPathAnything rootLookup path
-  case mod1 of
-   (F.ModSem flds) -> do
-     let p (F.FUser f', _) | f == f' = True
-         p _ = False
-     case List.find p flds of
-      Just (_, mod2) -> return (mod2, F.Proj m (F.FUser f))
-      Nothing -> fail "unexpectd failure in followUserPathAnything: field not found"
-   _ -> fail "unexpected failure in followUserPathAnything: not a module record"
   
 mkAbstractModuleSig :: SigSummary
                        -> F.AbstractSig
@@ -347,117 +292,6 @@ typeDefn f selfTc td_ kont =
           t = F.tForalls tvks $ tDoms' `F.tArrs` tCod
           tsummand = F.tupleT tDoms'
       return (f, F.ConSem t, tsummand)
-
-
-typeAlias :: ToF m => TypeAlias -> m F.SemanticSig
-typeAlias (TypeAlias bnd) =
-  U.lunbind bnd $ \(tvks, t) ->
-  withTyVars tvks $ \tvks' -> do
-    (t', kcod) <- type' t
-    let kdoms = map snd tvks'
-        k = kdoms `F.kArrs` kcod
-    return $ F.TypeSem t' k
-
-withFreshName :: (Typeable a, ToF m) => String -> (U.Name a -> m r) -> m r
-withFreshName s kont = do
-  n' <- U.lfresh $ U.s2n s
-  U.avoid [U.AnyName n'] $ kont n'
-
-withTyVars :: ToF m => [KindedTVar] -> ([(F.TyVar, F.Kind)] -> m r) -> m r
-withTyVars [] kont = kont []
-withTyVars (tvk:tvks) kont =
-  withTyVar tvk $ \tvk' -> 
-  withTyVars tvks $ \tvks' ->
-  kont $ tvk':tvks'
-
-withTyVar :: ToF m => KindedTVar -> ((F.TyVar, F.Kind) -> m r) -> m r
-withTyVar (tv, k) kont = do
-  k' <- kind k
-  withFreshName (U.name2String tv) $ \tv' -> 
-    local (tyVarEnv %~ M.insert tv (tv', k'))
-    $ kont $ (tv', k')
-
-kind :: Monad m => Kind -> m F.Kind
-kind KType = return F.KType
-kind (KArr k1 k2) = do
-  k1' <- kind k1
-  k2' <- kind k2
-  return $ F.KArr k1' k2'
-
-type' :: ToF m => Type -> m (F.Type, F.Kind)
-type' t_ =
-  case t_ of
-   TV tv -> do
-     mv <- view (tyVarEnv . at tv)
-     case mv of
-      Just (tv', k') -> return (F.TV tv', k')
-      Nothing -> do
-        env <- view tyVarEnv
-        env' <- view valEnv
-        fail ("ToF.type' internal error: type variable " <> show tv
-              <> " not in environment " <> show env
-              <> " and value env " <> show env')
-   TUVar _ -> fail "ToF.type' internal error: unexpected unification variable"
-   TC tc -> typeConstructor tc
-   TAnn t k -> do
-     (t', _) <- type' t
-     k' <- kind k
-     return (t', k')
-   TApp t1 t2 -> do
-     (t1', karr) <- type' t1
-     (t2', _) <- type' t2
-     case karr of
-      (F.KArr _ k2) -> return (F.TApp t1' t2', k2)
-      F.KType -> fail "ToF.type' internal error: unexpected KType in function position of type application"
-   TForall bnd ->
-     U.lunbind bnd $ \((tv, k), tbody) -> 
-     withTyVar (tv,k) $ \(tv', k') -> do
-       (tbody', _) <- type' tbody
-       let
-         tall = F.TForall $ U.bind (tv', U.embed k') $ tbody'
-       return (tall, F.KType)
-   TRecord (Row lts) -> do
-     fts <- forM lts $ \(l, t) -> do
-       (t', _) <- type' t
-       return (F.FUser $ labelName l, t')
-     return (F.TRecord fts, F.KType)
-
-typeConstructor :: ToF m => TypeConstructor -> m (F.Type, F.Kind)
-typeConstructor (TCLocal tc) = do
-  ma <- view (tyConEnv . at tc)
-  e <- view tyConEnv
-  case ma of
-   Just (F.TypeSem t k) -> return (t, k)
-   Just (F.DataSem t _ k) -> return (t, k)
-   -- Just (F.ModSem semanticModule) ->
-   --   case findDataInMod semanticModule of
-   --    Just (t,k) -> return (t,k)
-   --    Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
-   Just f -> fail $ "ToF.typeConstructor: wanted a TypeSem, got a " ++ show f
-   Nothing -> fail $ "ToF.typeConstructor: tyConEnv did not contain a TypeSem for a local type constructor: " ++ show tc ++ " in " ++ show e
-typeConstructor (TCGlobal (TypePath p f)) = do
-  let
-    findIt ident = do
-      ma <- view (modEnv . at ident)
-      case ma of
-       Just (sig, x) -> return (sig, F.V x)
-       Nothing -> fail "ToF.typeConstructor: type path has unbound module identifier at the root"
-  (s, _m) <- followUserPathAnything findIt (ProjP p f)
-  case s of
-   F.TypeSem t k -> return (t, k)
-   F.DataSem t _ k -> return (t, k)
-   -- F.ModSem semanticModule ->
-   --   case findDataInMod semanticModule of
-   --    Just (tabs, k) -> return (tabs, k)
-   --    Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
-   _ -> fail "ToF.typeConstructor: type path maps to non-type semantic signature"
-  
-                      
-findDataInMod :: [(F.Field, F.SemanticSig)]
-                 -> Maybe (F.Type, F.Kind)
-findDataInMod [] = Nothing
-findDataInMod ((F.FData, F.DataSem tabs _tconc k) : _) = Just (tabs, k)
-findDataInMod (_ : rest) = findDataInMod rest
 
 ---------------------------------------- Modules
 
@@ -734,7 +568,7 @@ extendEnvForImports (c:coord) =
         addToModEnv = modEnv %~ M.insert (U.s2n f) (sem, x)
         addToTyConEnv = tyConEnv %~ M.insert (U.s2n f) sem
       in case sem of
-       F.ValSem ty -> valEnv %~ M.insert (U.s2n f) (x, StructureTermVar, ty)
+       F.ValSem {} -> valEnv %~ M.insert (U.s2n f) (x, StructureTermVar sem)
        F.TypeSem {} -> addToTyConEnv
        F.SigSem absSig -> error "internal error: ToF.extendEnvForImports Insomnia doesn't have local signature definitions, this unexpected."
        F.DataSem {} -> addToTyConEnv
@@ -827,15 +661,15 @@ valueDecl mk f vd kont =
      let thisOne = ((mempty, [(F.FUser f, vsig)]),
                     mempty,
                     mempty)
-     local (valEnv %~ M.insert v (xv, StructureTermVar , tr))
+     local (valEnv %~ M.insert v (xv, StructureTermVar vsig))
        $ U.avoid [U.AnyName v]
        $ kont thisOne
    FunDecl e -> do
      mt <- view (valEnv . at v)
-     (xv, _prov, ty_) <- case mt of
-       Nothing -> fail "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
-       Just xty -> return xty
-     ty <- matchSemValRecord ty_
+     (xv, sem) <- case mt of
+       Just (xv, StructureTermVar sem) -> return (xv, sem)
+       _ -> fail "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
+     ty <- matchSemValRecord sem
      m <- tyVarsAbstract ty $ \tvks _ty' -> do
        m_ <- expr e
        return $ F.pLams tvks m_
@@ -867,10 +701,9 @@ simpleValueBinding :: ToF m
                       -> m ans
 simpleValueBinding mkValueBinding f v e kont = do
   mt <- view (valEnv . at v)
-  (xv, _prov, _ty_) <- case mt of
+  (xv, _prov) <- case mt of
     Nothing -> fail "internal error: ToF.valueDecl SampleDecl did not find and type declaration for field"
     Just xty -> return xty
-  -- ty <- matchSemValRecord ty_
   m <- expr e
   let
     mhole body =
@@ -885,9 +718,9 @@ simpleValueBinding mkValueBinding f v e kont = do
 
 
 
-matchSemValRecord :: Monad m => F.Type -> m F.Type
-matchSemValRecord (F.TRecord [(F.FVal, t)]) = return t
-matchSemValRecord _ = fail "internal error: expected a record type encoding a value binding"
+matchSemValRecord :: Monad m => F.SemanticSig -> m F.Type
+matchSemValRecord (F.ValSem t) = return t
+matchSemValRecord _ = fail "internal error: expected a semantic object of a value binding"
 
 tyVarsAbstract :: ToF m => F.Type -> ([(F.TyVar, F.Kind)] -> F.Type -> m r) -> m r
 tyVarsAbstract t_ kont_ = tyVarsAbstract' t_ (\tvks -> kont_ (appEndo tvks []))
@@ -919,126 +752,4 @@ modulePath = let
 
 ---------------------------------------- Core language
 
-expr :: ToF m => Expr -> m F.Term
-expr e_ =
-  case e_ of
-   V x -> do
-     mx <- view (valEnv . at x)
-     case mx of
-      Nothing -> fail "unexpected failure: ToF.expr variable not in scope"
-      Just (xv, prov, _t) ->
-        return $ case prov of
-                  LocalTermVar -> F.V xv
-                  StructureTermVar -> F.Proj (F.V xv) F.FVal
-   L l -> return $ F.L l
-   C vc -> valueConstructor vc
-   Q (QVar p f) -> do
-     let
-       findIt ident = do
-         ma <- view (modEnv . at ident)
-         case ma of
-          Just (sig, x) -> return (sig, F.V x)
-          Nothing -> fail "ToF.expr: type path has unbound module identifier at the root"
-     (_sig, m) <- followUserPathAnything findIt (ProjP p f)
-     -- assume _sig is a F.ValSem
-     return $ F.Proj m F.FVal
-   Lam bnd ->
-     U.lunbind bnd $ \((x, U.unembed -> ann), e) -> do
-       (t', _k) <- annot ann
-       withFreshName (U.name2String x) $ \x' ->
-         local (valEnv %~ M.insert x (x', LocalTermVar, t')) $ do
-           m <- expr e
-           return $ F.Lam $ U.bind (x', U.embed t') m
-   Instantiate e co -> do
-     m <- expr e
-     f <- instantiationCoercion co
-     return $ F.App f m
-   App e1 e2 -> do
-     m1 <- expr e1
-     m2 <- expr e2
-     return $ F.App m1 m2
-   Record les -> do
-     fms <- forM les $ \(Label l, e) -> do
-       m <- expr e
-       return (F.FUser l, m)
-     return $ F.Record fms
-   Ann {} -> fail "unexpected failure: ToF.expr saw an Ann term"
-   Return e -> liftM F.Return $ expr e
-   Case {} -> fail "unimplemented ToF.expr Case"
-   Let bnd -> do
-     U.lunbind bnd $ \(bndings, body) ->
-       letBindings bndings $ expr body
 
-letBindings :: ToF m
-               => Bindings
-               -> m F.Term
-               -> m F.Term
-letBindings (Bindings tele) kont =
-  traverseTelescopeContT (\bnding rest -> letBinding bnding $ rest ()) tele $ \_ -> kont
-
-letBinding :: ToF m
-                => Binding
-                -> m F.Term
-                -> m F.Term
-letBinding bnding kont =
-  case bnding of
-   ValB (x, U.unembed -> ann) (U.unembed -> e) ->
-     letSimple F.Let x ann e kont
-   SampleB (x, U.unembed -> ann) (U.unembed -> e) -> 
-     letSimple F.LetSample x ann e kont
-   TabB {} -> fail "unimplemented ToF.letBinding TabB"
-
-annot :: ToF m
-         => Annot -> m (F.Type, F.Kind)
-annot (Annot mt) =
-  case mt of
-   Nothing -> fail "unexpected failure: ToF.annot expected an annotation"
-   Just t -> type' t
-
-letSimple :: ToF m
-             => (U.Bind (F.Var, Embed F.Term) F.Term -> F.Term)
-             -> Var
-             -> Annot
-             -> Expr
-             -> m F.Term
-             -> m F.Term
-letSimple mkLet x ann e kont = do
-  (ty, _k) <- annot ann
-  m <- expr e
-  x' <- U.lfresh (U.s2n $ U.name2String x)
-  mbody <- U.avoid [U.AnyName x']
-           $ local (valEnv %~ M.insert x (x', LocalTermVar, ty))
-           $ kont
-  return $ mkLet $ U.bind (x', U.embed m) mbody
-
-
-valueConstructor :: ToF m
-                    => ValueConstructor
-                    -> m F.Term
-valueConstructor (VCLocal valCon) = do
-  mv <- view (valConEnv . at valCon)
-  xv <- case mv of
-    Just xv -> return xv
-    Nothing -> fail "internal error: ToF.valueConstructor VCLocal valCon not in environment"
-  return (F.Proj (F.V xv) F.FCon)
-valueConstructor (VCGlobal (ValConPath modPath f)) = do
-  let
-    findIt ident = do
-      ma <- view (modEnv . at ident)
-      case ma of
-       Just (sig, x) -> return (sig, F.V x)
-       Nothing -> fail "ToF.valueConstructor: constructor path has unbound module identifier at the root"
-  (_sig, m) <- followUserPathAnything findIt (ProjP modPath f)
-  return (F.Proj m F.FCon)
-
--- | Given an instantiation coerction ∀αs.ρ ≤ [αs↦τs]ρ construct a function
--- of type  (∀αs.ρ) → [αs↦τs]ρ. Namely λx:(∀αs.ρ). x [τs]
-instantiationCoercion :: ToF m => InstantiationCoercion -> m F.Term
-instantiationCoercion (InstantiationSynthesisCoercion scheme args _result) = do
-  (scheme', _) <- type' scheme
-  args' <- mapM (liftM fst . type') args
-  x <- U.lfresh $ U.s2n "x"
-  let
-    body = F.pApps (F.V x) args'
-  return $ F.Lam $ U.bind (x, U.embed scheme') body
-    

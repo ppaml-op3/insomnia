@@ -105,6 +105,10 @@ library
                        FOmega.MatchSigs
                        FOmega.SubSig
                        --
+                       Insomnia.ToF.Env
+                       Insomnia.ToF.Type
+                       Insomnia.ToF.Pattern
+                       Insomnia.ToF.Expr
                        Insomnia.ToF
                        --
                        Insomnia.Interp.Lam

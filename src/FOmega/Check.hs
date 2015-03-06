@@ -4,16 +4,18 @@
   #-}
 module FOmega.Check where
 
-import Control.Monad.Reader
+import Control.Monad.Reader hiding (forM)
 import Data.Monoid
 import qualified Data.List as List
 import qualified Data.Set as S
-import Control.Monad.Except
+import Control.Monad.Except hiding (forM)
 
+import Data.Traversable (forM)
 
 import qualified Unbound.Generics.LocallyNameless as U
 import Unbound.Generics.LocallyNameless.LFresh (LFresh, LFreshMT, runLFreshMT)
 
+import Insomnia.Common.Literal
 import FOmega.Syntax
 
 
@@ -49,6 +51,9 @@ data OmegaErr =
   | SampleBodyNotDist !(Got Type)
   | SampleFromNonDist !(Got Type)
   | AppendErr !OmegaErr !OmegaErr
+  | ExpectedSumType !(Got Type)
+  | EmptyCaseConstruct --  case m of {}
+  | SumTypeHasNoField !(Expected Type) !(Got Field)
   | NoErr
   deriving (Show)
 
@@ -126,10 +131,15 @@ checkExistPack bnd =
     kbody <- extendEnv (CType v k) $ inferK tbody
     expectKType tbody kbody
 
+inferLit :: MonadTC m => Literal -> m Type
+inferLit (IntL {}) = return intT
+inferLit (RealL {}) = return realT
+
 inferTy :: MonadTC m => Term -> m Type
 inferTy m_ =
   case m_ of
    V v -> lookupVar v
+   L l -> inferLit l
    Lam bnd ->
      U.lunbind bnd $ \((v, U.unembed -> t), body) -> do
        k <- inferK t
@@ -216,6 +226,34 @@ inferTy m_ =
      k <- inferK t
      expectKType t k
      return t
+   Case m clauses optDefault -> do
+     tsum <- inferTy m
+     tsumN <- whnfTy tsum KType
+     alts <- case tsumN of
+      TSum alts -> return alts
+      _ -> throwError $ ExpectedSumType (Got tsum)
+     ts <- forM clauses (checkClause alts)
+     optT <- forM optDefault inferTy
+     let touts = ts ++ (maybe [] (\t -> [t]) optT)
+     case touts of
+      [] -> throwError $ EmptyCaseConstruct
+      (tcand:tcands) -> do
+        mapM_ (\t -> tyEquiv (Expected tcand) (Got t) KType) tcands
+        return tcand
+   Inj f m t -> do
+     k <- inferK t
+     expectKType t k
+     tN <- whnfTy t KType
+     alts <- case tN of
+       TSum alts -> return alts
+       _ -> throwError $ ExpectedSumType (Got tN)
+     tin <- inferTy m
+     checkInj alts f tin
+     return tN
+   Abort t -> do
+     k <- inferK t
+     expectKType t k
+     return t
    
 instExistPack :: MonadTC m => Type -> Kind -> ExistPack -> m Type
 instExistPack t k bnd =
@@ -223,6 +261,22 @@ instExistPack t k bnd =
     unless (k == k') $
       throwError $ ExistentialKindMismatch (Expected k') (Got t) (Got k)
     return $ U.subst v t tbody
+
+-- | checks that the pattern of the given clause matches one of fields
+-- in the list, and returns the type of the body of the clause.
+checkClause :: MonadTC m => [(Field, Type)] -> Clause -> m Type
+checkClause = undefined
+
+-- | checks that the given field is in the given list of alternatives,
+-- and if so, checks that its type is equivalent to the type in the
+-- list.
+checkInj :: MonadTC m => [(Field, Type)] -> Field -> Type -> m ()
+checkInj alts f t = do
+  case lookup f alts of
+   Nothing -> throwError $ SumTypeHasNoField (Expected $ TSum alts) (Got f)
+   Just t' -> do
+     _ <- tyEquiv (Expected t) (Got t') KType
+     return ()
 
 ------------------------------------------------------------
 -- * Type normalization and equivalence

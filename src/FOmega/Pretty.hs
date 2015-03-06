@@ -104,10 +104,11 @@ ppTerm m_ =
      in precParens 1
         $ fsep ["let", pp x, indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m1),
                 "in" <+> (withLowestPrec $ ppTerm m2)]
-   Case m clauses ->
+   Case m clauses optDefault ->
      precParens 1
      $ fsep ["case", pp m, "of",
-             braces $ sep $ prePunctuate ";" $ map ppClause clauses]
+             braces $ sep $ prePunctuate ";" (map ppClause clauses
+                                              ++ ppDefaultClause optDefault)]
    Return m ->
      fsep ["return", ppTerm m]
    LetSample bnd ->
@@ -117,12 +118,18 @@ ppTerm m_ =
                 "in" <+> (withLowestPrec $ ppTerm m2)]
    Assume t ->
      fsep ["assume", ppType t]
+   Abort t ->
+     fsep ["abort", ppType t]
 
 ppClause :: Clause -> PM Doc
 ppClause (Clause bnd) =
   let ((U.unembed -> f, v), m) = UU.unsafeUnbind bnd
   in
    fsep [parens $ fsep [ppField f, pp v], indent "→" (withLowestPrec $ ppTerm m)]
+
+ppDefaultClause :: Maybe Term -> [PM Doc]
+ppDefaultClause Nothing = []
+ppDefaultClause (Just m) = [fsep ["_", indent "→" (withLowestPrec $ ppTerm m)]]
 
 ppExistPack :: ExistPack -> PM Doc
 ppExistPack bnd =
