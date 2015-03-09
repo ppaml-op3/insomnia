@@ -265,7 +265,12 @@ instExistPack t k bnd =
 -- | checks that the pattern of the given clause matches one of fields
 -- in the list, and returns the type of the body of the clause.
 checkClause :: MonadTC m => [(Field, Type)] -> Clause -> m Type
-checkClause = undefined
+checkClause fts (Clause bnd) =
+  U.lunbind bnd $ \ ((U.unembed -> f, v), body) -> do
+    t <- case lookup f fts of
+          Just ty -> return ty
+          Nothing -> throwError $ SumTypeHasNoField (Expected $ TSum fts) (Got f)
+    extendEnv (CVal v t) $ inferTy body
 
 -- | checks that the given field is in the given list of alternatives,
 -- and if so, checks that its type is equivalent to the type in the

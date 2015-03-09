@@ -410,7 +410,7 @@ expr (Lam ident mty e) = do
 expr (Case e clauses) = do
   e' <- expr e
   clauses' <- traverse clause clauses
-  return $ I.Case e' clauses'
+  return $ I.Case e' clauses' (I.Annot Nothing)
 expr (Let bnds e) = 
   bindings bnds $ \bnds' -> do
     e' <- expr e

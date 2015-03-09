@@ -16,6 +16,7 @@ import Insomnia.TypeDefn
 import Insomnia.Common.Telescope
 
 import qualified FOmega.Syntax as F
+import qualified FOmega.SemanticSig as F
 
 import Insomnia.ToF.Env
 import Insomnia.ToF.Type 
@@ -33,7 +34,9 @@ expr e_ =
                   LocalTermVar -> F.V xv
                   StructureTermVar {} -> F.Proj (F.V xv) F.FVal
    L l -> return $ F.L l
-   C vc -> valueConstructor vc
+   C vc -> do
+     (inX, _f, _outX) <- valueConstructor vc
+     return inX
    Q (QVar p f) -> do
      let
        findIt ident = do
@@ -66,7 +69,7 @@ expr e_ =
      return $ F.Record fms
    Ann {} -> fail "unexpected failure: ToF.expr saw an Ann term"
    Return e -> liftM F.Return $ expr e
-   Case e cls -> caseExpr e cls
+   Case e cls ann -> caseExpr e cls ann
    Let bnd -> do
      U.lunbind bnd $ \(bndings, body) ->
        letBindings bndings $ expr body
@@ -105,7 +108,7 @@ letSimple :: ToF m
              -> m F.Term
              -> m F.Term
 letSimple mkLet x ann e kont = do
-  (ty, _k) <- annot ann
+  (_ty, _k) <- annot ann
   m <- expr e
   x' <- U.lfresh (U.s2n $ U.name2String x)
   mbody <- U.avoid [U.AnyName x']
@@ -114,15 +117,22 @@ letSimple mkLet x ann e kont = do
   return $ mkLet $ U.bind (x', U.embed m) mbody
 
 
+-- | Given a value constructor, returns the triple (in, f, out) where
+-- 'in' is a term of type '∀ αs . σ → δ αs' that injects the
+-- constructor arguments into the data type, 'out' is a term of type
+-- '∀ C αs . C (δ αs) → C (Σ {... fi = σi...})' that coerces a value
+-- of a datatype (under any context) to a sum type (under that same
+-- context).  And 'f' is the field name among the 'fi's that
+-- corresponds to this particular value constructor.
 valueConstructor :: ToF m
                     => ValueConstructor
-                    -> m F.Term
+                    -> m (F.Term, F.Field, F.Term)
 valueConstructor (VCLocal valCon) = do
   mv <- view (valConEnv . at valCon)
-  xv <- case mv of
-    Just xv -> return xv
+  (inX, fld, outX) <- case mv of
+    Just (inX, fld, outX) -> return (inX, fld, outX)
     Nothing -> fail "internal error: ToF.valueConstructor VCLocal valCon not in environment"
-  return (F.Proj (F.V xv) F.FCon)
+  return (F.Proj (F.V inX) F.FCon, fld, F.Proj (F.V outX) F.FData)
 valueConstructor (VCGlobal (ValConPath modPath f)) = do
   let
     findIt ident = do
@@ -130,8 +140,13 @@ valueConstructor (VCGlobal (ValConPath modPath f)) = do
       case ma of
        Just (sig, x) -> return (sig, F.V x)
        Nothing -> fail "ToF.valueConstructor: constructor path has unbound module identifier at the root"
-  (_sig, m) <- followUserPathAnything findIt (ProjP modPath f)
-  return (F.Proj m F.FCon)
+  (vcsig, inM) <- followUserPathAnything findIt (ProjP modPath f)
+  outM <- case vcsig of
+           F.ConSem ty (F.FUser dtfld) -> do
+             (_dtsig, dtm) <- followUserPathAnything findIt (ProjP modPath dtfld)
+             return dtm
+           _ -> fail "ToF.valueConstructor: constructor's path not associated with constructor semantic sig"
+  return (F.Proj inM F.FCon, F.FUser f, F.Proj outM F.FData)
 
 -- | Given an instantiation coerction ∀αs.ρ ≤ [αs↦τs]ρ construct a function
 -- of type  (∀αs.ρ) → [αs↦τs]ρ. Namely λx:(∀αs.ρ). x [τs]
@@ -147,11 +162,15 @@ instantiationCoercion (InstantiationSynthesisCoercion scheme args _result) = do
 caseExpr :: ToF m
             => Expr
             -> [Clause]
+            -> Annot
             -> m F.Term
-caseExpr subj clauses = do
+caseExpr subj clauses ann = do
+  resultTy <- case ann of
+               (Annot (Just resultTy)) -> return resultTy
+               _ -> fail "ToF.caseExpr: internal error - expected an annotated case expression"
+  (resultTy', _k) <- type' resultTy
   subj' <- expr subj
   withFreshName "subjP" $ \v -> do
-    let resultTy = error "finish me: ToF.Expr.caseExpr needs a resultTy"
-    caseTreeBnd <- patternTranslation v clauses resultTy
+    caseTreeBnd <- patternTranslation v clauses resultTy'
     let (v', caseTree) = UU.unsafeUnbind caseTreeBnd
       in return (F.Let $ U.bind (v', U.embed subj') caseTree)

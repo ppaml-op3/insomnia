@@ -397,7 +397,7 @@ expr e_ =
      e' <- expr e
      return $ O.LamE $ U.bind x e'
    I.Ann e _ty -> expr e
-   I.Case e clauses -> do
+   I.Case e clauses _ -> do
      e' <- expr e
      clauses' <- mapM clause clauses
      return $ O.CaseE e' clauses'

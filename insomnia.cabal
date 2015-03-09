@@ -106,9 +106,12 @@ library
                        FOmega.SubSig
                        --
                        Insomnia.ToF.Env
+                       Insomnia.ToF.Summary
                        Insomnia.ToF.Type
                        Insomnia.ToF.Pattern
                        Insomnia.ToF.Expr
+                       Insomnia.ToF.ModuleType
+                       Insomnia.ToF.Module
                        Insomnia.ToF
                        --
                        Insomnia.Interp.Lam

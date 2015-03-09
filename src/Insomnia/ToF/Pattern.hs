@@ -37,6 +37,7 @@ module Insomnia.ToF.Pattern where
 import Control.Lens
 import Control.Monad.Reader
 import qualified Data.Map as M
+import Data.Monoid (Monoid(..), Endo(..))
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
@@ -46,12 +47,12 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 import Insomnia.ToF.Env
 
 import Insomnia.Expr
-import Insomnia.TypeDefn (ValueConstructor)
+import Insomnia.TypeDefn (ValueConstructor(..))
 import Insomnia.Types (Label(..))
 
 import qualified FOmega.Syntax as F
 
-import {-# SOURCE #-} Insomnia.ToF.Expr (expr)
+import Insomnia.ToF.Expr (expr, valueConstructor)
 
 patternTranslation :: ToF m
                       => Var
@@ -64,16 +65,19 @@ patternTranslation v clauses_ resultTy =
     m <- patternTranslation' v' clauses_ resultTy
     return $ U.bind v' m
 
+patternTranslation' :: ToF m
+                       => F.Var
+                       -> [Clause]
+                       -> F.Type
+                       -> m F.Term
 patternTranslation' v' clauses_ resultTy =
   case clauses_ of
-   [] -> return (F.abortThunk resultTy)
+   [] -> return $ F.Abort resultTy
    (clause:clauses') -> do
-     fkTerm <- withFreshName "_thunk" $ \thunkVar -> do
        mfk <- patternTranslation' v' clauses' resultTy
-       return $ F.Lam $ U.bind (thunkVar, U.embed F.unitT) mfk
-     let fk = FailCont $ F.App fkTerm F.unitVal
-         job = clauseToJob v' clause
-     translateJob job fk
+       let fk = FailCont mfk
+           job = clauseToJob v' clause
+       translateJob job fk
 
      
 data Job =
@@ -93,7 +97,7 @@ clauseToJob v' (Clause bnd) =
 translateJob :: ToF m =>
                 Job -> FailCont -> m F.Term
 translateJob (SuccessJ e) _fk = expr e
-translateJob j@(MatchAndThenJ v' bnd) fk =
+translateJob (MatchAndThenJ v' bnd) fk =
   U.lunbind bnd $ \(p, sk) ->
   case p of
    WildcardP -> translateJob sk fk
@@ -128,7 +132,16 @@ caseConstruct :: ToF m
                  -> F.Term
                  -> FailCont
                  -> m F.Term
-caseConstruct vc fys successTm failCont = undefined
+caseConstruct ysubj vc fys successTm (FailCont failContTm) = 
+  withFreshName "z" $ \z -> do
+    (_dtIn, f, dtOut) <- valueConstructor vc
+    let
+      here = let g = U.s2n "γ"
+             in F.TLam $ U.bind (g, U.embed F.KType) (F.TV g)
+      subject = F.App (F.PApp dtOut here) (F.V ysubj)
+      clause = F.Clause $ U.bind (U.embed f, z) (projectFields fys z successTm)
+    return $ F.Case subject [clause] (Just failContTm)
+
 
 matchTheseAndThen :: [(F.Var, Pattern)] -> Job -> Job
 matchTheseAndThen [] = id
@@ -138,10 +151,26 @@ freshPatternVars :: ToF m
                     => [(F.Field, Pattern)]
                     -> ([(F.Field, F.Var)] -> [(F.Var, Pattern)] -> m ans)
                     -> m ans
-freshPatternVars fps kont = undefined
+freshPatternVars [] kont = kont [] []
+freshPatternVars ((f, p):fps) kont =
+  let n = case f of
+           F.FUser s -> s
+           _ -> "ω" -- can't happen, I think
+  in withFreshName n $ \y ->
+  freshPatternVars fps $ \fys yps ->
+  kont ((f,y):fys) ((y,p):yps)
+  
 
 -- | projectFields {... fi = yi ... } x body
 -- returns
 -- let ... let yi = x . fi in ... in body
 projectFields :: [(F.Field, F.Var)] -> F.Var -> F.Term -> F.Term
-projectFields fys vsubj mbody = undefined
+projectFields fys vsubj mbody =
+  let
+    ms = map (\(f, y) ->
+               let
+                 p = F.Proj (F.V vsubj) f
+               in Endo (F.Let . U.bind (y, U.embed p)))
+         fys
+  in
+   appEndo (mconcat ms) mbody

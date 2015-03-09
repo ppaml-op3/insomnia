@@ -22,8 +22,9 @@ data SemanticSig =
   | SigSem !AbstractSig
   -- [= σ = {f1:τ1 | … | fN:τN} : κ]
   | DataSem !Type !Type !Kind
-  -- [∀β1...βM . τ1 → ... → τN → σ]
-  | ConSem !Type
+  -- [∀β1...βM . τ1 → ... → τN → σ], the field is a hack to get to the
+  -- associated data type.
+  | ConSem !Type !Field 
   -- { f1 = Σ1, ..., fn = Σn }
   | ModSem ![(Field, SemanticSig)]
     -- ∀ α1:κ1 ... αN:κN . Σ → Ξ
@@ -81,7 +82,7 @@ embedSemanticSig (DataSem tabs tconc k) = do
     tProduce = TApp (TV a) tconc
     tEmbed = TForall $ U.bind (a, U.embed $ k `KArr` KType) $ TArr tConsume tProduce
   return $ TRecord [(FData, tEmbed)]
-embedSemanticSig (ConSem t) =
+embedSemanticSig (ConSem t _) =
   return $ TRecord [(FCon, t)]
 embedSemanticSig (ModSem fas) = do
   fts <- forM fas $ \(f, s) -> do

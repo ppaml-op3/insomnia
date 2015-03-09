@@ -95,11 +95,11 @@ checkExpr e_ t_ = case e_ of
         void $ unifyDistT t_
       body' <- checkExpr body t_
       return $ Let $ U.bind binds' body'
-  Case scrut clauses -> do
+  Case scrut clauses _ann -> do
     (tscrut, scrut') <- inferExpr scrut
     clauses' <- forM clauses (checkClause tscrut t_)
                 <??@ ("while checking case expression " <> formatErr e_)
-    return $ Case scrut' clauses'
+    return $ Case scrut' clauses' (Annot $ Just t_)
   Ann e1_ t1_ -> do
     t1 <- checkType t1_ KType
     e1 <- checkExpr e1_ t1

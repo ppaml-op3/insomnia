@@ -157,7 +157,7 @@ instance Pretty Expr where
        $ Left $ ppCollapseLam lambda (Endo (av:)) "." e
   pp (Ann e t) = parens $ withPrec 1 AssocNone (Left $ pp e <+> indent coloncolon (pp t))
   pp (Record les) = braces $ fsep $ punctuate "," (map ppLabeledAssign les)
-  pp (Case e clauses) =
+  pp (Case e clauses _ann) =
     precParens 1
     $ withPrec 0 AssocNone
     $ Left

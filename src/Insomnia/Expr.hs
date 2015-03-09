@@ -36,7 +36,7 @@ data Expr = V !Var
           | Lam !(Bind AnnVar Expr)
           | Record ![(Label, Expr)]
           | App !Expr !Expr
-          | Case !Expr ![Clause]
+          | Case !Expr ![Clause] !Annot -- result type
           | Let !(Bind Bindings Expr)
           | Ann !Expr !Type
           | Return !Expr
@@ -263,8 +263,8 @@ instance Plated Expr where
     in (Lam . bind av) <$> f e
   plate f (App e1 e2) =
     App <$> f e1 <*> f e2
-  plate f (Case e clauses) =
-    Case <$> f e <*> traverse (traverseExprs f) clauses
+  plate f (Case e clauses ann) =
+    Case <$> f e <*> traverse (traverseExprs f) clauses <*> pure ann
   plate f (Ann e t) =
     Ann <$> f e <*> pure t
   plate f (Record les) =
@@ -313,7 +313,8 @@ instance TraverseTypes Expr Expr where
     let ((v,unembed -> ann), e) = UU.unsafeUnbind bnd
     in Lam <$> (bind <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e)
   traverseTypes _ (e@App {}) = pure e
-  traverseTypes _ (e@Case {}) = pure e
+  traverseTypes f (Case subj clauses ann) =
+    Case <$> pure subj <*> pure clauses <*> traverseTypes f ann
   traverseTypes _ (e@Record {}) = pure e
   traverseTypes f (Let bnd) =
     let (bindings, e) = UU.unsafeUnbind bnd
