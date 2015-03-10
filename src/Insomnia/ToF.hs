@@ -18,9 +18,11 @@
 module Insomnia.ToF (Insomnia.ToF.Env.runToFM
                     , Insomnia.ToF.Module.moduleExpr
                     , Insomnia.ToF.ModuleType.moduleType
+                    , Insomnia.ToF.Toplevel.toplevel
                     ) where
 
 
 import Insomnia.ToF.Env
 import Insomnia.ToF.ModuleType
 import Insomnia.ToF.Module
+import Insomnia.ToF.Toplevel

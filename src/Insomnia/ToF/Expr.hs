@@ -67,7 +67,7 @@ expr e_ =
        m <- expr e
        return (F.FUser l, m)
      return $ F.Record fms
-   Ann {} -> fail "unexpected failure: ToF.expr saw an Ann term"
+   Ann e _t -> expr e
    Return e -> liftM F.Return $ expr e
    Case e cls ann -> caseExpr e cls ann
    Let bnd -> do

@@ -2,7 +2,24 @@
 {-# LANGUAGE TemplateHaskell,
       FlexibleContexts, FlexibleInstances, TypeSynonymInstances
  #-}
-module Insomnia.ToF.Env where
+module Insomnia.ToF.Env (
+  Insomnia.Common.FreshName.withFreshName
+  , Insomnia.Common.FreshName.withFreshNames
+  , Env(..)
+  , tyConEnv
+  , sigEnv
+  , modEnv
+  , tyVarEnv
+  , valConEnv
+  , valEnv
+  , TermVarProvenance(..)
+  , emptyToFEnv
+  , ToFM
+  , ToF (..)
+  , runToFM
+  , followUserPathAnything
+  , 
+       ) where
 
 import Control.Lens
 import Control.Monad.Reader
@@ -10,7 +27,6 @@ import Control.Monad.Except (ExceptT, runExceptT)
 import qualified Data.List as List
 import qualified Data.Map as M
 import Data.Monoid
-import Data.Typeable (Typeable)
 
 import qualified Unbound.Generics.LocallyNameless as U
 import Unbound.Generics.LocallyNameless (LFresh)
@@ -19,6 +35,8 @@ import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr (Var)
 import Insomnia.TypeDefn (ValConName)
+
+import Insomnia.Common.FreshName
 
 import qualified FOmega.Syntax as F
 import qualified FOmega.SemanticSig as F
@@ -69,11 +87,6 @@ runToFM m =
   case U.runLFreshM (runReaderT (runExceptT m) emptyToFEnv) of
    Left s -> error $ "unexpected failure in ToF.runToFM: " ++ s
    Right a -> a
-
-withFreshName :: (Typeable a, ToF m) => String -> (U.Name a -> m r) -> m r
-withFreshName s kont = do
-  n' <- U.lfresh $ U.s2n s
-  U.avoid [U.AnyName n'] $ kont n'
 
 followUserPathAnything :: Monad m =>
                           (Identifier -> m (F.SemanticSig, F.Term))

@@ -90,13 +90,19 @@ embedSemanticSig (ModSem fas) = do
     return (f, t)
   return $ TRecord fts
 embedSemanticSig (FunctorSem bnd) =
+  embedSemanticFunctor bnd
+embedSemanticSig (ModelSem abstr) = do
+  t <- embedAbstractSig abstr
+  return $ TDist t
+
+embedSemanticFunctor :: LFresh m =>
+                        U.Bind [(TyVar, U.Embed Kind)] SemanticFunctor
+                        -> m Type
+embedSemanticFunctor bnd =
   U.lunbind bnd $ \(tvks, SemanticFunctor doms cod) -> do
     domTs <- mapM embedSemanticSig doms
     codT <- embedAbstractSig cod
     return $ closeForalls tvks $ domTs `tArrs` codT
-embedSemanticSig (ModelSem abstr) = do
-  t <- embedAbstractSig abstr
-  return $ TDist t
 
 embedAbstractSig :: LFresh m => AbstractSig -> m Type
 embedAbstractSig (AbstractSig bnd) =

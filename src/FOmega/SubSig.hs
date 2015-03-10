@@ -2,10 +2,11 @@
 -- 
 -- The relation produces a term Γ ⊢ f : ↓Ξ → ↓Ξ' (where ↓· is the
 -- embedding of signatures into FOmega).
+{-# LANGUAGE ScopedTypeVariables #-}
 module FOmega.SubSig where
 
 import Prelude hiding (mapM)
-import Control.Monad (MonadPlus)
+import Control.Monad (MonadPlus, zipWithM)
 
 import Data.Traversable (Traversable(..))
 
@@ -14,9 +15,11 @@ import qualified Data.Map as M
 import Unbound.Generics.LocallyNameless (LFresh(..))
 import qualified Unbound.Generics.LocallyNameless as U
 
+import Insomnia.Common.FreshName
+
 import FOmega.Syntax
 import FOmega.SemanticSig
-import FOmega.MatchSigs (matchSubst)
+import FOmega.MatchSigs (matchSubst, matchSubsts)
 
 type Coercion = Term
 
@@ -83,8 +86,11 @@ sigSubtyping lhs rhs = do
      fun lhsTy $ \x -> do
        let rs = M.mapWithKey (\fld coer -> coer `App` (x `Proj` fld)) m'
        return $ Record $ M.toList rs
-   (FunctorSem _, FunctorSem _) -> fail "unimplemented"
-   (_, _) -> fail "internal error: sigSubtyping of unequal signatures"
+   (FunctorSem bndl, FunctorSem bndr) ->
+     functorSubtyping bndl bndr
+   (ModelSem absL, ModelSem absR) ->
+     modelSubtyping absL absR
+   (_, _) -> fail ("internal error: sigSubtyping of unequal signatures " ++ show lhs ++ " vs " ++ show rhs)
 
 abstractSigSubtyping :: (MonadPlus m, LFresh m) => AbstractSig -> AbstractSig -> m Coercion
 abstractSigSubtyping lhs@(AbstractSig bndl) rhs@(AbstractSig rhsBndl) = do
@@ -101,3 +107,63 @@ abstractSigSubtyping lhs@(AbstractSig bndl) rhs@(AbstractSig rhsBndl) = do
         U.avoid [U.AnyName y]
           $ unpacks (map fst tvks) y x
           $ packs taus (App coer $ V y) ep
+
+-- |   ⊢ ∀αs . Σs → Ξ ≤ ∀αs'. Σs' → Ξ' ⇝ f'
+--
+--   αs' ⊢ Σs' ≤ ∃αs . Σs ↑ τs ⇝ χs
+--
+--   αs' ⊢ Ξ[τs/αs] ≤ Ξ' ⇝ χbody
+--
+-- where f' = λf:(∀αs.Σs→Ξ).
+--             Λ αs . λ y1:Σ1' . … λ yN:Σn' .
+--               χbody (f [τs] (χ1 y1) ⋯ (χN yN))
+functorSubtyping :: forall m . (MonadPlus m, LFresh m)
+                    => (U.Bind [(TyVar, U.Embed Kind)] SemanticFunctor)
+                    -> (U.Bind [(TyVar, U.Embed Kind)] SemanticFunctor)
+                    -> m Coercion
+functorSubtyping bndl bndr =
+  U.lunbind bndr $ \(tvksr, (SemanticFunctor rhsArgs rhsBodySig)) -> do
+    -- (extend environment)
+
+    lhsTy <- embedSemanticFunctor bndl
+    rhsArgTys <- mapM embedSemanticSig rhsArgs
+
+    -- (χ1, ..., χn), τs, χbody
+    (coerArgs, taus, coerBody) <- U.lunbind bndl $ \(tvksl, (SemanticFunctor lhsArgs lhsBodySig)) -> do
+      let alphas = map fst tvksl
+      (lhsArgs', taus) <- matchSubsts rhsArgs (alphas, lhsArgs)
+      coerArgs <- zipWithM sigSubtyping rhsArgs lhsArgs'
+      
+      let substitution = zip alphas taus
+          rhsBodySig' = U.substs substitution rhsBodySig
+      coerBody <- abstractSigSubtyping lhsBodySig rhsBodySig'
+      return (coerArgs, taus, coerBody)
+
+    return undefined
+    let argNames = map (\n -> "yArg" ++ show n) [1 .. length rhsArgTys]
+
+    withFreshName "f" $ \inFunc ->
+      withFreshNames (argNames :: [String]) $ \argYs -> 
+      let
+        -- χ = χbody (f [τs] (χ1 y1) ... (χn yn))
+        coercion =
+          coerBody `App` (((V inFunc) `pApps` taus) `apps` (zipWith App coerArgs $ map V argYs))
+        -- λ f : (∀αs.Σ → Ξ) . Λ α's . λ ys : Σ's . χ
+        coercionFn =
+          Lam $ U.bind (inFunc, U.embed lhsTy) $ pLams' tvksr $ lams (zip argYs rhsArgTys) coercion
+       in return coercionFn
+          
+-- |  ⊢ model Ξ ≤ model Ξ' ⇝ f'
+--
+--    ⊢ Ξ ≤ Ξ' ⇝ f
+--
+-- where f' = λx:Dist Ξ. let x ~ x in return (f x)  :: Dist Ξ → Dist Ξ'
+modelSubtyping :: (MonadPlus m, LFresh m) => AbstractSig -> AbstractSig -> m Coercion
+modelSubtyping lhsAbs rhsAbs = do
+  lhsTy <- embedAbstractSig lhsAbs
+  pureCoer <- abstractSigSubtyping lhsAbs rhsAbs
+  let x = U.s2n "x"
+      body  = Return (pureCoer `App` V x)
+      letSamp = LetSample $ U.bind (x, U.embed (V x)) body
+      m = Lam $ U.bind (x, U.embed lhsTy) letSamp
+  return m

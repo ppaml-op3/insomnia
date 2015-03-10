@@ -6,9 +6,7 @@ module Insomnia.ToF.Module where
 import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.Except (ExceptT, runExceptT)
-import qualified Data.List as List
 import Data.Monoid (Monoid(..), (<>), Endo(..))
-import Data.Typeable (Typeable)
 import qualified Data.Map as M
 
 import qualified Unbound.Generics.LocallyNameless as U

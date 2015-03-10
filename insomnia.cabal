@@ -46,6 +46,7 @@ library
                        Insomnia.Common.Literal
                        Insomnia.Common.Stochasticity
                        Insomnia.Common.ModuleKind
+                       Insomnia.Common.FreshName
                        Insomnia.Common.Telescope
                        --
                        Insomnia.Identifier
@@ -112,6 +113,7 @@ library
                        Insomnia.ToF.Expr
                        Insomnia.ToF.ModuleType
                        Insomnia.ToF.Module
+                       Insomnia.ToF.Toplevel
                        Insomnia.ToF
                        --
                        Insomnia.Interp.Lam

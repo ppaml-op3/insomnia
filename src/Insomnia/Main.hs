@@ -20,7 +20,9 @@ import Insomnia.Pretty
 import qualified Insomnia.IReturn as IReturn
 import qualified Insomnia.Interp.Lam as Interp
 import qualified Insomnia.Interp.ToLam as Interp
-
+import qualified Insomnia.ToF as ToF
+import qualified FOmega.Syntax as FOmega
+import qualified FOmega.Check as FCheck
 
 main :: IO ()
 main = do
@@ -67,6 +69,8 @@ parseAndCheck fp =
   ->->- desugaring
   ->->- checking
 --  ->->- demodularizing
+  ->->- toFOmega
+  ->->- checkFOmega
   ->->- compilerDone
 
 parsing :: Stage FilePath Toplevel
@@ -112,6 +116,30 @@ demodularizing = Stage {
     let lam = Interp.translateToplevel elab
     return lam
   , formatStage = F.format . F.WrapShow
+  }
+
+toFOmega :: Stage Toplevel FOmega.Term
+toFOmega = Stage {
+  bannerStage = "Convert to FΩ"
+  , performStage = \pgm ->
+    let tm = ToF.runToFM $ ToF.toplevel pgm
+    in return tm
+  , formatStage = F.format . ppDefault
+}
+
+checkFOmega :: Stage FOmega.Term FOmega.Term
+checkFOmega = Stage {
+  bannerStage = "Typechecking FΩ"
+  , performStage = \m -> do
+    mty <- FCheck.runTC (FCheck.inferTy m)
+    lift $ case mty of
+      Left err -> putStrLn ("typechecking FOmega failed: " ++ show err)
+      Right ty -> do
+        putStrLn "FOmega type is: "
+        F.putStrDoc (F.format $ ppDefault ty)
+        putStrLn "\n"
+    return m
+  , formatStage = const mempty
   }
 
 data Stage a b = Stage { bannerStage :: F.Doc 
