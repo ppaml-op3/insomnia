@@ -215,11 +215,13 @@ inferTy m_ =
    LetSample bnd ->
      U.lunbind bnd $ \((x, U.unembed -> m1), m2) -> do
        t <- inferTy m1
-       case t of
+       tN <- whnfTy t KType
+       case tN of
         TDist t' -> do
           t'' <- extendEnv (CVal x t') $ inferTy m2
-          case t'' of
-           TDist {} -> return t''
+          tN'' <- whnfTy t'' KType
+          case tN'' of
+           TDist {} -> return tN''
            _ -> throwError $ SampleBodyNotDist (Got t'')
         _ -> throwError $ SampleFromNonDist (Got t)
    Assume t -> do
