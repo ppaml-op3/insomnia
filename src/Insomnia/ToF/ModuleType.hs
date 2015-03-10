@@ -89,7 +89,7 @@ patchWhereClause (F.AbstractSig bnd) (WhereTypeCls path rhsTy) = do
     case tSem of
      (F.TypeSem (F.TV a) _k') -> do
        abstrRest <- dropVarFromAbstrList abstr a
-       let modSem' = U.subst a rhsTy' modSem'
+       let modSem' = U.subst a rhsTy' modSem
        return $ F.AbstractSig $ U.bind abstrRest modSem'
      _ -> fail ("patchWhereClause: expected where clause to pick out "
                 ++ " a type variable in the semantic sig")
