@@ -84,12 +84,7 @@ ppTerm m_ =
      precParens 2
      $ fsep ["pack", ppType t, indent "," (ppTerm m),
              indent "as" (ppExistPack ep)]
-   Unpack bnd ->
-     let ((tv, xv, U.unembed -> m), body) = UU.unsafeUnbind bnd
-     in precParens 2
-        $ fsep ["unpack", pp tv, ",", pp xv,
-                indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m),
-                "in" <+> (ppTerm body)]
+   Unpack {} -> nestedLet m_
    Record fms ->
      let
        ppF (f, m) = fsep [ppField f, indent "=" (ppTerm m)]
@@ -99,27 +94,51 @@ ppTerm m_ =
    Inj f m t ->
      precParens 2
      $ fsep ["inj", ppField f, ppTerm m, "as" <+> (ppType t)]
-   Let bnd ->
-     let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
-     in precParens 1
-        $ fsep ["let", pp x, indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m1),
-                "in" <+> (withLowestPrec $ ppTerm m2)]
+   Let {} ->
+     nestedLet m_
    Case m clauses optDefault ->
      precParens 1
      $ fsep ["case", pp m, "of",
              braces $ sep $ prePunctuate ";" (map ppClause clauses
                                               ++ ppDefaultClause optDefault)]
    Return m ->
-     fsep ["return", ppTerm m]
+     fsep ["return", precParens 2 $ ppTerm m]
+   LetSample {} -> nestedLet m_
+   Assume t ->
+     fsep ["assume", precParens 2 $ ppType t]
+   Abort t ->
+     fsep ["abort", precParens 2 $ ppType t]
+
+nestedLet :: Term -> PM Doc
+nestedLet m_ =
+  let
+    (docs, body) = nestedLetBinding m_
+  in precParens 1
+     $ fsep ["let",
+             indent "" (sep docs),
+             "in" <+> (withLowestPrec $ ppTerm body)]
+
+nestedLetBinding :: Term -> ([PM Doc], Term)
+nestedLetBinding m_ =
+  case m_ of
+   Unpack bnd ->
+     let ((tv, xv, U.unembed -> m), body) = UU.unsafeUnbind bnd
+         doc = fsep ["unpack", pp tv, ",", pp xv,
+                     indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m)]
+         (docs,last) = nestedLetBinding body
+     in (doc:docs, last)
+   Let bnd ->
+     let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
+         doc = fsep [pp x, indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m1)]
+         (docs,last) = nestedLetBinding m2
+     in (doc:docs, last)
    LetSample bnd ->
      let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
-     in precParens 1
-        $ fsep ["let", pp x, indent "~" (withPrec 2 AssocNone $ Left $ ppTerm m1),
-                "in" <+> (withLowestPrec $ ppTerm m2)]
-   Assume t ->
-     fsep ["assume", ppType t]
-   Abort t ->
-     fsep ["abort", ppType t]
+         doc = fsep [pp x, indent "~" (withPrec 2 AssocNone $ Left $ ppTerm m1)]
+         (docs,last) = nestedLetBinding m2
+     in (doc:docs, last)
+   _ -> (mempty, m_)
+
 
 ppClause :: Clause -> PM Doc
 ppClause (Clause bnd) =
