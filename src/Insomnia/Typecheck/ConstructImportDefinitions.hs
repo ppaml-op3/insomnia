@@ -50,7 +50,8 @@ importValue q@(QVar _ f) ty = do
     -- sig f : T
     -- val f = p.f
     dSig = singleDecl $ ValueDecl f $ SigDecl DeterministicParam ty
-    dVal = singleDecl $ ValueDecl f $ ValDecl (Q q)
+    -- N.B. assumes "import Model" is not valid.
+    dVal = singleDecl $ ValueDecl f $ ParameterDecl (Q q)
   return (dSig <> dVal)
 
 importType :: TypePath -> TypeSigDecl -> TC Decls
