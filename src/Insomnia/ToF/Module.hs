@@ -331,9 +331,8 @@ typeAliasDefn _mk f (TypeAlias bnd) kont =
     let tsig = F.TypeSem tlam tK
         tc = U.s2n f :: TyConName
         xc = U.s2n f :: F.Var
-    msig <- F.typeSemTerm tlam tK
+    mr <- F.typeSemTerm tlam tK
     let
-      mr = F.Record [(F.FType, msig)]
       mhole = Endo $ F.Let . U.bind (xc, U.embed mr)
       thisOne = ((mempty, [(F.FUser f, tsig)]),
                  [(F.FUser f, F.V xc)],
@@ -413,7 +412,7 @@ valueDecl mk f vd kont =
        m_ <- expr e
        return $ F.pLams tvks m_
      let
-       mr = F.Record [(F.FVal, m)]
+       mr = F.valSemTerm m
        mhole = Endo $ F.Let . U.bind (xv, U.embed mr)
        thisOne = (mempty,
                   [(F.FUser f, F.V xv)],
@@ -447,7 +446,7 @@ simpleValueBinding mkValueBinding f v e kont = do
   let
     mhole body =
       mkValueBinding $ U.bind (xv, U.embed m)
-      $ F.Let $ U.bind (xv, U.embed $ F.Record [(F.FVal, F.V xv)])
+      $ F.Let $ U.bind (xv, U.embed $ F.valSemTerm $ F.V xv)
       $ body
     thisOne = (mempty,
                [(F.FUser f, F.V xv)],

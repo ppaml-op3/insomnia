@@ -77,12 +77,14 @@ valSemTerm :: Term -> Term
 valSemTerm e = Record [(FVal, e)]
 
 typeSemTerm :: LFresh m => Type -> Kind -> m Term
-typeSemTerm t k = reflFun t k
+typeSemTerm t k = do
+  m <- reflFun t k
+  return $ Record [(FType, m)]
 
 sigSemTerm :: LFresh m => AbstractSig -> m Term
 sigSemTerm a = do
   t <- embedAbstractSig a
-  return $ coercionTerm $ IdCoer t
+  return $ Record [(FSig, coercionTerm $ IdCoer t)]
 
 termSubtyping :: LFresh m => Type -> Type -> m Coercion
 termSubtyping lhs rhs = do
@@ -107,6 +109,8 @@ sigSubtyping lhs rhs = do
      coercion lhsTy $ \_x -> sigSemTerm sr
    (ConSem {}, ConSem {}) -> return (IdCoer lhsTy)
    (DataSem {}, DataSem {}) -> return (IdCoer lhsTy)
+   (DataSem {} , TypeSem tr kr) ->
+     coercion lhsTy $ \_dk -> typeSemTerm tr kr
    (ModSem modl, ModSem modr) -> do
      -- check that keys of modr are a subset of the keys of modl,
      -- so the intersection of the keys is in fact the rhs
