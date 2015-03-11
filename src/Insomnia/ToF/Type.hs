@@ -69,7 +69,10 @@ type' t_ =
      (t1', karr) <- type' t1
      (t2', _) <- type' t2
      case karr of
-      (F.KArr _ k2) -> return (F.TApp t1' t2', k2)
+      (F.KArr _ k2) -> do
+        -- do a bit of normalization if possible
+        tarr <- betaWhnf (F.TApp t1' t2')
+        return (tarr, k2)
       F.KType -> fail "ToF.type' internal error: unexpected KType in function position of type application"
    TForall bnd ->
      U.lunbind bnd $ \((tv, k), tbody) -> 
@@ -83,6 +86,21 @@ type' t_ =
        (t', _) <- type' t
        return (F.FUser $ labelName l, t')
      return (F.TRecord fts, F.KType)
+
+-- opportunistically beta reduce some types.
+betaWhnf :: U.LFresh m => F.Type -> m F.Type
+betaWhnf t_ =
+  case t_ of
+   F.TApp t1 t2 -> do
+     t1' <- betaWhnf t1
+     case t1' of
+      F.TLam bnd -> 
+        U.lunbind bnd $ \((tv,_k), tB) ->
+        betaWhnf (U.subst tv t2 tB)
+      _ -> return $ F.TApp t1' t2
+   _ -> return $ t_
+     
+   
 
 typeConstructor :: ToF m => TypeConstructor -> m (F.Type, F.Kind)
 typeConstructor (TCLocal tc) = do
