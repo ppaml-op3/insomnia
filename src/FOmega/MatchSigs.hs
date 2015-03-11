@@ -68,21 +68,32 @@ runMatch :: (MonadPlus m, LFresh m, U.Subst Type b)
 runMatch comp lhs (alphas, rhs) = do
   let lookingFor = S.fromList alphas
   (w, notFound) <- runStateT (execWriterT (comp lhs rhs)) lookingFor
-  guard (S.null notFound)
+  unless (S.null notFound) $
+    fail $ "signature matching could not instantiate abstract variables " ++ show notFound
   let subst = appEndo w []
       ans = (rhs, map TV alphas)
   return $ U.substs subst ans
 
 lookupMatch :: Monad m => SemanticSig -> SemanticSig -> M m ()
 lookupMatch (TypeSem tau _k1) (TypeSem (TV a) _k2) = do
-  looking <- gets (S.member a)
-  when looking $ do
-    modify (S.delete a)
-    tell $ Endo ((a,tau) :)
+  goodMatch tau a
+lookupMatch (DataSem d _ _) (TypeSem (TV a) _) = do
+  goodMatch d a
+lookupMatch (DataSem d _ _) (DataSem (TV a) _ _) = do
+  -- XXX TODO: polymorphic datatypes will have a type application, right?
+  goodMatch d a
 lookupMatch (ModSem fs1) (ModSem fs2) = do
   let commonFields = intersectFields fs1 fs2
   mapM_ (uncurry lookupMatch) commonFields
 lookupMatch _ _ = return ()
+
+goodMatch :: Monad m => Type -> TyVar -> M m ()
+goodMatch tau a = do
+  looking <- gets (S.member a)
+  when looking $ do
+    modify (S.delete a)
+    tell $ Endo ((a,tau) :)
+
 
 intersectFields :: [(Field, a)] -> [(Field, b)] -> [(a,b)]
 intersectFields fs1 fs2 = let
