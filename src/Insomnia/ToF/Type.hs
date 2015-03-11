@@ -56,10 +56,10 @@ type' t_ =
       Nothing -> do
         env <- view tyVarEnv
         env' <- view valEnv
-        fail ("ToF.type' internal error: type variable " <> show tv
-              <> " not in environment " <> show env
-              <> " and value env " <> show env')
-   TUVar _ -> fail "ToF.type' internal error: unexpected unification variable"
+        throwError ("ToF.type' internal error: type variable " <> show tv
+                    <> " not in environment " <> show env
+                    <> " and value env " <> show env')
+   TUVar _ -> throwError "ToF.type' internal error: unexpected unification variable"
    TC tc -> typeConstructor tc
    TAnn t k -> do
      (t', _) <- type' t
@@ -73,7 +73,7 @@ type' t_ =
         -- do a bit of normalization if possible
         tarr <- betaWhnf (F.TApp t1' t2')
         return (tarr, k2)
-      F.KType -> fail "ToF.type' internal error: unexpected KType in function position of type application"
+      F.KType -> throwError "ToF.type' internal error: unexpected KType in function position of type application"
    TForall bnd ->
      U.lunbind bnd $ \((tv, k), tbody) -> 
      withTyVar (tv,k) $ \(tv', k') -> do
@@ -113,15 +113,15 @@ typeConstructor (TCLocal tc) = do
    --   case findDataInMod semanticModule of
    --    Just (t,k) -> return (t,k)
    --    Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
-   Just f -> fail $ "ToF.typeConstructor: wanted a TypeSem, got a " ++ show f
-   Nothing -> fail $ "ToF.typeConstructor: tyConEnv did not contain a TypeSem for a local type constructor: " ++ show tc ++ " in " ++ show e
+   Just f -> throwError $ "ToF.typeConstructor: wanted a TypeSem, got a " ++ show f
+   Nothing -> throwError $ "ToF.typeConstructor: tyConEnv did not contain a TypeSem for a local type constructor: " ++ show tc ++ " in " ++ show e
 typeConstructor (TCGlobal (TypePath p f)) = do
   let
     findIt ident = do
       ma <- view (modEnv . at ident)
       case ma of
        Just (sig, x) -> return (sig, F.V x)
-       Nothing -> fail "ToF.typeConstructor: type path has unbound module identifier at the root"
+       Nothing -> throwError "ToF.typeConstructor: type path has unbound module identifier at the root"
   (s, _m) <- followUserPathAnything findIt (ProjP p f)
   case s of
    F.TypeSem t k -> return (t, k)
@@ -130,7 +130,7 @@ typeConstructor (TCGlobal (TypePath p f)) = do
    --   case findDataInMod semanticModule of
    --    Just (tabs, k) -> return (tabs, k)
    --    Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
-   _ -> fail "ToF.typeConstructor: type path maps to non-type semantic signature"
+   _ -> throwError "ToF.typeConstructor: type path maps to non-type semantic signature"
   
                       
 findDataInMod :: [(F.Field, F.SemanticSig)]

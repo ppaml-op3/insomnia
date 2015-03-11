@@ -18,12 +18,12 @@ module Insomnia.ToF.Env (
   , ToF (..)
   , runToFM
   , followUserPathAnything
-  , 
+  , Control.Monad.Except.throwError
        ) where
 
 import Control.Lens
 import Control.Monad.Reader
-import Control.Monad.Except (ExceptT, runExceptT)
+import Control.Monad.Except (MonadError(..), ExceptT, runExceptT)
 import qualified Data.List as List
 import qualified Data.Map as M
 import Data.Monoid
@@ -76,7 +76,7 @@ initialTyConEnv = M.fromList [(U.s2n "->",
     alpha = U.s2n "α"
     beta = U.s2n "β"
 
-class (Functor m, LFresh m, MonadReader Env m, MonadPlus m) => ToF m
+class (Functor m, LFresh m, MonadReader Env m, MonadError String m, MonadPlus m) => ToF m
 
 type ToFM = ExceptT String (ReaderT Env U.LFreshM)
 
@@ -85,10 +85,10 @@ instance ToF ToFM
 runToFM :: ToFM a -> a
 runToFM m =
   case U.runLFreshM (runReaderT (runExceptT m) emptyToFEnv) of
-   Left s -> error $ "unexpected failure in ToF.runToFM: " ++ s
+   Left s -> error $ "unexpected failure in ToF.runToFM: “" ++ s ++ "”"
    Right a -> a
 
-followUserPathAnything :: Monad m =>
+followUserPathAnything :: (MonadError String m) =>
                           (Identifier -> m (F.SemanticSig, F.Term))
                           -> Path -> m (F.SemanticSig, F.Term)
 followUserPathAnything rootLookup (IdP ident) = rootLookup ident
@@ -100,5 +100,5 @@ followUserPathAnything rootLookup (ProjP path f) = do
          p _ = False
      case List.find p flds of
       Just (_, mod2) -> return (mod2, F.Proj m (F.FUser f))
-      Nothing -> fail "unexpectd failure in followUserPathAnything: field not found"
-   _ -> fail "unexpected failure in followUserPathAnything: not a module record"
+      Nothing -> throwError "unexpectd failure in followUserPathAnything: field not found"
+   _ -> throwError "unexpected failure in followUserPathAnything: not a module record"

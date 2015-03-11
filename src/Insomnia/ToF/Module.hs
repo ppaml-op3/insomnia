@@ -5,7 +5,7 @@ module Insomnia.ToF.Module where
 
 import Control.Lens
 import Control.Monad.Reader
-import Control.Monad.Except (ExceptT, runExceptT)
+import Control.Monad.Except (MonadError(..), ExceptT, runExceptT)
 import Data.Monoid (Monoid(..), (<>), Endo(..))
 import qualified Data.Map as M
 
@@ -209,7 +209,7 @@ moduleApp pfn pargs = do
          m = (F.pApps mfn taus) `F.apps` (zipWith F.applyCoercion coercions margs)
          s = U.substs (zip alphas taus) sigResult
        return (s, m)
-   _ -> fail "internal failure: ToF.moduleApp expected a functor"
+   _ -> throwError "internal failure: ToF.moduleApp expected a functor"
 
 -- | Translation declarations.
 -- This is a bit different from how F-ing modules does it in order to avoid producing quite so many
@@ -246,11 +246,11 @@ declarations mk (d:ds) kont = let
       SubmoduleDefn f me -> submoduleDefn mk f me kont1
       SampleModuleDefn f me -> do
         when (mk /= ModelMK) $
-          fail "internal error: ToF.declarations SampleModuleDecl in a module"
+          throwError "internal error: ToF.declarations SampleModuleDecl in a module"
         sampleModuleDefn f me kont1
       TypeAliasDefn f al -> typeAliasDefn mk f al kont1
       ImportDecl p ->
-        fail "internal error: ToF.declarations ImportDecl should have been desugared by the Insomnia typechecker"
+        throwError "internal error: ToF.declarations ImportDecl should have been desugared by the Insomnia typechecker"
         {- importDecl p kont1 -}
       TypeDefn f td -> typeDefn f (U.s2n f) td kont1
 
@@ -274,7 +274,7 @@ importDecl importPath kont = do
      fsems <- forM fsigs $ \(f, sem) ->
        case f of
         F.FUser fld -> return (fld, sem)
-        _ -> fail "internal error: ToF.importDecl expected a module of user fields"
+        _ -> throwError "internal error: ToF.importDecl expected a module of user fields"
      withFreshName "imp" $ \ ximp -> do
        let
          fs = map fst fsems
@@ -291,7 +291,7 @@ importDecl importPath kont = do
        -- XXX: need to add everything in the sig to the environment
        local (extendEnvForImports coord) $
          kont thisOne
-   _ -> fail "internal error: ToF.importDecl expected a module path"
+   _ -> throwError "internal error: ToF.importDecl expected a module path"
 
 extendEnvForImports :: [(Field, F.Var, F.SemanticSig)]
                        -> Env
@@ -372,7 +372,7 @@ sampleModuleDefn f me kont = do
   bnd <- U.lunbind bndMdl $ \(tvNull, semMdl) ->
     case (tvNull, semMdl) of
      ([], F.ModelSem (F.AbstractSig bnd)) -> return bnd
-     _ -> fail "internal error: ToF.sampleModelDefn expected a model with no applicative tyvars"
+     _ -> throwError "internal error: ToF.sampleModelDefn expected a model with no applicative tyvars"
   U.lunbind bnd $ \(tvks, modSig) -> do
     let xv = U.s2n f
     local (modEnv %~ M.insert modId (modSig, xv)) $ do
@@ -407,7 +407,7 @@ valueDecl mk f vd kont =
      mt <- view (valEnv . at v)
      (xv, sem) <- case mt of
        Just (xv, StructureTermVar sem) -> return (xv, sem)
-       _ -> fail "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
+       _ -> throwError "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
      ty <- matchSemValRecord sem
      m <- tyVarsAbstract ty $ \tvks _ty' -> do
        m_ <- expr e
@@ -421,15 +421,15 @@ valueDecl mk f vd kont =
      kont thisOne
    SampleDecl e -> do
      when (mk /= ModelMK) $
-       fail "internal error: ToF.valueDecl SampleDecl in a module"
+       throwError "internal error: ToF.valueDecl SampleDecl in a module"
      simpleValueBinding F.LetSample f v e kont
    ParameterDecl e -> do
      when (mk /= ModuleMK) $
-       fail "internal error: ToF.valueDecl ParameterDecl in a model"
+       throwError "internal error: ToF.valueDecl ParameterDecl in a model"
      simpleValueBinding F.Let f v e kont
-   ValDecl e -> fail ("internal error: unexpected ValDecl in ToF.valueDecl;"
+   ValDecl e -> throwError ("internal error: unexpected ValDecl in ToF.valueDecl;"
                       ++" Insomnia typechecker should have converted into a SampleDecl or a ParameterDecl")
-   TabulatedSampleDecl tabfun -> fail "unimplemented ToF.valueDecl TabulatedSampelDecl"
+   TabulatedSampleDecl tabfun -> throwError "unimplemented ToF.valueDecl TabulatedSampelDecl"
    
 simpleValueBinding :: ToF m
                       => (U.Bind (F.Var, U.Embed F.Term) F.Term -> F.Term)
@@ -441,7 +441,7 @@ simpleValueBinding :: ToF m
 simpleValueBinding mkValueBinding f v e kont = do
   mt <- view (valEnv . at v)
   (xv, _prov) <- case mt of
-    Nothing -> fail "internal error: ToF.valueDecl SampleDecl did not find and type declaration for field"
+    Nothing -> throwError "internal error: ToF.valueDecl SampleDecl did not find and type declaration for field"
     Just xty -> return xty
   m <- expr e
   let
@@ -457,9 +457,9 @@ simpleValueBinding mkValueBinding f v e kont = do
 
 
 
-matchSemValRecord :: Monad m => F.SemanticSig -> m F.Type
+matchSemValRecord :: MonadError String m => F.SemanticSig -> m F.Type
 matchSemValRecord (F.ValSem t) = return t
-matchSemValRecord _ = fail "internal error: expected a semantic object of a value binding"
+matchSemValRecord _ = throwError "internal error: expected a semantic object of a value binding"
 
 tyVarsAbstract :: ToF m => F.Type -> ([(F.TyVar, F.Kind)] -> F.Type -> m r) -> m r
 tyVarsAbstract t_ kont_ = tyVarsAbstract' t_ (\tvks -> kont_ (appEndo tvks []))
@@ -483,7 +483,7 @@ modulePath = let
   rootLookup modId = do
     ma <- view (modEnv . at modId)
     case ma of
-     Nothing -> fail "unexpected failure in ToF.modulePath - unbound module identifier"
+     Nothing -> throwError "unexpected failure in ToF.modulePath - unbound module identifier"
      Just (sig, x) -> return (sig, F.V x)
   in
    followUserPathAnything rootLookup

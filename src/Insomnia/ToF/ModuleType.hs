@@ -1,8 +1,9 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ViewPatterns, FlexibleContexts #-}
 module Insomnia.ToF.ModuleType where
 
 import Control.Lens
 import Control.Monad.Reader
+import Control.Monad.Except (MonadError(..))
 import Data.Monoid (Monoid(..), (<>), Endo(..))
 import qualified Data.Map as M
 import qualified Data.List as List
@@ -36,7 +37,7 @@ moduleType modTy_ =
    IdentMT sigId -> do
      ma <- view $ sigEnv . at sigId
      case ma of
-      Nothing -> fail "unexpected ToF.moduleTyp' sig lookup returned Nothing"
+      Nothing -> throwError "unexpected ToF.moduleTyp' sig lookup returned Nothing"
       Just absSig -> return absSig
    WhereMT modTy whereClause -> do
      abstr <- moduleType modTy
@@ -91,14 +92,14 @@ patchWhereClause (F.AbstractSig bnd) (WhereTypeCls path rhsTy) = do
        abstrRest <- dropVarFromAbstrList abstr a
        let modSem' = U.subst a rhsTy' modSem
        return $ F.AbstractSig $ U.bind abstrRest modSem'
-     _ -> fail ("patchWhereClause: expected where clause to pick out "
+     _ -> throwError ("patchWhereClause: expected where clause to pick out "
                 ++ " a type variable in the semantic sig")
 
-dropVarFromAbstrList :: (U.Alpha a, Monad m) => [(a, b)] -> a -> m [(a, b)]
+dropVarFromAbstrList :: (U.Alpha a, MonadError String m, Monad m) => [(a, b)] -> a -> m [(a, b)]
 dropVarFromAbstrList vs v =
   case List.partition (\(v',_) -> U.aeq v v') vs of
    ([_], rest) -> return rest
-   _ -> fail "dropVarFromAbstrList expected exactly one type variable to match"
+   _ -> throwError "dropVarFromAbstrList expected exactly one type variable to match"
 
 followTypePath :: ToF m => F.SemanticSig -> (U.Bind Identifier TypePath) -> m F.SemanticSig
 followTypePath mod0 bnd =

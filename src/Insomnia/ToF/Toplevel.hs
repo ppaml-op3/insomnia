@@ -55,15 +55,15 @@ toplevelModule ident me kont = do
 toplevelModuleType :: ToF m => SigIdentifier -> ModuleType -> (ModSummary -> m ans) -> m ans
 toplevelModuleType sigIdent modTy kont = do
   absSig@(F.AbstractSig bnd) <- moduleType modTy
+  absTy <- F.embedAbstractSig absSig
   let semSig = F.SigSem absSig
-  tySig <- F.embedSemanticSig semSig
   let nm = U.name2String sigIdent
       xv = U.s2n nm
   local (sigEnv %~ M.insert sigIdent absSig) $ do
     let mId = let
           z = U.s2n "z"
-          in F.Lam $ U.bind (z, U.embed tySig) $ F.V z
-        m = Endo (F.Let . U.bind (xv, U.embed mId))
+          in F.Lam $ U.bind (z, U.embed absTy) $ F.V z
+        m = Endo (F.Let . U.bind (xv, U.embed $ F.Record [(F.FSig, mId)]))
         thisOne = (([], [(F.FUser nm, semSig)]),
                    [(F.FUser nm, F.V xv)],
                    m)

@@ -28,7 +28,7 @@ expr e_ =
    V x -> do
      mx <- view (valEnv . at x)
      case mx of
-      Nothing -> fail "unexpected failure: ToF.expr variable not in scope"
+      Nothing -> throwError "unexpected failure: ToF.expr variable not in scope"
       Just (xv, prov) ->
         return $ case prov of
                   LocalTermVar -> F.V xv
@@ -43,7 +43,7 @@ expr e_ =
          ma <- view (modEnv . at ident)
          case ma of
           Just (sig, x) -> return (sig, F.V x)
-          Nothing -> fail "ToF.expr: type path has unbound module identifier at the root"
+          Nothing -> throwError "ToF.expr: type path has unbound module identifier at the root"
      (_sig, m) <- followUserPathAnything findIt (ProjP p f)
      -- assume _sig is a F.ValSem
      return $ F.Proj m F.FVal
@@ -91,13 +91,13 @@ letBinding bnding kont =
      letSimple F.Let x ann e kont
    SampleB (x, U.unembed -> ann) (U.unembed -> e) -> 
      letSimple F.LetSample x ann e kont
-   TabB {} -> fail "unimplemented ToF.letBinding TabB"
+   TabB {} -> throwError "unimplemented ToF.letBinding TabB"
 
 annot :: ToF m
          => Annot -> m (F.Type, F.Kind)
 annot (Annot mt) =
   case mt of
-   Nothing -> fail "unexpected failure: ToF.annot expected an annotation"
+   Nothing -> throwError "unexpected failure: ToF.annot expected an annotation"
    Just t -> type' t
 
 letSimple :: ToF m
@@ -131,7 +131,7 @@ valueConstructor (VCLocal valCon) = do
   mv <- view (valConEnv . at valCon)
   (inX, fld, outX) <- case mv of
     Just (inX, fld, outX) -> return (inX, fld, outX)
-    Nothing -> fail "internal error: ToF.valueConstructor VCLocal valCon not in environment"
+    Nothing -> throwError "internal error: ToF.valueConstructor VCLocal valCon not in environment"
   return (F.Proj (F.V inX) F.FCon, fld, F.Proj (F.V outX) F.FData)
 valueConstructor (VCGlobal (ValConPath modPath f)) = do
   let
@@ -139,13 +139,13 @@ valueConstructor (VCGlobal (ValConPath modPath f)) = do
       ma <- view (modEnv . at ident)
       case ma of
        Just (sig, x) -> return (sig, F.V x)
-       Nothing -> fail "ToF.valueConstructor: constructor path has unbound module identifier at the root"
+       Nothing -> throwError "ToF.valueConstructor: constructor path has unbound module identifier at the root"
   (vcsig, inM) <- followUserPathAnything findIt (ProjP modPath f)
   outM <- case vcsig of
            F.ConSem ty (F.FUser dtfld) -> do
              (_dtsig, dtm) <- followUserPathAnything findIt (ProjP modPath dtfld)
              return dtm
-           _ -> fail "ToF.valueConstructor: constructor's path not associated with constructor semantic sig"
+           _ -> throwError "ToF.valueConstructor: constructor's path not associated with constructor semantic sig"
   return (F.Proj inM F.FCon, F.FUser f, F.Proj outM F.FData)
 
 -- | Given an instantiation coerction ∀αs.ρ ≤ [αs↦τs]ρ construct a function
@@ -167,7 +167,7 @@ caseExpr :: ToF m
 caseExpr subj clauses ann = do
   resultTy <- case ann of
                (Annot (Just resultTy)) -> return resultTy
-               _ -> fail "ToF.caseExpr: internal error - expected an annotated case expression"
+               _ -> throwError "ToF.caseExpr: internal error - expected an annotated case expression"
   (resultTy', _k) <- type' resultTy
   subj' <- expr subj
   withFreshName "subjP" $ \v -> do
