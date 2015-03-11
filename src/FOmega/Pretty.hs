@@ -104,6 +104,7 @@ ppTerm m_ =
    Return m ->
      fsep ["return", precParens 2 $ ppTerm m]
    LetSample {} -> nestedLet m_
+   LetRec {} -> nestedLet m_
    Assume t ->
      fsep ["assume", precParens 2 $ ppType t]
    Abort t ->
@@ -137,7 +138,17 @@ nestedLetBinding m_ =
          doc = fsep [pp x, indent "~" (withPrec 2 AssocNone $ Left $ ppTerm m1)]
          (docs,last) = nestedLetBinding m2
      in (doc:docs, last)
-   _ -> (mempty, m_)
+   LetRec bnd ->
+     let (U.unrec -> constituents, body) = UU.unsafeUnbind bnd
+         docs1 = map ppRec constituents
+         (docs, last) = nestedLetBinding body
+     in (docs1 ++ docs, last)
+   for -> (mempty, m_)
+
+ppRec :: (Var, U.Embed Type, U.Embed Term) -> PM Doc
+ppRec (f, U.unembed -> ty, U.unembed -> m) =
+  fsep ["rec", pp f, indent coloncolon (withLowestPrec $ ppType ty),
+        indent "=" (withLowestPrec $ ppTerm m)]
 
 
 ppClause :: Clause -> PM Doc

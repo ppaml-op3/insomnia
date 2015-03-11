@@ -64,6 +64,7 @@ data Term =
   | Unpack !(Bind (TyVar, Var, Embed Term) Term)
   | Return !Term
   | LetSample !(Bind (Var, Embed Term) Term)
+  | LetRec !(Bind RecBindings Term)
   | Assume !Type
   | Inj !Field !Term !Type
   | Case !Term ![Clause] !(Maybe Term)
@@ -73,8 +74,11 @@ data Term =
 data Clause = Clause !(Bind (Embed Field, Var) Term)
             deriving (Show, Typeable, Generic)
 
--- * Alpha equivalence and Substitution
+-- terms should be values
+type RecBindings = Rec [(Var, Embed Type, Embed Term)]
 
+
+-- * Alpha equivalence and Substitution
 
 instance Alpha Field
 instance Alpha Kind

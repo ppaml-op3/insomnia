@@ -54,6 +54,7 @@ data OmegaErr =
   | ExpectedSumType !(Got Type)
   | EmptyCaseConstruct --  case m of {}
   | SumTypeHasNoField !(Expected Type) !(Got Field)
+  | ExpectedValueInLetRec !Var
   | NoErr
   deriving (Show)
 
@@ -209,6 +210,9 @@ inferTy m_ =
      U.lunbind bnd $ \((x, U.unembed -> m1), m2) -> do
        t <- inferTy m1
        extendEnv (CVal x t) $ inferTy m2
+   LetRec bnd ->
+     U.lunbind bnd $ \(U.unrec -> constituents, body) -> do
+       checkRecursiveConstituents constituents $ inferTy body
    Return m -> do
      t <- inferTy m
      return $ TDist t
@@ -284,6 +288,43 @@ checkInj alts f t = do
    Just t' -> do
      _ <- tyEquiv (Expected t) (Got t') KType
      return ()
+
+-- | Check the bindings comprising a LetRec term, then call the given
+-- continuation in the environment extended with their bindings.
+checkRecursiveConstituents :: MonadTC m
+                              => [(Var, U.Embed Type, U.Embed Term)]
+                              -> m ans
+                              -> m ans
+checkRecursiveConstituents constituents kont = do
+  -- First pass - check that all the types are well-formed
+  newBinds <- forM constituents $ \(v, U.unembed -> ty, _) -> do
+    k <- inferK ty
+    expectKType ty k
+    return $ CVal v ty
+  extendEnvs newBinds $ do
+    -- Second pass - in the environment extended with new bindings,
+    -- check that each body is a value and has the putative type.
+    forM_ constituents $ \(v, U.unembed -> ascribedTy, U.unembed -> m) -> do
+      valueRestriction v m
+      infTy <- inferTy m
+      tyEquiv (Expected ascribedTy) (Got infTy) KType
+    -- Then (still in the extended env), call the continuation.
+    kont
+
+-- | Check (conservatively) that the given term is manifestly a value.
+-- The following things are values:
+--   Polymorphic lambda, ordinary lambdas, literals, records of values.
+valueRestriction :: MonadTC m => Var -> Term -> m ()
+valueRestriction theName m_ =
+  unless (isValue m_)
+  $ throwError (ExpectedValueInLetRec theName)
+  where
+    isValue :: Term -> Bool
+    isValue (L {}) = True
+    isValue (PLam {}) = True
+    isValue (Lam {}) = True
+    isValue (Record fms) = all (\(_f, m) -> isValue m) fms
+    isValue _ = False
 
 ------------------------------------------------------------
 -- * Type normalization and equivalence
@@ -445,6 +486,10 @@ lookupField fs_ f = go fs_
 
 extendEnv :: MonadTC m => CBind -> m a -> m a
 extendEnv b = local (Ctx . (b:) . ctxBinds)
+
+extendEnvs :: MonadTC m => [CBind] -> m a -> m a
+extendEnvs [] = id
+extendEnvs (b:bs) = extendEnv b . extendEnvs bs
 
 expectKType :: MonadTC m => Type -> Kind -> m ()
 expectKType t k =

@@ -407,13 +407,14 @@ valueDecl mk f vd kont =
      (xv, sem) <- case mt of
        Just (xv, StructureTermVar sem) -> return (xv, sem)
        _ -> throwError "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
+     semTy <- F.embedSemanticSig sem
      ty <- matchSemValRecord sem
      m <- tyVarsAbstract ty $ \tvks _ty' -> do
        m_ <- expr e
        return $ F.pLams tvks m_
      let
        mr = F.valSemTerm m
-       mhole = Endo $ F.Let . U.bind (xv, U.embed mr)
+       mhole = Endo $ F.LetRec . U.bind (U.rec [(xv, U.embed semTy, U.embed mr)])
        thisOne = (mempty,
                   [(F.FUser f, F.V xv)],
                   mhole)
