@@ -6,6 +6,7 @@
 module FOmega.SubSig where
 
 import Prelude hiding (mapM)
+import Control.Lens
 import Control.Monad (MonadPlus, zipWithM)
 
 import Data.Traversable (Traversable(..))
@@ -21,19 +22,47 @@ import FOmega.Syntax
 import FOmega.SemanticSig
 import FOmega.MatchSigs (matchSubst, matchSubsts)
 
-type Coercion = Term
+-- | A coercion is a closed term of function type.
+-- As it turns out, many coercions are just the identity function, so
+-- do a bit of simplifications as we go.
+-- (We could do even better if we represented composite coercions as values of this datatype.
+--  For example if we saw  (DistCoer (IdCoer ty)) we could replace it by IdCoer (TDist ty)
+--  instead of the more cumbersome  "λ x : Dist ty . let s ~ coerce@(id ty) x in return s"
+--  But we get a lot of mileage just out of the id/non-id distinction and substitution of
+--  coercion arguments for coercion results.)
+data Coercion =
+  IdCoer Type
+  | LamCoer (U.Bind (Var, U.Embed Type) Term)
+
+coercionTerm :: Coercion -> Term
+coercionTerm (IdCoer ty) = idCoerTerm ty
+coercionTerm (LamCoer bnd) = Lam bnd
 
 -- λ x : τ . x
-idFun :: Type -> Term
-idFun t =
+idCoerTerm :: Type -> Term
+idCoerTerm t =
   let x = U.s2n "x"
   in Lam $ U.bind (x, U.embed t) $ V x
 
-fun :: LFresh m => Type -> (Term -> m Term) -> m Term
-fun t f = do
+applyCoercion :: Coercion -> Term -> Term
+applyCoercion (IdCoer _ty) m = m
+applyCoercion (LamCoer bnd) m =
+  U.runLFreshM $ 
+  U.avoid (toListOf U.fvAny m) $ 
+  U.lunbind bnd $ \ ((v, _ty), body) ->
+  return (U.subst v m body)
+
+-- given f : τ → σ , g : ρ → τ construct λ x : ρ . f (g x)) : ρ → σ
+composeCoer :: Coercion -> Coercion -> Type -> Coercion
+composeCoer f g t =
+  let x = U.s2n "x"
+  in LamCoer $ U.bind (x, U.embed t) $ f `applyCoercion` (g `applyCoercion` (V x))
+
+coercion :: LFresh m => Type -> (Term -> m Term) -> m Coercion
+coercion t f = do
   x <- U.lfresh $ U.s2n "x"
   e <- U.avoid [U.AnyName x] $ f (V x)
-  return $ Lam $ U.bind (x, U.embed t) e
+  return $ LamCoer $ U.bind (x, U.embed t) e
 
 -- Λ α : κ → ⋆. λ x : α τ . x
 reflFun :: LFresh m => Type -> Kind -> m Term
@@ -41,7 +70,7 @@ reflFun t k = do
   a <- U.lfresh $ U.s2n "α"
   let knd = k `KArr` KType
       typ = TV a `TApp` t
-  return $ PLam $ U.bind (a, U.embed knd) $ idFun typ
+  return $ PLam $ U.bind (a, U.embed knd) $ coercionTerm $ IdCoer typ
 
 
 valSemTerm :: Term -> Term
@@ -53,13 +82,13 @@ typeSemTerm t k = reflFun t k
 sigSemTerm :: LFresh m => AbstractSig -> m Term
 sigSemTerm a = do
   t <- embedAbstractSig a
-  return $ idFun t
+  return $ coercionTerm $ IdCoer t
 
 termSubtyping :: LFresh m => Type -> Type -> m Coercion
 termSubtyping lhs rhs = do
   --  eq <- tyEquiv lhs rhs KType
   -- guard eq
-  return $ idFun lhs
+  return $ IdCoer lhs
 
 sigSubtyping :: (MonadPlus m, LFresh m) => SemanticSig -> SemanticSig -> m Coercion
 sigSubtyping lhs rhs = do
@@ -67,15 +96,15 @@ sigSubtyping lhs rhs = do
   case (lhs, rhs) of
    (ValSem tl, ValSem tr) -> do
      f <- termSubtyping tl tr
-     fun lhsTy $ \x -> return (f `App` (x `Proj` FVal))
+     coercion lhsTy $ \x -> return $ valSemTerm (applyCoercion f (x `Proj` FVal))
    (TypeSem tl kl, TypeSem tr kr) -> do
      -- eq <- tyEquiv tl tr kl
      -- guard eq
-     return $ idFun lhsTy
+     return $ IdCoer lhsTy
    (SigSem sl, SigSem sr) -> do
      _f1 <- abstractSigSubtyping sl sr
      _f2 <- abstractSigSubtyping sr sl
-     fun lhsTy $ \_x -> sigSemTerm sr
+     coercion lhsTy $ \_x -> sigSemTerm sr
    (ModSem modl, ModSem modr) -> do
      -- check that keys of modr are a subset of the keys of modl,
      -- so the intersection of the keys is in fact the rhs
@@ -83,8 +112,8 @@ sigSubtyping lhs rhs = do
          mr = M.fromList modr
          m = M.intersectionWith (\x y -> (x, y)) ml mr
      m' <- mapM (uncurry sigSubtyping) m
-     fun lhsTy $ \x -> do
-       let rs = M.mapWithKey (\fld coer -> coer `App` (x `Proj` fld)) m'
+     coercion lhsTy $ \x -> do
+       let rs = M.mapWithKey (\fld coer -> applyCoercion coer (x `Proj` fld)) m'
        return $ Record $ M.toList rs
    (FunctorSem bndl, FunctorSem bndr) ->
      functorSubtyping bndl bndr
@@ -99,14 +128,14 @@ abstractSigSubtyping lhs@(AbstractSig bndl) rhs@(AbstractSig rhsBndl) = do
     -- extend environment
     (sigr, taus) <- matchSubst sigl rhs
     coer <- sigSubtyping sigl sigr
-    fun lhsTy $ \x -> do
+    coercion lhsTy $ \x -> do
       y <- U.lfresh (U.s2n "y")
       U.lunbind rhsBndl $ \(rhsVs, rhsSig) -> do
         rhsTy <- embedSemanticSig rhsSig
         let ep = (rhsVs, rhsTy)
         U.avoid [U.AnyName y]
           $ unpacks (map fst tvks) y x
-          $ packs taus (App coer $ V y) ep
+          $ packs taus (applyCoercion coer $ V y) ep
 
 -- |   ⊢ ∀αs . Σs → Ξ ≤ ∀αs'. Σs' → Ξ' ⇝ f'
 --
@@ -139,19 +168,17 @@ functorSubtyping bndl bndr =
       coerBody <- abstractSigSubtyping lhsBodySig rhsBodySig'
       return (coerArgs, taus, coerBody)
 
-    return undefined
     let argNames = map (\n -> "yArg" ++ show n) [1 .. length rhsArgTys]
 
-    withFreshName "f" $ \inFunc ->
+    coercion lhsTy $ \inFunc ->
       withFreshNames (argNames :: [String]) $ \argYs -> 
       let
         -- χ = χbody (f [τs] (χ1 y1) ... (χn yn))
         coercion =
-          coerBody `App` (((V inFunc) `pApps` taus) `apps` (zipWith App coerArgs $ map V argYs))
-        -- λ f : (∀αs.Σ → Ξ) . Λ α's . λ ys : Σ's . χ
-        coercionFn =
-          Lam $ U.bind (inFunc, U.embed lhsTy) $ pLams' tvksr $ lams (zip argYs rhsArgTys) coercion
-       in return coercionFn
+          applyCoercion coerBody ((inFunc `pApps` taus) `apps` (zipWith applyCoercion coerArgs $ map V argYs))
+        -- Λ α's . λ ys : Σ's . χ
+        resultFn = pLams' tvksr $ lams (zip argYs rhsArgTys) coercion
+       in return resultFn
           
 -- |  ⊢ model Ξ ≤ model Ξ' ⇝ f'
 --
@@ -160,10 +187,11 @@ functorSubtyping bndl bndr =
 -- where f' = λx:Dist Ξ. let x ~ x in return (f x)  :: Dist Ξ → Dist Ξ'
 modelSubtyping :: (MonadPlus m, LFresh m) => AbstractSig -> AbstractSig -> m Coercion
 modelSubtyping lhsAbs rhsAbs = do
-  lhsTy <- embedAbstractSig lhsAbs
+  lhsTy_ <- embedAbstractSig lhsAbs
+  let lhsTy = TDist lhsTy_
   pureCoer <- abstractSigSubtyping lhsAbs rhsAbs
-  let x = U.s2n "x"
-      body  = Return (pureCoer `App` V x)
-      letSamp = LetSample $ U.bind (x, U.embed (V x)) body
-      m = Lam $ U.bind (x, U.embed lhsTy) letSamp
-  return m
+  coercion lhsTy $ \d ->
+    withFreshName "s" $ \s ->
+    let body  = Return (applyCoercion pureCoer $ V s)
+        letSamp = LetSample $ U.bind (s, U.embed d) body
+    in return letSamp

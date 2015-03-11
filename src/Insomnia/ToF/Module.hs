@@ -111,7 +111,7 @@ modelLocal lcl_ body_ mt_ = do
   declarations ModelMK lclDecls $ \(_lclSummary, _lclFields, lclTermHole) -> do
     (F.AbstractSig bodySigBnd, bodyTerm) <- modelExpr body_
     U.lunbind bodySigBnd $ \(gammas,bodySig) -> do
-      (taus, f) <- do
+      (taus, coer) <- do
         (sig2, taus) <- F.matchSubst bodySig ascribedSig
         coercion <- F.sigSubtyping bodySig sig2
         return (taus, coercion)
@@ -123,7 +123,7 @@ modelLocal lcl_ body_ mt_ = do
           ty <- F.embedSemanticSig s
           return (betas, ty)
       let
-        finalOut = F.Return $ F.packs taus (F.App f (F.V w)) packsAnnotation
+        finalOut = F.packs taus (F.applyCoercion coer (F.V w)) packsAnnotation
       unpackedGammas <- F.unpacks (map fst gammas) w (F.V z) $ finalOut
       let
         withE2 = F.Let $ U.bind (z, U.embed bodyTerm) unpackedGammas
@@ -155,7 +155,7 @@ sealing me mt = do
   xi@(F.AbstractSig xiBnd) <- moduleType mt
   (F.AbstractSig sigBnd, m) <- moduleExpr me
   U.lunbind sigBnd $ \(betas, sigma) -> do
-    (taus, f) <- do
+    (taus, coer) <- do
       (sig2, taus) <- F.matchSubst sigma xi
       coercion <- F.sigSubtyping sigma sig2
       return (taus, coercion)
@@ -165,7 +165,7 @@ sealing me mt = do
                   ++ taus
     (xi', bdy) <- U.lunbind xiBnd $ \(deltas,sigma2) -> do
       sigma2emb <- F.embedSemanticSig sigma2
-      let bdy = F.packs packedTys (F.App f $ F.V z1) (betas++deltas, sigma2emb)
+      let bdy = F.packs packedTys (F.applyCoercion coer $ F.V z1) (betas++deltas, sigma2emb)
           xi' = F.AbstractSig $ U.bind (betas++deltas) sigma2
       return (xi', bdy)
     term <- F.unpacks (map fst betas) z1 m bdy
@@ -206,7 +206,7 @@ moduleApp pfn pargs = do
        (paramSigs', taus) <- F.matchSubsts argSigs (alphas, paramSigs)
        coercions <- zipWithM F.sigSubtyping argSigs paramSigs'
        let
-         m = (F.pApps mfn taus) `F.apps` (zipWith F.App coercions margs)
+         m = (F.pApps mfn taus) `F.apps` (zipWith F.applyCoercion coercions margs)
          s = U.substs (zip alphas taus) sigResult
        return (s, m)
    _ -> fail "internal failure: ToF.moduleApp expected a functor"
