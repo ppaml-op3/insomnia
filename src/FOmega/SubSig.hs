@@ -105,6 +105,8 @@ sigSubtyping lhs rhs = do
      _f1 <- abstractSigSubtyping sl sr
      _f2 <- abstractSigSubtyping sr sl
      coercion lhsTy $ \_x -> sigSemTerm sr
+   (ConSem {}, ConSem {}) -> return (IdCoer lhsTy)
+   (DataSem {}, DataSem {}) -> return (IdCoer lhsTy)
    (ModSem modl, ModSem modr) -> do
      -- check that keys of modr are a subset of the keys of modl,
      -- so the intersection of the keys is in fact the rhs

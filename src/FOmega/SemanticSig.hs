@@ -73,7 +73,7 @@ embedSemanticSig (TypeSem t k) = do
   return $ TRecord [(FType, tEmbed)]
 embedSemanticSig (SigSem absSig) = do
   s <- embedAbstractSig absSig
-  return $ TRecord [(FSig, s)]
+  return $ TRecord [(FSig, s `TArr` s)]
 embedSemanticSig (DataSem tabs tconc k) = do
   -- the embedding for a datatype witnesses the coercion from δ to {c1 : τ1 | ⋯ | cN : τN }
   a <- U.lfresh $ U.s2n "γ"
