@@ -56,7 +56,7 @@ ppType t_ =
      in
       braces $ fsep $ prePunctuate "|" $ map ppF fts
    TDist t ->
-     fsep ["Dist", indent mempty (ppType t)]
+     infixOp 2 mempty AssocLeft "Dist" (ppType t)
         
 withLowestPrec :: PM Doc -> PM Doc
 withLowestPrec = withPrec 0 AssocNone . Left
