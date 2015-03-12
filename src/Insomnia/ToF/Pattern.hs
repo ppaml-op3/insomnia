@@ -113,12 +113,15 @@ translateJob (MatchAndThenJ v' bnd) fk =
        m_ <- translateJob j' fk
        let m = projectFields fys v' m_
        return m
-   ConP (U.unembed -> vc) ps ->
+   ConP (U.unembed -> vc) (U.unembed -> mco) ps -> do
+     co <- case mco of
+       Nothing -> throwError "ToF.Pattern.translateJob: Expected a type instantiation annotation on constructor pattern"
+       Just co -> return co
      let fps = zip (map F.FTuple [0..]) ps
-     in freshPatternVars fps $ \fys yps -> do
+     freshPatternVars fps $ \fys yps -> do
        let j' = matchTheseAndThen yps sk
        m_ <- translateJob j' fk
-       m <- caseConstruct v' vc fys m_ fk
+       m <- caseConstruct v' vc co fys m_ fk
        return m
 
 -- | caseConstruct y Con {0 = y1, ..., n-1 = yN} ms mf
@@ -128,16 +131,25 @@ translateJob (MatchAndThenJ v' bnd) fk =
 caseConstruct :: ToF m
                  => F.Var
                  -> ValueConstructor
+                 -> InstantiationCoercion
                  -> [(F.Field, F.Var)]
                  -> F.Term
                  -> FailCont
                  -> m F.Term
-caseConstruct ysubj vc fys successTm (FailCont failContTm) = 
+caseConstruct ysubj vc (InstantiationSynthesisCoercion _ tyargs _) fys successTm (FailCont failContTm) = 
   withFreshName "z" $ \z -> do
     (_dtIn, f, dtOut) <- valueConstructor vc
     let
-      here = let g = U.s2n "γ"
-             in F.TLam $ U.bind (g, U.embed F.KType) (F.TV g)
+      -- XXX TODO: This is wrong for polymorphic types.
+      -- Consider the clause: case l of (Cons x xs) -> x + sum xs 
+      -- In that case, we need to translate to:
+      --    case Δ.out [λ (δ:⋆→⋆) . δ Int] l of (Cons z) -> let x = z.0 xs = z.1 in ...
+      -- That is, we have to know that the polymorphic type Δ was instantiated with τs
+      -- and the context should be λ (δ:κ1→⋯κN→⋆) . δ τ1 ⋯ τN
+      --
+      -- I think we need Insomnia to insert annotations into the pattern.
+      here = let d = U.s2n "δ"
+             in F.TLam $ U.bind (d, U.embed F.KType) (F.TV d)
       subject = F.App (F.PApp dtOut here) (F.V ysubj)
       clause = F.Clause $ U.bind (U.embed f, z) (projectFields fys z successTm)
     return $ F.Case subject [clause] (Just failContTm)

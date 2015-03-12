@@ -489,7 +489,8 @@ patternAtom :: PatternAtom -> CTA PartialPattern
 patternAtom (VarP ident) = (CompletePP . I.VarP) <$> liftCTA (unqualifiedVar ident)
 patternAtom (ConP ncon) = do
   let con = dropNotation ncon
-  (PartialPP . I.ConP . U.embed) <$> liftCTA (valueConstructor con)
+  vc <- liftCTA (valueConstructor con)
+  return $ PartialPP $ I.ConP (U.embed vc) (U.embed Nothing)
   where
     dropNotation (InfixN x) = x
     dropNotation (PrefixN x) = x
@@ -644,7 +645,7 @@ instance FixityParseable PatternAtom Con CTA PartialPattern where
        match _                                     = Nothing
      _ <- P.tokenPrim show (\pos _tok _toks -> pos) match
      con' <- lift $ liftCTA $ valueConstructor con
-     let pat = I.ConP (U.embed con')
+     let pat = I.ConP (U.embed con') (U.embed Nothing)
      -- we "know" pat is going to be a binary infix constructor
      -- because "infx" is only called by the fixity parser on infix
      -- names.
@@ -758,10 +759,10 @@ example3_expected =
     p = consp xp (consp yp np)
     e = cons (v y) (cons (v x) n)
 
-    consp p1 p2 = I.ConP (U.embed consc) [p1, p2]
+    consp p1 p2 = I.ConP (U.embed consc) (U.embed Nothing) [p1, p2]
     cons e1 e2 = I.App (I.App (I.C consc) e1) e2
     consc = I.VCLocal $ U.s2n "Cons"
-    np = I.ConP (U.embed nc) []
+    np = I.ConP (U.embed nc) (U.embed Nothing) []
     n = I.C nc
     nc = I.VCLocal $ U.s2n "N"
     x = U.s2n "x"

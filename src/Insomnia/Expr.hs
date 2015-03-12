@@ -98,7 +98,8 @@ data TabSelector =
 -- | A pattern in a case expression
 data Pattern = WildcardP
              | VarP Var
-             | ConP !(Embed ValueConstructor) [Pattern]
+               -- for polymorphic datatypes, record how the constructor was instantiated; added by type inference
+             | ConP !(Embed ValueConstructor) !(Embed (Maybe InstantiationCoercion)) [Pattern]
              | RecordP ![(Embed Label, Pattern)]
                deriving (Show, Typeable, Generic)
 

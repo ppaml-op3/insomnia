@@ -203,9 +203,8 @@ functionT :: Type -> Type -> Type
 functionT t1 t2 = TC conArrow `TApp` t1 `TApp` t2
 
 functionT' :: [Type] -> Type -> Type
-functionT' [] _tcod = error "expected at least one domain type"
-functionT' [tdom] tcod = functionT tdom tcod
-functionT' (tdom:tdoms) tcod = functionT tdom (functionT' tdoms tcod)
+functionT' [] = id
+functionT' (tdom:tdoms) = functionT tdom . functionT' tdoms
 
 distT :: Type -> Type
 distT tsample = TC conDist `TApp` tsample

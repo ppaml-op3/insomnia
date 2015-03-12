@@ -104,6 +104,10 @@ tApps :: Type -> [Type] -> Type
 tApps t0 [] = t0
 tApps t0 (t1:ts) = tApps (TApp t0 t1) ts
 
+tForalls :: [(TyVar, Kind)] -> Type -> Type
+tForalls [] = id
+tForalls (tvk:tvks) = TForall . bind tvk . tForalls tvks
+
 -- | Sort the labels of a row into a canonical order
 canonicalOrderRowLabels :: [(Label, a)] -> [(Label, a)]
 canonicalOrderRowLabels = sortBy (comparing fst)

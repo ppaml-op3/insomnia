@@ -450,7 +450,7 @@ pattern p_ kont =
    I.VarP x -> do
      x' <- nameLocal x
      kont (O.VarP x')
-   I.ConP c_ pats -> do
+   I.ConP c_ _inst pats -> do
      let c = U.unembed c_
      (c', _) <- recallConInfo c
      patterns pats $ \pats' ->

@@ -101,8 +101,15 @@ instance Pretty ModuleKind where
 instance Pretty Pattern where
   pp WildcardP = "_"
   pp (VarP v) = pp v
-  pp (ConP c []) = pp (U.unembed c)
-  pp (ConP c ps) = parens $ pp (U.unembed c) <+> (nesting $ fsep $ map pp ps)
+  pp (ConP (U.unembed -> c) (U.unembed -> minst) []) =
+    case minst of
+     Nothing -> pp c
+     Just co -> infixOp 99 "·¢·" AssocLeft (pp c) (pp co)
+  pp (ConP (U.unembed -> c) (U.unembed -> minst) ps) =
+    case minst of
+     Nothing -> parens $ pp c <+> (nesting $ fsep $ map pp ps)
+     Just co -> parens $ infixOp 99 "·¢·" AssocLeft (pp c) (pp co) <+> (nesting $ fsep $ map pp ps)
+
   pp (RecordP lps) = braces $ fsep $ punctuate "," $ map ppLabeledAssign $ map (_1 %~ U.unembed) lps
 
 instance Pretty Clause where

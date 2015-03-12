@@ -6,14 +6,17 @@ import Control.Lens
 import Control.Applicative ((<$>))
 import Control.Monad (forM, when, unless, void, zipWithM)
 
-import Data.List (foldl')
 import Data.Monoid (Monoid(..), (<>), Endo(..))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.Literal
 import Insomnia.Common.Telescope
-import Insomnia.Types (Kind(..), Type(..), Row(..), canonicalOrderRowLabels, freshUVarT)
+import Insomnia.Types (Kind(..), Type(..), Row(..),
+                       canonicalOrderRowLabels,
+                       freshUVarT,
+                       tForalls, tApps,
+                       TraverseTypes(..))
 import Insomnia.Expr
 
 import Insomnia.Unify (applyCurrentSubstitution,
@@ -139,9 +142,9 @@ checkPattern tscrut p =
           row = Row $ canonicalOrderRowLabels lts
       tscrut =?= TRecord row
       return (RecordP lps', ms)
-    ConP (U.unembed -> c) ps -> do
+    ConP (U.unembed -> c) _ ps -> do
       alg <- lookupValueConstructor c
-      instantiateConstructorArgs (alg^.algConstructorArgs) $ \ tparams targs -> do
+      instantiateConstructorArgs alg $ \ tparams targs co -> do
         unless (length ps == length targs) $
           typeError ("constructor " <> formatErr c
                      <> " should take " <> formatErr (length targs)
@@ -151,10 +154,11 @@ checkPattern tscrut p =
         let d = alg^.algConstructorDCon
             -- data type of the constructor applied to the
             -- fresh unification vars
-            dty = foldl' TApp (TC d) tparams
+            dty = (TC d) `tApps` tparams
         tscrut =?= dty
         (ps', ms) <- unzip <$> zipWithM checkPattern targs ps
-        return (ConP (U.embed c) ps', mconcat ms)
+        co' <- traverseTypes applyCurrentSubstitution co
+        return (ConP (U.embed c) (U.embed $ Just co') ps', mconcat ms)
 -- | check a sequence of bindings and pass them to the given continuation
 -- in an environment suitably extended by the new bindings.
 checkBindings :: Bindings -> (Bindings -> TC a) -> TC a
@@ -318,15 +322,22 @@ instantiate ty_ kont =
 
 -- | Given α1∷ ⋯ αN.KN . 〈τ1, …, τM〉, pick fresh unification vars u1,…,uN
 -- and pass 〈u1,…,uN〉 and 〈τ1[us/αs], …, τM[us/αs]〉 to the continuation
-instantiateConstructorArgs :: ConstructorArgs -> ([Type] -> [Type] -> TC a) -> TC a
-instantiateConstructorArgs bnd kont =
+instantiateConstructorArgs :: AlgConstructor -> ([Type] -> [Type] -> InstantiationCoercion -> TC a) -> TC a
+instantiateConstructorArgs (AlgConstructor bnd tc) kont =
   U.lunbind bnd $ \ (tvks, targs) -> do
+    let
+      -- τ1 → ⋯ → τN → σ[αs]
+      tyCon_ = (targs `functionT'` ((TC tc) `tApps` (map (TV . fst) tvks)))
+      -- ∀ αs:κs . τ1 → ⋯ → τN → σ[αs]
+      ty_ = tForalls tvks tyCon_
     tus <- mapM (\_-> freshUVarT) tvks
     -- the substitution taking each variable to a fresh unification var
     let
       s = zip (map fst tvks) tus
       targs' = U.substs s targs
-    kont tus targs'
+      tyCon = U.substs s tyCon_
+      co = InstantiationSynthesisCoercion ty_ tus tyCon
+    kont tus targs' co
 
 unifyAnn :: Type -> Annot -> TC ()
 unifyAnn t1 (Annot (Just t2)) = do
