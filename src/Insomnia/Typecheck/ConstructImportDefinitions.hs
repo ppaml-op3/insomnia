@@ -20,38 +20,41 @@ type Decls = Endo [Decl]
 singleDecl :: Decl -> Decls
 singleDecl d = Endo (d:)
 
-constructImportDefinitions :: SelfSig -> TC Decls
-constructImportDefinitions (ValueSelfSig q ty rest) = do
-  d <- importValue q ty
-  ds <- constructImportDefinitions rest
+constructImportDefinitions :: SelfSig -> Stochasticity -> TC Decls
+constructImportDefinitions (ValueSelfSig q ty rest) stoch = do
+  d <- importValue q ty stoch
+  ds <- constructImportDefinitions rest stoch
   return (d <> ds)
-constructImportDefinitions (TypeSelfSig tp tsd rest) = do
+constructImportDefinitions (TypeSelfSig tp tsd rest) stoch = do
   d <- importType tp tsd
-  ds <- constructImportDefinitions rest
+  ds <- constructImportDefinitions rest stoch
   return (d <> ds)
-constructImportDefinitions (SubmoduleSelfSig p _ rest) = do
+constructImportDefinitions (SubmoduleSelfSig p _ rest) stoch = do
   d <- importSubmodule p
-  ds <- constructImportDefinitions rest
+  ds <- constructImportDefinitions rest stoch
   return (d <> ds)
-constructImportDefinitions (GenerativeSelfSig p _ rest) = do
+constructImportDefinitions (GenerativeSelfSig p _ rest) stoch = do
   d <- importSubmodule p
-  ds <- constructImportDefinitions rest
+  ds <- constructImportDefinitions rest stoch
   return (d <> ds)
-constructImportDefinitions UnitSelfSig = return mempty
+constructImportDefinitions UnitSelfSig _ = return mempty
 
 importSubmodule :: Path -> TC Decls
 importSubmodule pSub = do
   let f = lastOfPath pSub
   return $ singleDecl $ SubmoduleDefn f (ModuleId pSub)
 
-importValue :: QVar -> Type -> TC Decls
-importValue q@(QVar _ f) ty = do
+importValue :: QVar -> Type -> Stochasticity -> TC Decls
+importValue q@(QVar _ f) ty stoch = do
   let
     -- sig f : T
     -- val f = p.f
     dSig = singleDecl $ ValueDecl f $ SigDecl DeterministicParam ty
-    -- N.B. assumes "import Model" is not valid.
-    dVal = singleDecl $ ValueDecl f $ ParameterDecl (Q q)
+    dVal = singleDecl
+           $ ValueDecl f
+           $ case stoch of
+              DeterministicParam -> ParameterDecl (Q q)
+              RandomVariable -> SampleDecl (Return (Q q))
   return (dSig <> dVal)
 
 importType :: TypePath -> TypeSigDecl -> TC Decls

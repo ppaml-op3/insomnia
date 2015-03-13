@@ -61,8 +61,9 @@ modelExpr mdle =
    ModelId p -> do
      (sig, m) <- modulePath p
      return (F.AbstractSig $ U.bind [] sig, m)
-   ModelLocal lcl bdy mt ->
-     modelLocal lcl bdy mt
+   ModelLocal lcl bdy mt -> do
+     (sig, m) <- modelLocal lcl bdy mt
+     return (sig, m)
 
 moduleAssume :: ToF m
                 => ModuleType
@@ -128,8 +129,7 @@ modelLocal lcl_ body_ mt_ = do
       let
         withE2 = F.Let $ U.bind (z, U.embed bodyTerm) unpackedGammas
         localTerm = appEndo lclTermHole withE2
-        localSig = F.AbstractSig $ U.bind [] $ F.ModelSem ascribedSig
-      return (localSig, localTerm)
+      return (ascribedSig, localTerm)
 
 -- | In the F-ing modules paper, (M:>S) is syntactic sugar, and only
 -- (X :> S) is primitive.  But if we expand out the sugar and apply

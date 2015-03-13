@@ -198,7 +198,7 @@ checkImportDecl pmod stoch impPath = do
   case impSigV of
    (SigMTNF (SigV msig ModuleMK)) -> do
      selfSig <- selfifySignature impPath msig
-     importDefns <- constructImportDefinitions selfSig
+     importDefns <- constructImportDefinitions selfSig stoch
      return importDefns
    (SigMTNF (SigV _ ModelMK)) ->
      typeError ("cannot import model " <> formatErr impPath <> " into "
