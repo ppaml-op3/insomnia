@@ -52,6 +52,7 @@ import Insomnia.Types (Label(..))
 
 import qualified FOmega.Syntax as F
 
+import Insomnia.ToF.Type (type')
 import Insomnia.ToF.Expr (expr, valueConstructor)
 
 patternTranslation :: ToF m
@@ -139,17 +140,19 @@ caseConstruct :: ToF m
 caseConstruct ysubj vc (InstantiationSynthesisCoercion _ tyargs _) fys successTm (FailCont failContTm) = 
   withFreshName "z" $ \z -> do
     (_dtIn, f, dtOut) <- valueConstructor vc
+    (tyArgs', ks) <- liftM unzip $ mapM type' tyargs
     let
-      -- XXX TODO: This is wrong for polymorphic types.
-      -- Consider the clause: case l of (Cons x xs) -> x + sum xs 
+      -- For  polymorphic types constructors we need to build a higher-order context.
+      -- Consider the clause: case l of (Cons x ·¢· [Int] xs) -> x + sum xs 
       -- In that case, we need to translate to:
       --    case Δ.out [λ (δ:⋆→⋆) . δ Int] l of (Cons z) -> let x = z.0 xs = z.1 in ...
       -- That is, we have to know that the polymorphic type Δ was instantiated with τs
-      -- and the context should be λ (δ:κ1→⋯κN→⋆) . δ τ1 ⋯ τN
+      -- and the context should be λ (δ:κ1→⋯κN→⋆) . (⋯ (δ τ1) ⋯ τN)
       --
-      -- I think we need Insomnia to insert annotations into the pattern.
       here = let d = U.s2n "δ"
-             in F.TLam $ U.bind (d, U.embed F.KType) (F.TV d)
+                 kD = (ks `F.kArrs` F.KType)
+                 appdD = (F.TV d) `F.tApps` tyArgs'
+             in F.TLam $ U.bind (d, U.embed kD) appdD
       subject = F.App (F.PApp dtOut here) (F.V ysubj)
       clause = F.Clause $ U.bind (U.embed f, z) (projectFields fys z successTm)
     return $ F.Case subject [clause] (Just failContTm)
