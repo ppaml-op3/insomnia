@@ -74,15 +74,16 @@ extendTypeAliasCtx dcon alias comp = do
 -- | Extend the typing context by adding the given type and value constructors
 extendDataDefnCtx :: (U.LFresh m, MonadReader Env m)
                      => TypeConstructor -> DataDefn -> m a -> m a
-extendDataDefnCtx dcon bnd comp = do
-  U.lunbind bnd $ \ (vks, constrs) -> do
+extendDataDefnCtx dcon bnd kont = do
+  (algty, constructors) <- U.lunbind bnd $ \ (vks, constrs) -> do
     let kparams = map snd vks
         makeVC = valueConstructorMakerForTypeConstructor dcon
         cs = map (\(ConstructorDef c _) -> makeVC c) constrs
         algty = AlgType kparams cs
-    extendDConCtx dcon (GenerativeTyCon $ AlgebraicType algty) $ do
-      let constructors = map (mkConstructor dcon vks) constrs
-      extendConstructorsCtx constructors comp
+        constructors = map (mkConstructor dcon vks) constrs
+    return (algty, constructors)
+  extendDConCtx dcon (GenerativeTyCon $ AlgebraicType algty) $ 
+    extendConstructorsCtx constructors kont
 
 -- | Extend the typing context by adding the given enumeration type
 extendEnumDefnCtx :: MonadReader Env m => TypeConstructor -> Nat -> m a -> m a

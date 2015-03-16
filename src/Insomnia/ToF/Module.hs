@@ -473,7 +473,7 @@ tyVarsAbstract t_ kont_ = tyVarsAbstract' t_ (\tvks -> kont_ (appEndo tvks []))
            id {- U.avoid [U.AnyName tv] -}
              $ local (tyVarEnv %~ M.insert tv (tv', k))
              $ tyVarsAbstract' t' $ \tvks t'' ->
-             kont (tvks <> Endo ((tv', k):)) t''
+             kont (Endo ((tv', k):) <> tvks) t''
        _ -> kont mempty t
              
 

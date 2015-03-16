@@ -210,48 +210,50 @@ typeDefn f selfTc td_ kont =
          $ kont thisOne
    DataDefn bnd ->
      U.lunbind bnd $ \(tvks, constrs) ->
-     withTyVars tvks $ \tvks' ->
      withFreshName "Δ" $ \dataTyModV ->
      withFreshName "δ" $ \tv -> do
-       let dtf = F.FUser f
-           kdoms = map snd tvks'
-           k = kdoms `F.kArrs` F.KType
-       local (tyConEnv %~ M.insert selfTc (F.TypeSem (F.TV tv) k)) $ do
-         -- fully apply data type abstract var to parameter vars
-         let tCod = (F.TV tv) `F.tApps` map (F.TV . fst) tvks'
-         (constrSems, summands) <- liftM (unzip . map (\(f,y,z) -> ((f,y), (F.FUser f, z))))
-                                   $ mapM (mkConstr dtf tvks' tCod)
-                                   $ constrs
-         let tConc = F.tLams tvks' $ F.TSum summands
-             cSems = map (\(f, sem) -> (U.s2n f, sem)) constrSems
-             constrSigs = map (\(f, sem) -> (F.FUser f, sem)) constrSems
-             dataSem = F.DataSem (F.TV tv) tConc k
-             dataSig = (dtf, dataSem)
-             abstr = [(tv, U.embed k)]
-         dataTy <- F.embedSemanticSig dataSem
-         let dataModSem = F.ModSem $ (dtf, dataSem) : constrSigs
-             dataModAbs = F.AbstractSig $ U.bind [(tv, U.embed k)] dataModSem
-         dataModTy <- F.embedAbstractSig dataModAbs
-         let dataModTm = F.Assume dataModTy -- not specifying how datatypes are implemented.
-             -- unpack δ,Δ = assume { D = {data = ...}, C1 = {con = ...}, ..., CN = {con = ...}} in []
-             unpackHole = Endo (F.Unpack . U.bind (tv, dataTyModV, U.embed dataModTm))
-         (fxvs, conholes) <- liftM unzip $ forM constrSems $ \(f, sem) -> do
-           ty <- F.embedSemanticSig sem
-           let
-             xv = U.s2n f :: F.Var
-             mhole = Endo (F.Let . U.bind (xv, U.embed $ F.Proj (F.V dataTyModV) (F.FUser f)))
-           return ((f, xv), mhole)
-         let
-           xdata = U.s2n f
-           dTm = (dtf, F.V xdata)
-           dHole = Endo (F.Let . U.bind (xdata, U.embed $ F.Proj (F.V dataTyModV) (dtf)))
-           conTms = map (\(f, x) -> (F.FUser f, F.V x)) fxvs
-           conVs = M.fromList $ map (\(f, x) -> (U.s2n f, (x, F.FUser f, xdata))) fxvs
-           absSig = (abstr, dataSig : constrSigs)
-           thisOne = (absSig, dTm : conTms, unpackHole <> dHole <> mconcat conholes)
-         local (tyConEnv %~ M.insert selfTc dataSem)
-           . local (valConEnv %~ M.union conVs)
-           $ kont thisOne
+       (dataSem, conVs, thisOne) <-
+         withTyVars tvks $ \tvks' -> do
+           let kdoms = map snd tvks'
+               k = kdoms `F.kArrs` F.KType
+           local (tyConEnv %~ M.insert selfTc (F.TypeSem (F.TV tv) k)) $ do
+             -- fully apply data type abstract var to parameter vars
+             let dtf = F.FUser f
+                 tCod = (F.TV tv) `F.tApps` map (F.TV . fst) tvks'
+             (constrSems, summands) <- liftM (unzip . map (\(f,y,z) -> ((f,y), (F.FUser f, z))))
+                                       $ mapM (mkConstr dtf tvks' tCod)
+                                       $ constrs
+             let tConc = F.tLams tvks' $ F.TSum summands
+                 cSems = map (\(f, sem) -> (U.s2n f, sem)) constrSems
+                 constrSigs = map (\(f, sem) -> (F.FUser f, sem)) constrSems
+                 dataSem = F.DataSem (F.TV tv) tConc k
+                 dataSig = (dtf, dataSem)
+                 abstr = [(tv, U.embed k)]
+             dataTy <- F.embedSemanticSig dataSem
+             let dataModSem = F.ModSem $ (dtf, dataSem) : constrSigs
+                 dataModAbs = F.AbstractSig $ U.bind [(tv, U.embed k)] dataModSem
+             dataModTy <- F.embedAbstractSig dataModAbs
+             let dataModTm = F.Assume dataModTy -- not specifying how datatypes are implemented.
+                 -- unpack δ,Δ = assume { D = {data = ...}, C1 = {con = ...}, ..., CN = {con = ...}} in []
+                 unpackHole = Endo (F.Unpack . U.bind (tv, dataTyModV, U.embed dataModTm))
+             (fxvs, conholes) <- liftM unzip $ forM constrSems $ \(f, sem) -> do
+               ty <- F.embedSemanticSig sem
+               let
+                 xv = U.s2n f :: F.Var
+                 mhole = Endo (F.Let . U.bind (xv, U.embed $ F.Proj (F.V dataTyModV) (F.FUser f)))
+               return ((f, xv), mhole)
+             let
+               xdata = U.s2n f
+               dTm = (dtf, F.V xdata)
+               dHole = Endo (F.Let . U.bind (xdata, U.embed $ F.Proj (F.V dataTyModV) (dtf)))
+               conTms = map (\(f, x) -> (F.FUser f, F.V x)) fxvs
+               conVs = M.fromList $ map (\(f, x) -> (U.s2n f, (x, F.FUser f, xdata))) fxvs
+               absSig = (abstr, dataSig : constrSigs)
+               thisOne = (absSig, dTm : conTms, unpackHole <> dHole <> mconcat conholes)
+             return (dataSem, conVs, thisOne)
+       local (tyConEnv %~ M.insert selfTc dataSem)
+         . local (valConEnv %~ M.union conVs)
+         $ kont thisOne
   where
     mkConstr :: ToF m
                 => F.Field
