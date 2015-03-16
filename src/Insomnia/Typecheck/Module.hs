@@ -17,8 +17,8 @@ import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
 import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
-                       Type(..), freshUVarT, transformEveryTypeM)
-import Insomnia.Expr (Var, Expr, TabulatedFun)
+                       Type(..), freshUVarT, transformEveryTypeM, TraverseTypes(..))
+import Insomnia.Expr (Var, Expr, TabulatedFun, TraverseExprs(..))
 import Insomnia.ModuleType (ModuleTypeNF(..),
                             Signature(..),
                             SigV(..))
@@ -385,9 +385,15 @@ checkTabulatedSampleDecl v mty tf = do
                    (tySpec =?= tyInferred)
                      <??@ ("while checking tabulated function definition " <> formatErr v)
                    return mempty
-                 Nothing -> return $ singleCheckedValueDecl $ SigDecl RandomVariable tyInferred
+                 Nothing -> do
+                   tinf <- applyCurrentSubstitution tyInferred
+                   return $ singleCheckedValueDecl $ SigDecl RandomVariable tinf
+     tf'' <- do
+       x <- traverseExprs (transformEveryTypeM applyCurrentSubstitution) tf'
+       y <- traverseTypes (transformEveryTypeM applyCurrentSubstitution) (x :: TabulatedFun)
+       return y
      let
-       tabFunDecl = singleCheckedValueDecl $ TabulatedSampleDecl tf'
+       tabFunDecl = singleCheckedValueDecl $ TabulatedSampleDecl tf''
      return (sigDecl <> tabFunDecl)
 
 -- | Given a type ∀ α1∷K1 ⋯ αN∷KN . τ, freshen αᵢ and add them to the
