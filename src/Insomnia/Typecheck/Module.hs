@@ -18,7 +18,8 @@ import Insomnia.Common.ModuleKind
 import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
                        Type(..), freshUVarT, transformEveryTypeM, TraverseTypes(..))
-import Insomnia.Expr (Var, Expr, TabulatedFun, TraverseExprs(..))
+import Insomnia.Expr (Var, Expr, TabulatedFun, TraverseExprs(..),
+                      Function(..), Generalization(..), PrenexCoercion(..))
 import Insomnia.ModuleType (ModuleTypeNF(..),
                             Signature(..),
                             SigV(..))
@@ -232,10 +233,10 @@ checkValueDecl fld v vd =
     SigDecl stoch t -> do
       guardDuplicateValueDecl v
       singleCheckedValueDecl <$> checkSigDecl stoch t
-    FunDecl body -> do
+    FunDecl fun -> do
       msig <- lookupLocal v
       ensureNoDefn v
-      U.avoid [U.AnyName v] $ checkFunDecl fld msig body
+      U.avoid [U.AnyName v] $ checkFunDecl fld msig fun
     ValDecl e -> do
       msig <- lookupLocal v
       ensureNoDefn v
@@ -280,24 +281,30 @@ ensureExpStochasticity want =
    RandomVariable -> ensureRandomVariable
    DeterministicParam -> ensureParameter
 
-checkFunDecl :: Field -> Maybe Type -> Expr -> TC CheckedValueDecl
-checkFunDecl fname mty_ e = do
+checkFunDecl :: Field -> Maybe Type -> Function -> TC CheckedValueDecl
+checkFunDecl fname mty_ (Function eg) = do
+  e <- case eg of
+    Left e -> return e
+    Right {} -> typeError ("internal error - did not expect a function with a generalization annotation")
   res <- solveUnification $ do
     tu <- freshUVarT
-    e' <- openAbstract mty_ $ \mty -> do
+    (ecls, tinf) <- openAbstract mty_ $ \mty -> do
       case mty of
         Just ty -> tu =?= ty
         Nothing -> return ()
       e_ <- checkExpr e tu
-      transformEveryTypeM applyCurrentSubstitution e_
+      tinf <- applyCurrentSubstitution tu
+      e' <- transformEveryTypeM applyCurrentSubstitution e_
+      let ecls = U.bind [] e' -- XXX replace free meta vars by fresh
+                              -- tyvars and bind them here, and in
+                              -- tinf.
+      return (ecls, tinf)
     let
-      funDecl = singleCheckedValueDecl $ FunDecl e'
+      g = Generalization ecls (PrenexMono tinf)
+      funDecl = singleCheckedValueDecl $ FunDecl (Function $ Right g)
     sigDecl <- case mty_ of
           Just _ -> return mempty
           Nothing -> do
-            -- XXX TODO: generalize here.  Or else decree that
-            -- polymorphic functions must have a type signature.
-            tinf <- applyCurrentSubstitution tu
             return $ singleCheckedValueDecl $ SigDecl DeterministicParam tinf
     return (sigDecl <> funDecl)
   case res of

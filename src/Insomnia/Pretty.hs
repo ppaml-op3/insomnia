@@ -367,7 +367,7 @@ ppTypeAlias c (TypeAlias bnd) =
 
 ppValueDecl :: Field -> ValueDecl -> PM Doc
 ppValueDecl v (SigDecl s t) = pp s <+> "sig" <+> pp v <+> indent coloncolon (pp t)
-ppValueDecl v (FunDecl e) = ppFunDecl v e 
+ppValueDecl v (FunDecl f) = ppFunDecl v f 
 ppValueDecl v (ParameterDecl e) = "parameter" <+> pp v <+> "=" <+> pp e
 ppValueDecl v (ValDecl e) = ppValSampleDecl "=" v e
 ppValueDecl v (SampleDecl e) = ppValSampleDecl "~" v e
@@ -381,13 +381,21 @@ ppShortValueDecl f (ValDecl _e) = "val" <+> pp f <+> "=" <+> elipsis
 ppShortValueDecl f (SampleDecl _e) = "val" <+> pp f <+> "~" <+> elipsis
 ppShortValueDecl v (TabulatedSampleDecl tabfun) = ppShortTabFun (pp v) tabfun
 
-ppFunDecl :: Field -> Expr -> PM Doc
-ppFunDecl v e =
-  case e of
-    Lam bnd ->
-      let (av, e1) = UU.unsafeUnbind bnd
-      in ppCollapseLam ("fun" <+> pp v) (Endo (av :)) "=" e1
-    _ -> "fun" <+> pp v <+> indent "=" (pp e)
+ppFunDecl :: Field -> Function -> PM Doc
+ppFunDecl v_ (Function e_) =
+  case e_ of
+   Left e -> ppFunLam v_ e
+   Right (Generalization bnd _co) ->
+     let (_tvks, e) = UU.unsafeUnbind bnd
+     in ppFunLam v_ e
+  where
+    ppFunLam :: Field -> Expr -> PM Doc
+    ppFunLam v e =
+      case e of
+       Lam bnd ->
+         let (av, e1) = UU.unsafeUnbind bnd
+         in ppCollapseLam ("fun" <+> pp v) (Endo (av :)) "=" e1
+       _ -> "fun" <+> pp v <+> indent "=" (pp e)
 
 ppValSampleDecl :: PM Doc -> Field -> Expr -> PM Doc
 ppValSampleDecl sym v e =

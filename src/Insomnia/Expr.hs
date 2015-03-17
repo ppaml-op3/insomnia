@@ -1,5 +1,6 @@
 -- | Core Insomnia expression language.
 {-# LANGUAGE DeriveDataTypeable, DeriveGeneric,
+      FlexibleContexts,
       MultiParamTypeClasses, ViewPatterns
   #-}
 module Insomnia.Expr where
@@ -21,7 +22,7 @@ import Insomnia.Common.Literal
 import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.Types
-import Insomnia.TypeDefn (TypeDefn, TypeAlias, ValueConstructor)
+import Insomnia.TypeDefn (ValueConstructor)
 
 type Var = Name Expr
 
@@ -53,6 +54,31 @@ data InstantiationCoercion =
   InstantiationSynthesisCoercion !TypeScheme ![Type] !Type -- ∀αs.ρ ≤ [αs↦τs]ρ
   deriving (Show, Typeable, Generic)
 
+-- | The RHS of a function declaration in a module is a 'Function' which is
+-- an expression (typically a sequence of lambdas). After typechecking, polymorphic functions
+-- will be wrapped in a Generalization.
+--
+-- (We should say something about the value restriction here, probably)
+newtype Function = Function { getFunctionDefn :: Either Expr (Generalization Expr) }
+                 deriving (Show, Typeable, Generic)
+
+-- | A @'Generalization' a@ is an abstraction over the type variables
+-- of @a@, optionally paired with a coercion.  The coercion comes from
+-- the fact that a function body will be generalized in prenex form:
+-- ∀α,β.τ→ρ whereas the ascribed type may have quantifiers arbitrarily
+-- to the right of '→': ∀α . τ → ∀β . ρ The coercion just shuffles the
+-- quantifiers and arrows around.
+data Generalization a =
+  Generalization !(Bind [(TyVar, Kind)] a) !PrenexCoercion
+  deriving (Show, Typeable, Generic)
+
+data PrenexCoercion =
+  PrenexMono !Type
+  | PrenexFun !Type !PrenexCoercion
+  | PrenexPoly !(Bind [(TyVar, Kind)] PrenexCoercion)
+    deriving (Show, Typeable, Generic)
+
+                                  
 type AnnVar = (Var, Embed Annot)
 
 mkAnnVar :: Var -> Annot -> AnnVar
@@ -117,6 +143,9 @@ isStochasticBinding (ValB {}) = False
 -- All these types have notions of alpha equivalence upto bound
 -- term and type variables.
 instance Alpha Expr
+instance Alpha Function
+instance Alpha a => Alpha (Generalization a)
+instance Alpha PrenexCoercion
 instance Alpha InstantiationCoercion
 instance Alpha QVar
 instance Alpha Pattern
@@ -131,24 +160,14 @@ instance Alpha TabSelector
 instance Eq Expr where (==) = aeq
 instance Eq Clause where (==) = aeq
 
--- Capture-avoiding substitution of term variables in terms
-instance Subst Expr Expr where
-  isvar (V v) = Just (SubstName v)
-  isvar _ = Nothing
-instance Subst Expr Clause
-instance Subst Expr Pattern
-
-instance Subst Expr Bindings
-instance Subst Expr Binding
-
-instance Subst Expr TabulatedFun
-instance Subst Expr TabSample
-
 -- Capture avoid substitution of types for type variables in the following.
+instance Subst Type PrenexCoercion
+instance (Alpha a, Subst Type a) => Subst Type (Generalization a)
 instance Subst Type InstantiationCoercion
 instance Subst Type Clause
 instance Subst Type Pattern
 instance Subst Type Expr
+instance Subst Type Function
 instance Subst Type Annot
 instance Subst Type Bindings
 instance Subst Type Binding
@@ -156,7 +175,10 @@ instance Subst Type TabulatedFun
 instance Subst Type TabSample
 
 instance Subst Path Expr
+instance Subst Path PrenexCoercion
 instance Subst Path InstantiationCoercion
+instance (Alpha a, Subst Path a) => Subst Path (Generalization a)
+instance Subst Path Function
 instance Subst Path QVar
 instance Subst Path Annot
 instance Subst Path Bindings
@@ -174,9 +196,14 @@ instance Subst ValueConstructor TabulatedFun
 instance Subst ValueConstructor TabSample
 instance Subst ValueConstructor Clause
 instance Subst ValueConstructor TabSelector
+instance Subst ValueConstructor Function
+instance (Alpha a, Subst ValueConstructor a) => Subst ValueConstructor (Generalization a)
 
 instance Subst TypeConstructor Expr
 instance Subst TypeConstructor InstantiationCoercion
+instance Subst TypeConstructor Function
+instance (Alpha a, Subst TypeConstructor a) => Subst TypeConstructor (Generalization a)
+instance Subst TypeConstructor PrenexCoercion
 instance Subst TypeConstructor Pattern
 instance Subst TypeConstructor Annot
 instance Subst TypeConstructor Bindings
@@ -187,37 +214,6 @@ instance Subst TypeConstructor Clause
 
 
 -- leaf instances
-instance Subst Expr Path where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr QVar where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr Literal where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr Annot where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr TabSelector where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr Label where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr Type where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr TypeDefn where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr TypeAlias where
-  subst _ _ = id
-  substs _ = id
-instance Subst Expr ValueConstructor where
-  subst _ _ = id
-  substs _ = id
-
 instance Subst Type TabSelector where
   subst _ _ = id
   substs _ = id
@@ -239,15 +235,15 @@ instance Subst ValueConstructor Annot where
   subst _ _ = id
   substs _ = id
 
+instance Subst ValueConstructor PrenexCoercion where
+  subst _ _ = id
+  substs _ = id
+
 instance Subst TypeConstructor QVar where
   subst _ _ = id
   substs _ = id
 
 instance Subst TypeConstructor TabSelector where
-  subst _ _ = id
-  substs _ = id
-
-instance Subst Expr InstantiationCoercion where
   subst _ _ = id
   substs _ = id
 

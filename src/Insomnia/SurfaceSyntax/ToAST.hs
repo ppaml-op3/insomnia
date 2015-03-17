@@ -386,7 +386,7 @@ row (Row lts) = I.Row <$> mapM labeledType lts
     label = I.Label . labelName
 
 valueDecl :: ValueDecl -> TA I.ValueDecl
-valueDecl (FunDecl e) = I.FunDecl <$> expr e
+valueDecl (FunDecl e) = I.FunDecl <$> function e
 valueDecl (ValDecl mstoch e) = do
   stoch <- contextualStochasticity mstoch
   case stoch of
@@ -400,6 +400,9 @@ valueDecl (SigDecl mstoch ty) = do
 annot :: Maybe Type -> TA I.Annot
 annot Nothing = return $ I.Annot Nothing
 annot (Just ty) = (I.Annot . Just) <$> type' ty
+
+function :: Expr -> TA I.Function
+function = fmap (I.Function . Left) . expr
 
 expr :: Expr -> TA I.Expr
 expr (Lam ident mty e) = do

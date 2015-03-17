@@ -402,14 +402,19 @@ valueDecl mk f vd kont =
      local (valEnv %~ M.insert v (xv, StructureTermVar vsig))
        $ U.avoid [U.AnyName v]
        $ kont thisOne
-   FunDecl e -> do
+   FunDecl (Function eg) -> do
+     g <- case eg of
+       Left {} -> throwError "internal error: expected annotated function"
+       Right g -> return g
      mt <- view (valEnv . at v)
-     (xv, sem) <- case mt of
-       Just (xv, StructureTermVar sem) -> return (xv, sem)
+     (xv, semTy, ty) <- case mt of
+       Just (xv, StructureTermVar sem) -> do
+         semTy <- F.embedSemanticSig sem
+         ty <- matchSemValRecord sem
+         return (xv, semTy, ty)
        _ -> throwError "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
-     semTy <- F.embedSemanticSig sem
-     ty <- matchSemValRecord sem
-     m <- tyVarsAbstract ty $ \tvks _ty' -> do
+     m <- tyVarsAbstract ty $ \tvks _ty' ->
+       generalize g $ \_tvksGen _prenex e -> do
        m_ <- expr e
        return $ F.pLams tvks m_
      let
@@ -454,8 +459,12 @@ simpleValueBinding mkValueBinding f v e kont = do
                Endo mhole)
   kont thisOne
 
-
-
+generalize :: (U.Alpha a, ToF m) =>
+              Generalization a -> ([(F.TyVar, F.Kind)] -> PrenexCoercion -> a -> m r) -> m r
+generalize (Generalization bnd prenexCoercion) kont =
+  U.lunbind bnd $ \(tvks, body) ->
+  withTyVars tvks $ \tvks' ->
+  kont tvks' prenexCoercion body
 
 matchSemValRecord :: MonadError String m => F.SemanticSig -> m F.Type
 matchSemValRecord (F.ValSem t) = return t

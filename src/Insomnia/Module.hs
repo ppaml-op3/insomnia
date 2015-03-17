@@ -17,7 +17,7 @@ import Insomnia.ModuleType
 
 import Insomnia.Common.Stochasticity
 import Insomnia.Common.Telescope
-import Insomnia.Expr (TabulatedFun, Expr)
+import Insomnia.Expr (TabulatedFun, Function, Expr)
 
 data ModuleExpr =
   ModuleStruct !Module -- module specified here
@@ -55,7 +55,7 @@ data Decl =
   deriving (Show, Typeable, Generic)
 
 data ValueDecl =
-  FunDecl !Expr     -- ^ function definition "fun f x = ..."
+  FunDecl !Function     -- ^ function definition "fun f = ..."
   | ParameterDecl !Expr -- ^ parameter definition "parameter x = ... "
   | ValDecl !Expr   -- ^ a value definition "val x = ..." (sugar for "val x ~ = ireturn ...")
   | SampleDecl !Expr -- ^ a sampled value definition "val x ~ ..."
@@ -87,8 +87,3 @@ instance Subst ValueConstructor Module
 instance Subst ValueConstructor Decl
 instance Subst ValueConstructor ValueDecl
 
-instance Subst Expr ModuleExpr
-instance Subst Expr ModelExpr
-instance Subst Expr Module
-instance Subst Expr Decl
-instance Subst Expr ValueDecl
