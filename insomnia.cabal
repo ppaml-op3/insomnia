@@ -119,7 +119,6 @@ library
                        Insomnia.Interp.Lam
                        Insomnia.Interp.Eval
                        Insomnia.Interp.PMonad
-                       Insomnia.Interp.ToLam
                        --
                        Insomnia.Pretty
                        -- utils

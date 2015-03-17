@@ -18,8 +18,6 @@ import Insomnia.Toplevel (Toplevel)
 import Insomnia.Typecheck
 import Insomnia.Pretty
 import qualified Insomnia.IReturn as IReturn
-import qualified Insomnia.Interp.Lam as Interp
-import qualified Insomnia.Interp.ToLam as Interp
 import qualified Insomnia.ToF as ToF
 import qualified FOmega.Syntax as FOmega
 import qualified FOmega.Check as FCheck
@@ -68,7 +66,6 @@ parseAndCheck fp =
   $ parsing
   ->->- desugaring
   ->->- checking
---  ->->- demodularizing
   ->->- toFOmega
   ->->- checkFOmega
   ->->- compilerDone
@@ -107,15 +104,6 @@ checking = Stage {
                  <> F.newline)
     return elab
   , formatStage = F.format . ppDefault
-  }
-
-demodularizing :: Stage Toplevel Interp.Program
-demodularizing = Stage {
-  bannerStage = "Demodularizing"
-  , performStage = \elab -> do
-    let lam = Interp.translateToplevel elab
-    return lam
-  , formatStage = F.format . F.WrapShow
   }
 
 toFOmega :: Stage Toplevel FOmega.Term
