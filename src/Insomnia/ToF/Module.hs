@@ -413,8 +413,8 @@ valueDecl mk f vd kont =
          ty <- matchSemValRecord sem
          return (xv, semTy, ty)
        _ -> throwError "internal error: ToF.valueDecl FunDecl did not find type declaration for field"
-     m <- tyVarsAbstract ty $ \tvks _ty' ->
-       generalize g $ \_tvksGen _prenex e -> do
+     m <- -- tyVarsAbstract ty $ \_tvks _ty' ->
+       generalize g $ \tvks _prenex e -> do
        m_ <- expr e
        return $ F.pLams tvks m_
      let

@@ -17,7 +17,9 @@ import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
 import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
-                       Type(..), freshUVarT, transformEveryTypeM, TraverseTypes(..))
+                       TyVar, Type(..),
+                       freshUVarT,
+                       transformEveryTypeM, TraverseTypes(..))
 import Insomnia.Expr (Var, Expr, TabulatedFun, TraverseExprs(..),
                       Function(..), Generalization(..), PrenexCoercion(..))
 import Insomnia.ModuleType (ModuleTypeNF(..),
@@ -288,14 +290,14 @@ checkFunDecl fname mty_ (Function eg) = do
     Right {} -> typeError ("internal error - did not expect a function with a generalization annotation")
   res <- solveUnification $ do
     tu <- freshUVarT
-    (ecls, tinf) <- openAbstract mty_ $ \mty -> do
+    (ecls, tinf) <- openAbstract mty_ $ \tvks mty -> do
       case mty of
         Just ty -> tu =?= ty
         Nothing -> return ()
       e_ <- checkExpr e tu
       tinf <- applyCurrentSubstitution tu
       e' <- transformEveryTypeM applyCurrentSubstitution e_
-      let ecls = U.bind [] e' -- XXX replace free meta vars by fresh
+      let ecls = U.bind tvks e' -- XXX replace free meta vars by fresh
                               -- tyvars and bind them here, and in
                               -- tinf.
       return (ecls, tinf)
@@ -406,13 +408,17 @@ checkTabulatedSampleDecl v mty tf = do
 -- | Given a type ∀ α1∷K1 ⋯ αN∷KN . τ, freshen αᵢ and add them to the
 -- local type context in the given continuation which is passed
 -- τ[αfresh/α]
-openAbstract :: Maybe Type -> (Maybe Type -> TC a) -> TC a
-openAbstract Nothing kont = kont Nothing
+openAbstract :: Maybe Type -> ([(TyVar, Kind)] -> Maybe Type -> TC a) -> TC a
+openAbstract Nothing kont = kont [] Nothing
 openAbstract (Just ty) kont =
+  openAbstract' ty (\tvks ty' -> kont tvks (Just ty'))
+
+openAbstract' :: Type -> ([(TyVar, Kind)] -> Type -> TC a) -> TC a
+openAbstract' ty kont =
   case ty of
-    TForall bnd -> U.lunbind bnd $ \ ((tv,k), ty') ->
-      extendTyVarCtx tv k $ openAbstract (Just ty') kont
-    _ -> kont (Just ty)
+    TForall bnd -> U.lunbind bnd $ \ (tvk@(tv,k), ty') ->
+      extendTyVarCtx tv k $ openAbstract' ty' (\tvks -> kont (tvk:tvks)) 
+    _ -> kont [] ty
 
 
 guardDuplicateValueDecl :: Var -> TC ()
