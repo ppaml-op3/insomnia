@@ -46,11 +46,13 @@ import Control.Applicative (Applicative(..), (<$>))
 import Control.Lens
 import Control.Monad (when, liftM)
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.State.Strict (StateT)
-import qualified Control.Monad.Trans.State.Strict as St
+import Control.Monad.State.Strict (StateT, MonadState(..))
+import qualified Control.Monad.State.Strict as St
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Format (Format(..))
-import Data.Monoid (Monoid(..), (<>))
+import Data.Maybe (fromMaybe)
+import Data.Monoid (Monoid(..), (<>), Endo(..))
 
 import qualified Control.Monad.Reader.Class as Reader
 import qualified Control.Monad.Error.Class as Error
@@ -85,11 +87,21 @@ data UnificationFailure e u =
   CircularityOccurs !(UVar u) !u -- CircularityOccurs x e means x wants to unify with e which contains some subterm that is unified with x.
   | Unsimplifiable !e -- Simplification of a constraint x =?= y failed, for some x and y.
 
-data S u = S {
-  _nextFreshId :: UVar u
-  , _collectedConstraints :: M.Map (UVar u) u --  invariant: no cycles
+data EquivalenceClass a = EquivalenceClass {
+  _equivReps :: M.Map a (Rep a)
+  , _equivSiblings :: M.Map (Rep a) (S.Set a)
   }
 
+newtype Rep a = Rep { canonicalRep :: a }
+              deriving (Eq, Show, Ord)
+
+data S u = S {
+  _nextFreshId :: UVar u
+  , _collectedConstraints :: M.Map (Rep (UVar u)) u --  invariant: no cycles
+  , _equivalenceClasses :: EquivalenceClass (UVar u)
+  }
+
+$(makeLenses ''EquivalenceClass)
 $(makeLenses ''S)
 
 -- -------------------- Classes
@@ -173,10 +185,10 @@ instance (MonadUnificationExcept e u m)
          => MonadUnificationExcept e u (UnificationT u m) where
   throwUnificationFailure = UnificationT . lift . throwUnificationFailure
 
-instance (Monad m, MonadUnificationExcept e u (UnificationT u m))
+instance (Monad m, Partial u, MonadUnificationExcept e u (UnificationT u m))
          => MonadUnify e u (UnificationT u m) where
   unconstrained = instUnconstrained
-  reflectCollectedConstraints = UnificationT $ use collectedConstraints
+  reflectCollectedConstraints = UnificationT $ summarizeConstraints
   solveUnification = instSolveUnification
   (-?=) = addConstraintUVar
 
@@ -187,7 +199,22 @@ instSolveUnification comp = liftM UOkay comp
 
                             
 instUnconstrained :: Monad m => UnificationT u m (UVar u)
-instUnconstrained = UnificationT $ nextFreshId <<%= succUVar
+instUnconstrained = do
+  u <- UnificationT $ nextFreshId <<%= succUVar
+  _ <- represent u
+  return u
+
+represent :: Monad m => UVar u -> UnificationT u m (Rep (UVar u))
+represent u = UnificationT $ do
+  eqc <- use equivalenceClasses
+  let r = representative' u eqc
+  case r of
+   Just r -> return r
+   Nothing -> do
+     let r = Rep u
+     (equivalenceClasses . equivReps) %= M.insert u r
+     (equivalenceClasses . equivSiblings) %= M.insert r (S.singleton u)
+     return r
 
 addConstraintUVar :: (Partial u, Unifiable u e (UnificationT u m) u,
                       Monad m,
@@ -199,8 +226,13 @@ addConstraintUVar v t_ = do
   t2 <- applyCurrentSubstitution (injectUVar v)
   case isUVar t2 of
     Just v' | v == v' -> return ()
+            | otherwise -> UnificationT $ equivalenceClasses %= unite v v'
     _ -> t =?= t2
-  UnificationT $ collectedConstraints . at v ?= t
+  case t^?_UVar of
+   Nothing -> do
+     r <- represent v
+     UnificationT $ collectedConstraints . at r ?= t
+   Just v'' -> UnificationT $ equivalenceClasses %= unite v v''
 
 applyCurrentSubstitution :: (Partial u, Unifiable u e (UnificationT u m) u, Monad m)
                             => u -> UnificationT u m u
@@ -212,18 +244,31 @@ applyCurrentSubstitution = mapMOf allUVars replace
       case t0^?_UVar of
         Nothing -> return t0
         Just u -> do
-          mt_ <- UnificationT $ use $ collectedConstraints . at u
+          mt_ <- do 
+            r <- represent u
+            UnificationT $ use $ collectedConstraints . at r
           case mt_ of
             Nothing -> return t0
             Just t -> applyCurrentSubstitution t
       
-occursCheck :: (Partial u, Unifiable u e (UnificationT u m) u, MonadUnificationExcept e u (UnificationT u m))
+occursCheck :: forall u e m .
+               (Partial u, Monad m,
+                Unifiable u e (UnificationT u m) u,
+                MonadUnificationExcept e u (UnificationT u m))
                => UVar u -> u -> UnificationT u m ()
-occursCheck v t =
-  let isV t2 = (t2^?_UVar) == Just v
-  in
-   when (anyOf allUVars isV t) $ do
-     throwUnificationFailure (CircularityOccurs v t)
+occursCheck v t = do
+  r <- represent v
+  let
+    isV :: u -> UnificationT u m Bool
+    isV t2 = do
+        case (t2^?_UVar) of
+         Just v' -> do
+           r2 <- represent v'
+           return $ r2 == r
+         Nothing -> return False
+  occs <- mapM isV (t^..allUVars)
+  when (or occs) $ do
+    throwUnificationFailure (CircularityOccurs v t)
   
 -- | Run the unification monad transformer and return the computation
 -- result, discarding the final unification state.
@@ -233,18 +278,66 @@ evalUnificationT comp =
 
 -- | Run the unification monad transformer and return the computation result
 -- and the final map of constraints.
-runUnificationT :: Monad m => UnificationT u m a -> m (a, M.Map (UVar u) u)
+runUnificationT :: (Partial u, Monad m) => UnificationT u m a -> m (a, M.Map (UVar u) u)
 runUnificationT comp =
   let stcomp = do
         a <- ificationT comp
-        m <- use collectedConstraints
+        m <- summarizeConstraints
         return (a, m)
   in St.evalStateT stcomp initialS
+
+summarizeConstraints :: (Partial u, MonadState (S u) m) => m (M.Map (UVar u) u)
+summarizeConstraints = do
+  mc_ <- use collectedConstraints
+  mr_ <- use (equivalenceClasses . equivReps)
+  let
+    mc = M.mapKeysMonotonic canonicalRep mc_
+    mr = fmap (injectUVar . canonicalRep) mr_
+  return $ M.union mc mr -- prefer constraints to reps
+
 
 initialS :: S u
 initialS =
   S {
     _nextFreshId = UVar 0
     , _collectedConstraints = mempty
+    , _equivalenceClasses =
+      EquivalenceClass {
+        _equivReps = mempty
+        , _equivSiblings = mempty
+        }
     }
            
+
+-- equivalence classes
+unite :: Ord a => a -> a -> EquivalenceClass a -> EquivalenceClass a
+unite x y eqs = let
+  (_, eqs') = unite' x y eqs
+  in
+   eqs'
+
+unite' :: Ord a => a -> a -> EquivalenceClass a -> (Maybe (Rep a), EquivalenceClass a)
+unite' x y eqs =
+  let rx = representative x eqs
+      ry = representative y eqs
+  in case compare rx ry of
+      LT -> (Just ry, go rx ry)
+      EQ -> (Nothing, eqs)
+      GT -> (Just rx, go ry rx)
+  where
+    -- go :: Ord b => b -> a -> b -> EquivalenceClass a
+    go canonical other =
+      let others = representedBy other eqs
+      in eqs & equivReps %~ (appEndo $ mconcat $ map (\y -> Endo (M.insert y canonical)) $ S.toList others)
+         & equivSiblings %~ (M.insert canonical (S.union (representedBy canonical eqs) others)
+                             . M.delete other)
+
+representedBy :: Ord a => (Rep a) -> EquivalenceClass a -> S.Set a
+representedBy r eqs =
+  fromMaybe S.empty $ M.lookup r (eqs^.equivSiblings)
+
+representative :: Ord a => a -> EquivalenceClass a -> (Rep a)
+representative x = fromMaybe (Rep x) . representative' x
+
+representative' :: Ord a => a -> EquivalenceClass a -> Maybe (Rep a)
+representative' x eqs = M.lookup x (eqs^.equivReps)
