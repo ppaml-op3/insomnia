@@ -120,12 +120,12 @@ checkFOmega = Stage {
   bannerStage = "Typechecking FΩ"
   , performStage = \m -> do
     mty <- FCheck.runTC (FCheck.inferTy m)
-    lift $ case mty of
-      Left err -> putStrLn ("typechecking FOmega failed: " ++ show err)
+    case mty of
+      Left err -> showErrorAndDie "typechecking FOmega" (show err)
       Right ty -> do
-        putStrLn "FOmega type is: "
-        F.putStrDoc (F.format $ ppDefault ty)
-        putStrLn "\n"
+        putDebugStrLn "FOmega type is: "
+        putDebugDoc (F.format $ ppDefault ty)
+        putDebugStrLn "\n"
     return m
   , formatStage = const mempty
   }
