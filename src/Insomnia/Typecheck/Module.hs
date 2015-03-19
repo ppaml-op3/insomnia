@@ -7,9 +7,11 @@ import Prelude hiding (mapM_)
 
 import Control.Applicative ((<$>))
 import Control.Lens
+import Control.Monad (when)
 import Control.Monad.Reader.Class (MonadReader(..))
 
 import Data.Monoid (Monoid(..), (<>), Endo(..))
+import qualified Data.Set as S
 
 import qualified Unbound.Generics.LocallyNameless as U
 
@@ -29,8 +31,10 @@ import Insomnia.Module
 import Insomnia.Pretty (Pretty, PrettyShort(..))
 
 import Insomnia.Unify (Unifiable(..),
+                       MonadCheckpointUnification(..),
                        applyCurrentSubstitution,
                        solveUnification,
+                       reflectCollectedConstraints,
                        UnificationResult(..))
 
 import Insomnia.Typecheck.Env
@@ -289,7 +293,7 @@ checkFunDecl fname mty_ (Function eg) = do
     Left e -> return e
     Right {} -> typeError ("internal error - did not expect a function with a generalization annotation")
   res <- solveUnification $ do
-    tu <- freshUVarT
+    tu <- freshUVarT KType
     (ecls, tinf) <- openAbstract mty_ $ \tvks mty -> do
       case mty of
         Just ty -> tu =?= ty
@@ -326,7 +330,7 @@ checkValDecl fld _mty _e = do
              <> "(should've been translated away to a SampleDecl) while checking "
              <> formatErr fld)
   -- res <- solveUnification $ do
-  --   tu <- freshUVarT
+  --   tu <- freshUVarT KType
   --   case mty of
   --     Just ty -> tu =?= ty
   --     Nothing -> return ()
@@ -349,7 +353,7 @@ checkValDecl fld _mty _e = do
 checkSampleDecl :: Field -> Maybe Type -> Expr -> TC CheckedValueDecl
 checkSampleDecl fld mty e = do
   res <- solveUnification $ do
-    tu <- freshUVarT
+    tu <- freshUVarT KType
     case mty of
       Just ty -> tu =?= ty
       Nothing -> return ()
@@ -371,7 +375,7 @@ checkSampleDecl fld mty e = do
 checkParameterDecl :: Field -> Maybe Type -> Expr -> TC CheckedValueDecl
 checkParameterDecl fld mty e = do
   res <- solveUnification $ do
-    tu <- freshUVarT
+    tu <- freshUVarT KType
     case mty of
      Just ty -> tu =?= ty
      Nothing -> return ()

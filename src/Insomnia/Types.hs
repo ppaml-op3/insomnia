@@ -222,8 +222,8 @@ instance HasUVars Type Row where
     
 
 -- | Make a fresh unification variable
-freshUVarT :: MonadUnify e Type m => m Type
-freshUVarT = liftM TUVar unconstrained
+freshUVarT :: MonadUnify e Type m => Kind -> m Type
+freshUVarT _k = liftM TUVar unconstrained
 
 -- | Construct a fresh type expression composed of a unification var
 -- of the given kind applied to sufficiently many ground arguments
@@ -236,7 +236,7 @@ freshUVarT = liftM TUVar unconstrained
 --  for example: @⌞a -> (b -> ⋆)⌟ = (u·⌞a⌟)·⌞b⌟@
 groundUnificationVar :: MonadUnify TypeUnificationError Type m => Kind -> m Type
 groundUnificationVar = \ k -> do
-  tu <- freshUVarT
+  tu <- freshUVarT k
   go k tu
   where
     go KType thead = return thead

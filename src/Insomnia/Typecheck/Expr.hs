@@ -83,7 +83,7 @@ checkExpr e_ t_ = case e_ of
     return $ App e1' e2'
   Record les -> do
     (les', lts) <- fmap unzip $ forM les $ \(lbl,e) -> do
-      tu <- freshUVarT
+      tu <- freshUVarT KType
       e' <- checkExpr e tu
       return ((lbl, e'), (lbl, tu))
     let row = Row $ canonicalOrderRowLabels lts
@@ -135,7 +135,7 @@ checkPattern tscrut p =
     VarP v -> return (p, [(v, tscrut)])
     RecordP lps -> do
       (mss, lps', lts) <- fmap unzip3 $ forM lps $ \(U.unembed -> lbl, pat) -> do
-        tp <- freshUVarT
+        tp <- freshUVarT KType
         (pat', ms) <- checkPattern tp pat
         return (ms, (U.embed lbl, pat'), (lbl, tp))
       let ms = mconcat mss
@@ -203,7 +203,7 @@ checkTabulatedFunction y (TabulatedFun bnd) kont =
   U.lunbind bnd $ \(avs, TabSample sels e) -> do
     -- map each var to a uvar unified with the var's typing annotation
     vts <- forM avs $ \(v, U.unembed -> a) -> do
-      tu <- freshUVarT
+      tu <- freshUVarT KType
       unifyAnn tu a
       return (v, tu)
     (sels', selTys, e', tdist) <-
@@ -281,8 +281,8 @@ inferExpr e_ = case e_ of
                         <> " or a function signature declaration")
   Lam bnd ->
     U.lunbind bnd $ \((v, U.unembed -> ann), e1_) -> do
-      tdom <- freshUVarT
-      tcod <- freshUVarT
+      tdom <- freshUVarT KType
+      tcod <- freshUVarT KType
       unifyAnn tdom ann
       e1 <- extendLocalCtx v tdom $ checkExpr e1_ tcod
       tanndom <- applyCurrentSubstitution tdom
@@ -313,8 +313,8 @@ instantiate ty_ kont =
   instantiate' ty_ mempty
   where
     instantiate' ty args = case ty of
-      TForall bnd -> U.lunbind bnd $ \ ((tv, _), ty') -> do
-        tu <- TUVar<$> unconstrained
+      TForall bnd -> U.lunbind bnd $ \ ((tv, k), ty') -> do
+        tu <- freshUVarT k
         instantiate' (U.subst tv tu ty') (args <> Endo (tu:))
       _ -> kont ty (let tus = appEndo args []
                     in if null tus then id else
@@ -330,12 +330,14 @@ instantiateConstructorArgs (AlgConstructor bnd tc) kont =
       tyCon_ = (targs `functionT'` ((TC tc) `tApps` (map (TV . fst) tvks)))
       -- ∀ αs:κs . τ1 → ⋯ → τN → σ[αs]
       ty_ = tForalls tvks tyCon_
-    tus <- mapM (\_-> freshUVarT) tvks
     -- the substitution taking each variable to a fresh unification var
+    s <- forM tvks $ \(tv, k) -> do
+      u <- freshUVarT k
+      return (tv, u)
     let
-      s = zip (map fst tvks) tus
       targs' = U.substs s targs
       tyCon = U.substs s tyCon_
+      tus = map snd s
       co = InstantiationSynthesisCoercion ty_ tus tyCon
     kont tus targs' co
 
@@ -347,14 +349,14 @@ unifyAnn _ _ = return ()
 
 unifyFunctionT :: Type -> TC (Type, Type)
 unifyFunctionT t = do
-  tdom <- freshUVarT
-  tcod <- freshUVarT
+  tdom <- freshUVarT KType
+  tcod <- freshUVarT KType
   t =?= functionT tdom tcod
   return (tdom, tcod)
 
 unifyDistT :: Type -> TC Type
 unifyDistT t = do
-  tsample <- freshUVarT
+  tsample <- freshUVarT KType
   t =?= distT tsample
   return tsample
 
