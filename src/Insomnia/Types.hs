@@ -72,7 +72,7 @@ instance Ord TypeConstructor where
 -- variables, type constructors, annotted kinds, type applications,
 -- universally quantified types and record types.
 data Type = TV TyVar
-          | TUVar (UVar Type) -- invariant: unification variables should be fully applied
+          | TUVar (UVar Kind Type) -- invariant: unification variables should be fully applied
           | TC !TypeConstructor
           | TAnn Type !Kind
           | TApp Type Type
@@ -155,7 +155,7 @@ instance Subst Type Kind where
   subst _ _ = id
   substs _ = id
 -- unification variables are opaque boxes that can't be substituted into.
-instance Subst Type (UVar a) where
+instance Subst Type (UVar w a) where
   subst _ _ = id
   substs _ = id
 instance Subst Path Kind where
@@ -183,7 +183,7 @@ instance Subst TypeConstructor Path where
 instance Subst TypeConstructor Literal where
   subst _ _ = id
   substs _ = id
-instance Subst TypeConstructor (UVar a) where
+instance Subst TypeConstructor (UVar w a) where
   subst _ _ = id
   substs _ = id
 instance Subst TypeConstructor Label where
@@ -198,7 +198,7 @@ instance Subst TypeConstructor Row
 
 -- Unification
 
-instance Partial Type where
+instance Partial Kind Type where
   _UVar = let
     pick (TUVar u) = Just u
     pick _ = Nothing
@@ -222,8 +222,8 @@ instance HasUVars Type Row where
     
 
 -- | Make a fresh unification variable
-freshUVarT :: MonadUnify e Type m => Kind -> m Type
-freshUVarT _k = liftM TUVar unconstrained
+freshUVarT :: MonadUnify e Kind Type m => Kind -> m Type
+freshUVarT k = liftM TUVar (unconstrained k)
 
 -- | Construct a fresh type expression composed of a unification var
 -- of the given kind applied to sufficiently many ground arguments
@@ -234,7 +234,7 @@ freshUVarT _k = liftM TUVar unconstrained
 --   ⌞k1 → ⋯ → kN → ⋆⌟ = apply u (map ⌞·⌟ ks)  - u fresh
 -- @
 --  for example: @⌞a -> (b -> ⋆)⌟ = (u·⌞a⌟)·⌞b⌟@
-groundUnificationVar :: MonadUnify TypeUnificationError Type m => Kind -> m Type
+groundUnificationVar :: MonadUnify TypeUnificationError Kind Type m => Kind -> m Type
 groundUnificationVar = \ k -> do
   tu <- freshUVarT k
   go k tu
@@ -245,17 +245,17 @@ groundUnificationVar = \ k -> do
       go kcod (thead `TApp` targ)
 
 data TypeUnificationError =
-  SimplificationFail (M.Map (UVar Type) Type) !Type !Type -- the two given types could not be simplified under the given constraints
+  SimplificationFail (M.Map (UVar Kind Type) Type) !Type !Type -- the two given types could not be simplified under the given constraints
   | RowLabelsDifferFail !Row !Row -- the two given rows could not be unifified because they have different labels
 
 class MonadTypeAlias m where
   expandTypeAlias :: TypeConstructor -> m (Maybe Type)
 
-instance (MonadUnify TypeUnificationError Type m,
-          MonadUnificationExcept TypeUnificationError Type m,
+instance (MonadUnify TypeUnificationError Kind Type m,
+          MonadUnificationExcept TypeUnificationError Kind Type m,
           MonadTypeAlias m,
           LFresh m)
-         => Unifiable Type TypeUnificationError m Type where
+         => Unifiable Kind Type TypeUnificationError m Type where
   t1 =?= t2 =
     case (t1, t2) of
       (TForall bnd1, TForall bnd2) ->
@@ -309,11 +309,11 @@ instance (MonadUnify TypeUnificationError Type m,
           $ Unsimplifiable (SimplificationFail constraintMap t1 t2)
 
 
-instance (MonadUnify TypeUnificationError Type m,
-          MonadUnificationExcept TypeUnificationError Type m,
+instance (MonadUnify TypeUnificationError Kind Type m,
+          MonadUnificationExcept TypeUnificationError Kind Type m,
           MonadTypeAlias m,
           LFresh m)
-         => Unifiable Type TypeUnificationError m Row where
+         => Unifiable Kind Type TypeUnificationError m Row where
   r1@(Row ls1_) =?= r2@(Row ls2_) =
     let ls1 = canonicalOrderRowLabels ls1_
         ls2 = canonicalOrderRowLabels ls2_

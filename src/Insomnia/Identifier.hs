@@ -101,7 +101,7 @@ instance Subst Path Path where
   isvar (IdP i) = Just (SubstName i)
   isvar _ = Nothing
 
-instance Subst Path (UVar a) where
+instance Subst Path (UVar w a) where
   subst _ _ = id
   substs _ = id
 

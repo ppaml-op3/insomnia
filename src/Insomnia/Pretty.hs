@@ -507,13 +507,13 @@ instance Pretty Signature where
     in fsep ["module", pp mId, indent coloncolon (pp mTy)]
        $$ pp sig
         
-instance Pretty (UVar a) where
+instance Pretty (UVar w a) where
   pp = text . show
 
-instance Pretty (S.Set (UVar a)) where
+instance Pretty (S.Set (UVar w a)) where
   pp s = braces $ fsep $ punctuate "," (map pp $ S.toList s)
 
-instance Pretty a => Pretty (UnificationFailure TypeUnificationError a) where
+instance Pretty a => Pretty (UnificationFailure TypeUnificationError w a) where
   pp (CircularityOccurs uv t) =
     text "occurs check failed: the variable"
     <+> pp uv <+> "occurs in" <+> pp t

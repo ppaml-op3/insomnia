@@ -220,10 +220,10 @@ realT = TC conReal
 type TCSimple = ReaderT Env (LFreshMT (Except TCError))
 
 -- | The typechecking monad
-type TC = UnificationT Type TCSimple
+type TC = UnificationT Kind Type TCSimple
 
 -- instance MonadUnificationExcept Type TCSimple
-instance MonadUnificationExcept TypeUnificationError Type (ReaderT Env (LFreshMT (Except TCError))) where
+instance MonadUnificationExcept TypeUnificationError Kind Type (ReaderT Env (LFreshMT (Except TCError))) where
   throwUnificationFailure err = do
     env <- ask
     throwError $ TCError (formatErr err
@@ -231,12 +231,12 @@ instance MonadUnificationExcept TypeUnificationError Type (ReaderT Env (LFreshMT
                           <> formatErr env)
 
 -- | Run a typechecking computation
-runTC :: TC a -> Either TCError (a, M.Map (UVar Type) Type)
+runTC :: TC a -> Either TCError (a, M.Map (UVar Kind Type) Type)
 runTC comp =
   runExcept $ runLFreshMT $ runReaderT (runUnificationT comp) baseEnv
 
 -- instance MonadTypeAlias TC
-instance MonadTypeAlias (UnificationT Type TCSimple) where
+instance MonadTypeAlias (UnificationT Kind Type TCSimple) where
   expandTypeAlias c = do
     md <- view (envDCons . at c)
     case md of
