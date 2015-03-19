@@ -33,6 +33,7 @@ module Insomnia.Unify
          -- * Unification monad class
        , MonadUnify(..)
        , MonadUnificationExcept(..)
+       , MonadCheckpointUnification(..)
          -- * The result of completely solving a unification subproblem.
        , UnificationResult(..)
        , UnificationFailure(..)
@@ -41,6 +42,8 @@ module Insomnia.Unify
        , evalUnificationT
        , runUnificationT
        ) where
+
+import qualified Debug.Trace as DT
 
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Lens
@@ -91,6 +94,7 @@ data EquivalenceClass a = EquivalenceClass {
   _equivReps :: M.Map a (Rep a)
   , _equivSiblings :: M.Map (Rep a) (S.Set a)
   }
+                        deriving (Show)
 
 newtype Rep a = Rep { canonicalRep :: a }
               deriving (Eq, Show, Ord)
@@ -133,6 +137,8 @@ class (MonadUnificationExcept e u m, HasUVars u b)
   -- | traverse every unification variable in b.
   (=?=) :: b -> b -> m ()
 
+class MonadCheckpointUnification u m | m -> u where
+  listenUnconstrainedUVars :: m a -> m (a, S.Set (UVar u))
 
 -- ----------------------------------------
 
@@ -191,6 +197,21 @@ instance (Monad m, Partial u, MonadUnificationExcept e u (UnificationT u m))
   reflectCollectedConstraints = UnificationT $ summarizeConstraints
   solveUnification = instSolveUnification
   (-?=) = addConstraintUVar
+
+instance Monad m => MonadCheckpointUnification u (UnificationT u m) where
+  -- listenUnconstrainedUVars :: m a -> m (a, S.Set (UVar u))
+  listenUnconstrainedUVars comp = do
+    let allKnownUVars = UnificationT $ uses (equivalenceClasses.equivReps) M.keysSet
+    usInit <- allKnownUVars
+    x <- comp
+    usFinal <- allKnownUVars
+    eqs <- UnificationT $ use equivalenceClasses
+    cs <- UnificationT $ use collectedConstraints
+    let newUs = usFinal S.\\ usInit
+        singleUs = S.filter (isSingletonEquivalenceClass eqs) newUs
+        freshUs = S.filter (not . flip M.member cs . Rep) singleUs
+    return (x, freshUs)
+
 
 -- if we ever need to delay solving some constraints, this would be
 -- the place to force them.
@@ -341,3 +362,12 @@ representative x = fromMaybe (Rep x) . representative' x
 
 representative' :: Ord a => a -> EquivalenceClass a -> Maybe (Rep a)
 representative' x eqs = M.lookup x (eqs^.equivReps)
+
+isSingletonEquivalenceClass :: Ord a => EquivalenceClass a -> a -> Bool
+isSingletonEquivalenceClass eqs x =
+  let r = representative x eqs
+      sibs = eqs^. equivSiblings . at r
+  in
+   case sibs of
+    Just s -> S.size s == 1
+    Nothing -> False

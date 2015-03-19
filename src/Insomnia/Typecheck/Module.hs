@@ -294,7 +294,11 @@ checkFunDecl fname mty_ (Function eg) = do
       case mty of
         Just ty -> tu =?= ty
         Nothing -> return ()
-      e_ <- checkExpr e tu
+      (e_, us) <- listenUnconstrainedUVars $ checkExpr e tu
+      when (not $ S.null us) $ do
+        constraintMap <- reflectCollectedConstraints
+        typeError ("unconstrained unification variables " <> formatErr us
+                   <> " with constraints " <> formatErr constraintMap)
       tinf <- applyCurrentSubstitution tu
       e' <- transformEveryTypeM applyCurrentSubstitution e_
       let ecls = U.bind tvks e' -- XXX replace free meta vars by fresh

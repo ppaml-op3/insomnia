@@ -7,6 +7,7 @@ import Control.Monad.Reader.Class
 
 import qualified Data.Map as M
 import Data.Monoid (Monoid(..), (<>), Endo(..))
+import qualified Data.Set as S
 import Data.String (IsString(..))
 import Data.Traversable
 
@@ -508,6 +509,9 @@ instance Pretty Signature where
         
 instance Pretty (UVar a) where
   pp = text . show
+
+instance Pretty (S.Set (UVar a)) where
+  pp s = braces $ fsep $ punctuate "," (map pp $ S.toList s)
 
 instance Pretty a => Pretty (UnificationFailure TypeUnificationError a) where
   pp (CircularityOccurs uv t) =
