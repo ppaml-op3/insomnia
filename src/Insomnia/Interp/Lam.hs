@@ -86,6 +86,7 @@ instance Alpha Program
 -- pattern position, never as a term.
 instance Alpha Env where
   aeq' ctx = (aeq' ctx) `on` (M.toAscList . envMapping)
+  acompare' ctx = (acompare' ctx) `on` (M.toAscList . envMapping)
   fvAny' ctx nfn = fmap (Env . M.fromAscList) . fvAny' ctx nfn . (M.toAscList . envMapping)
   open ctx _b = if isTermCtx ctx
                 then error "open of Env not in a pattern ctx"
