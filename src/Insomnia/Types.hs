@@ -321,13 +321,13 @@ instance (MonadUnify TypeUnificationError Kind Type m,
        then zipWithM_ ((=?=) `on` snd) ls1 ls2
        else throwUnificationFailure $ Unsimplifiable (RowLabelsDifferFail r1 r2)
 
--- | note that this 'Traversal'' does not descend under binders.  The passed
--- function should explore TForall on its own.
 instance Plated Type where
   plate _ (t@TUVar {}) = pure t
   plate _ (t@TV {}) = pure t
   plate _ (t@TC {}) = pure t
-  plate _ (t@TForall {}) = pure t
+  plate f (TForall bnd) =
+    let (tvk,t) = UU.unsafeUnbind bnd
+    in (TForall . bind tvk) <$> f t
   plate f (TAnn t k) = TAnn <$> f t <*> pure k
   plate f (TApp t1 t2) = TApp <$> f t1 <*> f t2
   plate f (TRecord ts) = TRecord <$> traverseTypes f ts
@@ -336,11 +336,16 @@ instance Plated Type where
 class TraverseTypes s t where
   traverseTypes :: Traversal s t Type Type
 
-instance TraverseTypes Type Type where
-  traverseTypes = plate
-
 instance TraverseTypes Row Row where
   traverseTypes f (Row ts) = Row <$> traverseOf (traverse . _2) f ts
+
+instance TraverseTypes a b => TraverseTypes (Maybe a) (Maybe b) where
+  traverseTypes _ Nothing = pure Nothing
+  traverseTypes f (Just a) = Just <$> traverseTypes f a
+
+instance TraverseTypes a b => TraverseTypes [a] [b] where
+  traverseTypes _ [] = pure []
+  traverseTypes f (x:xs) = (:) <$> traverseTypes f x <*> traverseTypes f xs
 
 transformEveryTypeM :: (TraverseTypes a a, Plated a, Monad m) => (Type -> m Type) -> a -> m a
 transformEveryTypeM f = transformM (transformMOn traverseTypes f)

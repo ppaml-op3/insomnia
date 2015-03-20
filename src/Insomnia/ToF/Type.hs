@@ -59,7 +59,7 @@ type' t_ =
         throwError ("ToF.type' internal error: type variable " <> show tv
                     <> " not in environment " <> show env
                     <> " and value env " <> show env')
-   TUVar _ -> throwError "ToF.type' internal error: unexpected unification variable"
+   TUVar u -> throwError ("ToF.type' internal error: unexpected unification variable " ++ show u)
    TC tc -> typeConstructor tc
    TAnn t k -> do
      (t', _) <- type' t

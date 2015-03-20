@@ -285,11 +285,11 @@ inferExpr e_ = case e_ of
       tcod <- freshUVarT KType
       unifyAnn tdom ann
       e1 <- extendLocalCtx v tdom $ checkExpr e1_ tcod
-      tanndom <- applyCurrentSubstitution tdom
-      tanncod <- applyCurrentSubstitution tcod
+      tdom' <- applyCurrentSubstitution tdom
+      tcod' <- applyCurrentSubstitution tcod
       let
-        e = Lam $ U.bind (v, U.embed $ Annot $ Just tanndom) (Ann e1 tanncod)
-        t = functionT tdom tcod
+        e = Lam $ U.bind (v, U.embed $ Annot $ Just tdom') (Ann e1 tcod')
+        t = functionT tdom' tcod'
       return (t, e)
   Return e1 -> do
     (t1, e1') <- inferExpr e1

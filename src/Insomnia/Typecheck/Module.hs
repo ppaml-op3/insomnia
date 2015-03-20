@@ -407,7 +407,7 @@ checkTabulatedSampleDecl v mty tf = do
                    return $ singleCheckedValueDecl $ SigDecl RandomVariable tinf
      tf'' <- do
        x <- traverseExprs (transformEveryTypeM applyCurrentSubstitution) tf'
-       y <- traverseTypes (transformEveryTypeM applyCurrentSubstitution) (x :: TabulatedFun)
+       y <- traverseTypes applyCurrentSubstitution (x :: TabulatedFun)
        return y
      let
        tabFunDecl = singleCheckedValueDecl $ TabulatedSampleDecl tf''

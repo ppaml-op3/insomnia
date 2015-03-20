@@ -311,7 +311,7 @@ instance TraverseTypes Expr Expr where
     in Lam <$> (bind <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e)
   traverseTypes _ (e@App {}) = pure e
   traverseTypes f (Case subj clauses ann) =
-    Case <$> pure subj <*> pure clauses <*> traverseTypes f ann
+    Case <$> pure subj <*> traverseTypes f clauses <*> traverseTypes f ann
   traverseTypes _ (e@Record {}) = pure e
   traverseTypes f (Let bnd) =
     let (bindings, e) = UU.unsafeUnbind bnd
@@ -326,8 +326,7 @@ instance TraverseTypes InstantiationCoercion InstantiationCoercion where
     InstantiationSynthesisCoercion <$> f sigma <*> traverse f ts <*> f rho
 
 instance TraverseTypes Annot Annot where
-  traverseTypes _ (Annot Nothing) = pure (Annot Nothing)
-  traverseTypes f (Annot (Just t)) = (Annot . Just) <$> f t
+  traverseTypes f (Annot m) = Annot <$> traverse f m
 
 instance TraverseTypes Bindings Bindings where
   traverseTypes = iso bindingsTele Bindings . traverseTelescope . traverseTypes
@@ -339,6 +338,19 @@ instance TraverseTypes Binding Binding where
     SampleB <$> (mkAnnVar v <$> traverseTypes f ann) <*> pure e
   traverseTypes f (TabB v (unembed -> tf)) =
     (TabB v . embed) <$> traverseTypes f tf
+
+instance TraverseTypes Clause Clause where
+  traverseTypes f (Clause bnd) =
+    let (p,e) = UU.unsafeUnbind bnd
+    in Clause <$> (bind <$> traverseTypes f p <*> pure e)
+
+instance TraverseTypes Pattern Pattern where
+  traverseTypes _ p@WildcardP = pure p
+  traverseTypes _ p@(VarP {}) = pure p
+  traverseTypes f (ConP vc (unembed -> mic) ps) =
+    ConP vc <$> (embed <$> traverseTypes f mic) <*> traverseTypes f ps
+  traverseTypes f (RecordP lps) =
+    RecordP <$> traverseOf (traverse . _2 . traverseTypes) f lps
 
 instance TraverseTypes TabulatedFun TabulatedFun where
   traverseTypes f (TabulatedFun bnd) =

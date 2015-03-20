@@ -15,7 +15,6 @@ import Control.Monad.Error.Class (MonadError(..))
 
 import Data.Format (Format(..))
 import qualified Data.Format as F
-import Data.List (foldl')
 import qualified Data.Map as M
 import Data.Monoid (Monoid(..), (<>))
 
@@ -256,14 +255,12 @@ mkConstructorType constr =
   let tvs = map (TV . fst) tvks
       d = constr^.algConstructorDCon
       -- data type applied to the type variables - D α1 ⋯ αK
-      dt = foldl' TApp (TC d) tvs
+      dt = tApps (TC d) tvs
       -- arg1 → (arg2 → ⋯ (argN → D αs))
-      ty = foldr functionT dt targs
+      ty = functionT' targs dt
   -- ∀ αs . …
-  return $ go ty tvks
-  where
-    go t [] = t
-    go t (tvk:tvks) = go (TForall (U.bind tvk t)) tvks
+  return $ tForalls tvks ty
+
 
 -- | Lookup info about a (toplevel) module.
 lookupModuleSig :: Identifier -> TC ModuleTypeNF
