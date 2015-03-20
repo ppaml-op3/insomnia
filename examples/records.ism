@@ -8,14 +8,26 @@ module type DIST_PARAMS {
 module DistParams :: DIST_PARAMS {
    type NormalParams = { μ :: Real ; σ :: Real }
 
-   sig normal :: NormalParams -> Dist Real
+   module Assume = assume {
+     sig normal :: NormalParams -> Dist Real
+   }
+   import Assume
 }
 
-model N {
+model type N_SIG {
+  sig h :: Real
+
+  sig z :: Real
+}
+
+model N :: N_SIG {
   sig h :: Real
   val h ~ DistParams.normal { μ = 1.0, σ = 1.0 }
 
-  parameter sig (.+) :: Real -> Real -> Real
+  module Assume = assume {
+    parameter sig (.+) :: Real -> Real -> Real
+  }
+  import Assume
 
   infixl .+ 6
 

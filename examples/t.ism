@@ -8,8 +8,6 @@ data Bool = True | False
 -- We don't require a definition for every "sig" and so we can use the
 -- definitions to talk about functions we haven't implemented (or which we assume are primitive)
 parameter sig or :: Bool -> Bool -> Bool
-parameter sig eqInt :: Int -> Int -> Bool
-parameter sig boolToInt :: Bool -> Int
 
 fun or b1 b2 =
   case b1 of
@@ -25,8 +23,8 @@ fun id x = id x
 
 data Either (a :: ⋆) (b :: ⋆) = Left a | Right b
 
-parameter sig withEither :: forall (a :: ⋆) (b :: ⋆) (c ∷ ⋆)
-                 . (a -> c) -> (b -> c) -> Either a b -> c
+-- parameter sig withEither :: forall (a :: ⋆) (b :: ⋆) (c ∷ ⋆)
+--                  . (a -> c) -> (b -> c) -> Either a b -> c
 fun withEither l r t = case t of
   { (Left x) -> l x
   ; (Right y) -> r y
@@ -40,10 +38,13 @@ parameter sig fmapEither :: forall (a ∷ ⋆) (b ∷ ⋆) (c :: ⋆).
                   (b -> c) -> Either a b -> Either a c
 fun fmapEither f = withEither Left (compose Right f)
 
-parameter sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
+-- parameter sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
 fun swap x y κ = κ y x
 
-parameter sig flip :: Real -> Dist Bool
+module AssumeFlip = assume {
+    parameter sig flip :: Real -> Dist Bool
+  }
+import AssumeFlip
 
 fun h i = -- bindings are of the form v or (v :: ty)
   let
@@ -56,18 +57,23 @@ fun h i = -- bindings are of the form v or (v :: ty)
 ----- enumeration types
 enum Five 5
 
-parameter sig eqFive :: Five -> Five -> Bool
+module AssumeFive = assume {
+    parameter sig eqFive :: Five -> Five -> Bool
+    sig one :: Five
 
-sig one :: Five
+    parameter sig categorical :: forall (p :: * -> *) (a :: *). p a -> Dist a
+
+  }
+import AssumeFive
+
 
 parameter sig isOne :: Five -> Bool
 fun isOne x = eqFive x one
 
-data Proxy (a :: *) = Proxy
 
-parameter sig categorical :: forall (p :: * -> *) (a :: *). p a -> Dist a
+data Proxy (a :: *) = ProxyC
 
 sig individual :: Five
-val individual ~ categorical Proxy
+val individual ~ categorical ProxyC
 
 }
