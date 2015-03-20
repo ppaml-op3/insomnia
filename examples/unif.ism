@@ -1,0 +1,10 @@
+module Unif {
+
+   -- parameter sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
+   fun swap κ x y = κ y x
+
+   -- sig h :: forall (a :: *) (b :: *) . (b -> a) -> ((b -> a) -> b) -> a
+   fun h x y = x (y x)
+   -- fun h x y z = z x (y x) (z y y)
+
+}
