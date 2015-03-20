@@ -56,8 +56,7 @@ expr e_ =
            return $ F.Lam $ U.bind (x', U.embed t') m
    Instantiate e co -> do
      m <- expr e
-     f <- instantiationCoercion co
-     return $ F.App f m
+     instantiationCoercion co m
    App e1 e2 -> do
      m1 <- expr e1
      m2 <- expr e2
@@ -150,14 +149,19 @@ valueConstructor (VCGlobal (ValConPath modPath f)) = do
 
 -- | Given an instantiation coerction ∀αs.ρ ≤ [αs↦τs]ρ construct a function
 -- of type  (∀αs.ρ) → [αs↦τs]ρ. Namely λx:(∀αs.ρ). x [τs]
-instantiationCoercion :: ToF m => InstantiationCoercion -> m F.Term
-instantiationCoercion (InstantiationSynthesisCoercion scheme args _result) = do
-  (scheme', _) <- type' scheme
+-- and apply it to the subject.
+-- (In practice we go ahead and beta reduce)
+instantiationCoercion :: ToF m => InstantiationCoercion -> F.Term -> m F.Term
+instantiationCoercion (InstantiationSynthesisCoercion scheme args _result) subject = do
+-- notionally, so something like:
+--  (scheme', _) <- type' scheme
+--  x <- U.lfresh $ U.s2n "x"
+--  let body = F.pApps (F.V x) args'
+--      co = F.Lam $ U.bind (x, U.embed scheme') body
+--  return $ F.App co subject
+-- but we can go ahead and do the beta reduction in place.
   args' <- mapM (liftM fst . type') args
-  x <- U.lfresh $ U.s2n "x"
-  let
-    body = F.pApps (F.V x) args'
-  return $ F.Lam $ U.bind (x, U.embed scheme') body
+  return $ F.pApps subject args'
     
 caseExpr :: ToF m
             => Expr
