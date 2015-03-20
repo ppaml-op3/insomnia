@@ -7,7 +7,6 @@ import Prelude hiding (mapM_)
 
 import Control.Applicative ((<$>))
 import Control.Lens
-import Control.Monad (when)
 import Control.Monad.Reader.Class (MonadReader(..))
 
 import Data.Monoid (Monoid(..), (<>), Endo(..))
@@ -21,7 +20,8 @@ import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
                        TyVar, Type(..),
                        freshUVarT,
-                       transformEveryTypeM, TraverseTypes(..))
+                       transformEveryTypeM, TraverseTypes(..),
+                       tForalls)
 import Insomnia.Expr (Var, Expr, TabulatedFun, TraverseExprs(..),
                       Function(..), Generalization(..), PrenexCoercion(..))
 import Insomnia.ModuleType (ModuleTypeNF(..),
@@ -30,11 +30,13 @@ import Insomnia.ModuleType (ModuleTypeNF(..),
 import Insomnia.Module
 import Insomnia.Pretty (Pretty, PrettyShort(..))
 
-import Insomnia.Unify (Unifiable(..),
+import Insomnia.Unify (UVar,
+                       uvarClassifier,
+                       Unifiable(..),
                        MonadCheckpointUnification(..),
+                       (-?=),
                        applyCurrentSubstitution,
                        solveUnification,
-                       reflectCollectedConstraints,
                        UnificationResult(..))
 
 import Insomnia.Typecheck.Env
@@ -293,22 +295,19 @@ checkFunDecl fname mty_ (Function eg) = do
     Left e -> return e
     Right {} -> typeError ("internal error - did not expect a function with a generalization annotation")
   res <- solveUnification $ do
-    tu <- freshUVarT KType
     (ecls, tinf) <- openAbstract mty_ $ \tvks mty -> do
-      case mty of
-        Just ty -> tu =?= ty
-        Nothing -> return ()
-      (e_, us) <- listenUnconstrainedUVars $ checkExpr e tu
-      when (not $ S.null us) $ do
-        constraintMap <- reflectCollectedConstraints
-        typeError ("unconstrained unification variables " <> formatErr us
-                   <> " with constraints " <> formatErr constraintMap)
-      tinf <- applyCurrentSubstitution tu
-      e' <- transformEveryTypeM applyCurrentSubstitution e_
-      let ecls = U.bind tvks e' -- XXX replace free meta vars by fresh
-                              -- tyvars and bind them here, and in
-                              -- tinf.
-      return (ecls, tinf)
+      ((e_, tu), us) <- listenUnconstrainedUVars $ do
+        tu <- freshUVarT KType
+        case mty of
+         Just ty -> tu =?= ty
+         Nothing -> return ()
+        e_ <- checkExpr e tu
+        return (e_, tu)
+      skolemize (S.toList us) $ \tvks' -> do
+        tinf <- applyCurrentSubstitution tu
+        e' <- transformEveryTypeM applyCurrentSubstitution e_
+        let ecls = U.bind (tvks ++ tvks') e'
+        return (ecls, tForalls tvks' tinf)
     let
       g = Generalization ecls (PrenexMono tinf)
       funDecl = singleCheckedValueDecl $ FunDecl (Function $ Right g)
@@ -322,6 +321,15 @@ checkFunDecl fname mty_ (Function eg) = do
     UFail err -> typeError ("when checking " <> formatErr fname
                             <> formatErr err)
 
+skolemize :: [UVar Kind Type] -> ([(TyVar, Kind)] -> TC res) -> TC res
+skolemize [] kont = kont []
+skolemize (u:us) kont = do
+  tv <- U.lfresh (U.s2n "χ")
+  let k = u^.uvarClassifier
+  u -?= (TV tv) -- unify the unification var with the new skolem constant
+  U.avoid [U.AnyName tv]
+    $ extendTyVarCtx tv k
+    $ skolemize us (\tvks -> kont $ (tv,k):tvks)
 
 -- Note that for values, unlike functions we don't generalize
 checkValDecl :: Field -> Maybe Type -> Expr -> TC CheckedValueDecl

@@ -213,15 +213,18 @@ instance (Monad m, Partial w u, MonadUnificationExcept e w u (UnificationT w u m
 instance Monad m => MonadCheckpointUnification w u (UnificationT w u m) where
   -- listenUnconstrainedUVars :: m a -> m (a, S.Set (UVar u))
   listenUnconstrainedUVars comp = do
-    let allKnownUVars = UnificationT $ uses (equivalenceClasses.equivReps) M.keysSet
+    let allKnownUVars = UnificationT $ uses (equivalenceClasses.equivReps) M.keys
+        representatives us = do
+          rus <- mapM represent us
+          return $ S.fromList rus
     usInit <- allKnownUVars
     x <- comp
     usFinal <- allKnownUVars
-    eqs <- UnificationT $ use equivalenceClasses
+    rusInit <- representatives usInit
+    rusFinal <- representatives usFinal
     cs <- UnificationT $ use collectedConstraints
-    let newUs = usFinal S.\\ usInit
-        singleUs = S.filter (isSingletonEquivalenceClass eqs) newUs
-        freshUs = S.filter (not . flip M.member cs . Rep) singleUs
+    let newRus = rusFinal S.\\ rusInit
+        freshUs = S.mapMonotonic canonicalRep $ S.filter (not . flip M.member cs) newRus
     return (x, freshUs)
 
 -- if we ever need to delay solving some constraints, this would be
@@ -256,15 +259,20 @@ addConstraintUVar :: (Partial w u, Unifiable w u e (UnificationT w u m) u,
 addConstraintUVar v t_ = do
   t <- applyCurrentSubstitution t_
   occursCheck v t
+  -- first see if there's already a constraint on v and
+  -- try to unify it with the given constraint
   t2 <- applyCurrentSubstitution (injectUVar v)
   case isUVar t2 of
     Just v' | v == v' -> return ()
             | otherwise -> UnificationT $ equivalenceClasses %= unite v v'
     _ -> t =?= t2
-  case t^?_UVar of
+  -- then check if the given constraint is a simple uvar or a proper constraint
+  -- and update the collectd constraints or the equivalence classes.
+  t' <- applyCurrentSubstitution t
+  case t'^?_UVar of
    Nothing -> do
      r <- represent v
-     UnificationT $ collectedConstraints . at r ?= t
+     UnificationT $ collectedConstraints . at r ?= t'
    Just v'' -> UnificationT $ equivalenceClasses %= unite v v''
 
 applyCurrentSubstitution :: (Partial w u, Unifiable w u e (UnificationT w u m) u, Monad m)
