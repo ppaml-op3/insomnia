@@ -170,8 +170,8 @@ functorSubtyping bndl bndr =
       coerArgs <- zipWithM sigSubtyping rhsArgs lhsArgs'
       
       let substitution = zip alphas taus
-          rhsBodySig' = U.substs substitution rhsBodySig
-      coerBody <- abstractSigSubtyping lhsBodySig rhsBodySig'
+          lhsBodySig' = U.substs substitution lhsBodySig
+      coerBody <- abstractSigSubtyping lhsBodySig' rhsBodySig
       return (coerArgs, taus, coerBody)
 
     let argNames = map (\n -> "yArg" ++ show n) [1 .. length rhsArgTys]
