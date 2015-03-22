@@ -108,11 +108,7 @@ typeConstructor (TCLocal tc) = do
   e <- view tyConEnv
   case ma of
    Just (F.TypeSem t k) -> return (t, k)
-   Just (F.DataSem t _ k) -> return (t, k)
-   -- Just (F.ModSem semanticModule) ->
-   --   case findDataInMod semanticModule of
-   --    Just (t,k) -> return (t,k)
-   --    Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
+   Just (F.DataSem d _ k) -> return (F.TV d, k)
    Just f -> throwError $ "ToF.typeConstructor: wanted a TypeSem, got a " ++ show f
    Nothing -> throwError $ "ToF.typeConstructor: tyConEnv did not contain a TypeSem for a local type constructor: " ++ show tc ++ " in " ++ show e
 typeConstructor (TCGlobal (TypePath p f)) = do
@@ -125,17 +121,6 @@ typeConstructor (TCGlobal (TypePath p f)) = do
   (s, _m) <- followUserPathAnything findIt (ProjP p f)
   case s of
    F.TypeSem t k -> return (t, k)
-   F.DataSem t _ k -> return (t, k)
-   -- F.ModSem semanticModule ->
-   --   case findDataInMod semanticModule of
-   --    Just (tabs, k) -> return (tabs, k)
-   --    Nothing -> fail $ "internal error: ToF.typeConstructor - expected a datatype, got " ++ show semanticModule
+   F.DataSem d _ k -> return (F.TV d, k)
    _ -> throwError "ToF.typeConstructor: type path maps to non-type semantic signature"
   
-                      
-findDataInMod :: [(F.Field, F.SemanticSig)]
-                 -> Maybe (F.Type, F.Kind)
-findDataInMod [] = Nothing
-findDataInMod ((F.FData, F.DataSem tabs _tconc k) : _) = Just (tabs, k)
-findDataInMod (_ : rest) = findDataInMod rest
-

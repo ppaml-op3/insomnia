@@ -111,7 +111,7 @@ qualifiedIdValueConstructor :: QualifiedIdent -> I.ValueConstructor
 qualifiedIdValueConstructor (QId modPath fld) =
   if null modPath
   then I.VCLocal $ U.string2Name fld
-  else I.VCGlobal $ I.ValConPath (submoduleIdentPath modPath) fld
+  else I.VCGlobal (Left $ I.ValConPath (submoduleIdentPath modPath) fld)
 
 stochasticityForModule :: ModuleKind -> Stochasticity
 stochasticityForModule ModuleMK = DeterministicParam

@@ -16,8 +16,9 @@ ppField :: Field -> PM Doc
 ppField FVal = "val"
 ppField FType = "type"
 ppField FSig = "sig"
-ppField FData = "data"
-ppField FCon = "con"
+ppField FDataOut = "dataOut"
+ppField FDataIn = "dataIn"
+ppField (FCon s) = "con" <+> text s
 ppField (FTuple i) = "#" <> int i
 ppField (FUser s) = text s
 
@@ -41,11 +42,7 @@ ppType t_ =
      in precParens 1
         $ fsep [onUnicode "∀" "forall", pp tv, coloncolon, ppKind k,
                 indent "." (withPrec 0 AssocNone $ Left $ ppType body)]
-   TExist bnd ->
-     let ((tv, U.unembed -> k), body) = UU.unsafeUnbind bnd
-     in precParens 1
-        $ fsep [onUnicode "∃" "exist", pp tv, coloncolon, ppKind k,
-                indent "." (withLowestPrec $ ppType body)]
+   TExist bnd -> ppExists bnd
    TRecord fts ->
      let
        ppF (f, t) = fsep [ppField f, indent coloncolon (ppType t)]
@@ -60,6 +57,24 @@ ppType t_ =
         
 withLowestPrec :: PM Doc -> PM Doc
 withLowestPrec = withPrec 0 AssocNone . Left
+
+ppExists :: ExistPack -> PM Doc
+ppExists bnd =
+  let (vks, pbody) = ppExists' bnd
+  in precParens 1
+     $ fsep ([onUnicode "∃" "exist"]
+             ++ punctuate "," vks
+             ++ [indent "." (withLowestPrec pbody)])
+  where
+    ppExists' bnd =
+      let ((tv, U.unembed -> k), body) = UU.unsafeUnbind bnd
+          (vks, pbody) = ppExists'' body
+          pv = fsep [pp tv, indent coloncolon (pp k)]
+      in (pv:vks, pbody)
+    ppExists'' t_ =
+      case t_ of
+       TExist bnd -> ppExists' bnd
+       _ -> ([], ppType t_)
 
 ppTerm :: Term -> PM Doc
 ppTerm m_ =

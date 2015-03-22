@@ -180,91 +180,60 @@ typeDefn :: ToF m
             -> m ans
 typeDefn f selfTc td_ kont =
   case td_ of
-   EnumDefn numeracy ->
+   EnumDefn numeracy -> 
      withFreshName "Δ" $ \enumTyModV ->
-     withFreshName ("δ" ++ show numeracy) $ \tv -> do
+     withFreshName ("δ" ++ show numeracy) $ \dtv -> do
        let
-         -- enum becomes: δ → (∀ α : ⋆ . α → (δ → α) → α)
+         -- enum becomes: δ ≙ fix λδ:⋆ . {z :  {} ; s : δ }
          -- that is, it's isomorphic to primitive recursion over a nat.
-         tFold = let a = U.s2n "α"
-                 in (F.TForall $ U.bind (a, U.embed F.KType)
-                     $ F.tArrs [F.TV a
-                               , F.TV tv `F.TArr` F.TV a
-                               ]
-                     $ (F.TV a))
-         dataSem = F.DataSem (F.TV tv) tFold F.KType
-         dataSig = [(F.FUser f, dataSem)]
-         abstr = [(tv, U.embed F.KType)]
-       dataTy <- F.embedSemanticSig dataSem
-       let dataModSem = F.ModSem [(F.FUser f, dataSem)]
-           dataModAbs = F.AbstractSig $ U.bind [(tv, U.embed F.KType)] dataModSem
-       dataModTy <- F.embedAbstractSig dataModAbs
-       let dataModTm = F.Assume dataModTy
-           unpackHole = Endo (F.Unpack . U.bind (tv, enumTyModV, U.embed dataModTm))
-           xenum = U.s2n f
-           dTm = [(F.FUser f, F.V xenum)]
-           dHole = Endo (F.Let . U.bind (xenum, U.embed $ F.Proj (F.V enumTyModV) (F.FUser f)))
-           absSig = (abstr, dataSig)
-           thisOne = (absSig, dTm, unpackHole <> dHole)
+         fs = U.bind []
+              [(F.FCon "z", [])
+              , (F.FCon "s", [F.TV dtv])]
+         dtsem = F.DataTypeSem fs
+         dataSem = F.DataSem dtv dtsem F.KType
+         abstr = [(dtv, U.embed F.KType)]
+         absDataSem = F.AbstractSig $ U.bind abstr dataSem
+       absDtTy <- F.embedAbstractSig absDataSem
+       let
+         dataTyModM = F.Assume absDtTy
+         unpackHole = Endo (F.Unpack . U.bind (dtv, enumTyModV, U.embed dataTyModM))
+         absSig = (abstr, [(F.FUser f, dataSem)])
+         fieldData = [(F.FUser f, F.V enumTyModV)]
+         thisOne = (absSig, fieldData, unpackHole)
        local (tyConEnv %~ M.insert selfTc dataSem)
          $ kont thisOne
+
    DataDefn bnd ->
      U.lunbind bnd $ \(tvks, constrs) ->
      withFreshName "Δ" $ \dataTyModV ->
-     withFreshName "δ" $ \tv -> do
-       (dataSem, conVs, thisOne) <-
+     withFreshName "δ" $ \dtv -> do
+       (dataSem, conEnv, thisOne) <-
          withTyVars tvks $ \tvks' -> do
            let kdoms = map snd tvks'
                k = kdoms `F.kArrs` F.KType
-           local (tyConEnv %~ M.insert selfTc (F.TypeSem (F.TV tv) k)) $ do
-             -- fully apply data type abstract var to parameter vars
-             let dtf = F.FUser f
-                 tCod = (F.TV tv) `F.tApps` map (F.TV . fst) tvks'
-             (constrSems, summands) <- liftM (unzip . map (\(f,y,z) -> ((f,y), (F.FUser f, z))))
-                                       $ mapM (mkConstr dtf tvks' tCod)
-                                       $ constrs
-             let tConc = F.tLams tvks' $ F.TSum summands
-                 cSems = map (\(f, sem) -> (U.s2n f, sem)) constrSems
-                 constrSigs = map (\(f, sem) -> (F.FUser f, sem)) constrSems
-                 dataSem = F.DataSem (F.TV tv) tConc k
-                 dataSig = (dtf, dataSem)
-                 abstr = [(tv, U.embed k)]
-             dataTy <- F.embedSemanticSig dataSem
-             let dataModSem = F.ModSem $ (dtf, dataSem) : constrSigs
-                 dataModAbs = F.AbstractSig $ U.bind [(tv, U.embed k)] dataModSem
-             dataModTy <- F.embedAbstractSig dataModAbs
-             let dataModTm = F.Assume dataModTy -- not specifying how datatypes are implemented.
-                 -- unpack δ,Δ = assume { D = {data = ...}, C1 = {con = ...}, ..., CN = {con = ...}} in []
-                 unpackHole = Endo (F.Unpack . U.bind (tv, dataTyModV, U.embed dataModTm))
-             (fxvs, conholes) <- liftM unzip $ forM constrSems $ \(f, sem) -> do
-               ty <- F.embedSemanticSig sem
-               let
-                 xv = U.s2n f :: F.Var
-                 mhole = Endo (F.Let . U.bind (xv, U.embed $ F.Proj (F.V dataTyModV) (F.FUser f)))
-               return ((f, xv), mhole)
-             let
-               xdata = U.s2n f
-               dTm = (dtf, F.V xdata)
-               dHole = Endo (F.Let . U.bind (xdata, U.embed $ F.Proj (F.V dataTyModV) (dtf)))
-               conTms = map (\(f, x) -> (F.FUser f, F.V x)) fxvs
-               conVs = M.fromList $ map (\(f, x) -> (U.s2n f, (x, F.FUser f, xdata))) fxvs
-               absSig = (abstr, dataSig : constrSigs)
-               thisOne = (absSig, dTm : conTms, unpackHole <> dHole <> mconcat conholes)
-             return (dataSem, conVs, thisOne)
+           (conVs, constructorFields) <-
+             -- extend env for constructos so they can be recursive
+             local (tyConEnv %~ M.insert selfTc (F.TypeSem (F.TV dtv) k)) $
+             liftM unzip $ forM constrs $ \(ConstructorDef cname tDoms) -> do
+               tDoms' <- mapM (liftM fst . type') tDoms
+               let fcon = F.FCon (U.name2String cname)
+               return ((cname, (dataTyModV, fcon)), (fcon, tDoms'))
+           let
+             dtsem = let tveks = map (\(tv,k) -> (tv, U.embed k)) tvks'
+                     in F.DataTypeSem (U.bind tveks constructorFields)
+             dataSem = F.DataSem dtv dtsem k
+             conEnv  = M.fromList conVs
+             abstr = [(dtv, U.embed k)]
+             -- ∃δ.{dataIn : ... ; dataOut : ... }
+             absDataSem = F.AbstractSig $ U.bind abstr dataSem 
+           absDtTy <- F.embedAbstractSig absDataSem
+           let
+             dataTyModM = F.Assume absDtTy
+             unpackHole = Endo (F.Unpack . U.bind (dtv, dataTyModV, U.embed dataTyModM))
+             absSig = (abstr, [(F.FUser f, dataSem)])
+             fieldData = [(F.FUser f, F.V dataTyModV)]
+             thisOne = (absSig, fieldData, unpackHole)
+           return (dataSem, conEnv, thisOne)
        local (tyConEnv %~ M.insert selfTc dataSem)
-         . local (valConEnv %~ M.union conVs)
+         . local (valConEnv %~ M.union conEnv)
          $ kont thisOne
-  where
-    mkConstr :: ToF m
-                => F.Field
-                -> [(F.TyVar, F.Kind)]
-                -> F.Type
-                -> ConstructorDef
-                -> m (Field, F.SemanticSig, F.Type)
-    mkConstr dt tvks tCod (ConstructorDef cname tDoms) = do
-      (tDoms', _) <- liftM unzip $ mapM type' tDoms
-      let f = U.name2String cname
-          t = F.tForalls tvks $ tDoms' `F.tArrs` tCod
-          tsummand = F.tupleT tDoms'
-      return (f, F.ConSem t dt, tsummand)
-

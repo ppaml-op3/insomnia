@@ -107,7 +107,6 @@ sigSubtyping lhs rhs = do
      _f1 <- abstractSigSubtyping sl sr
      _f2 <- abstractSigSubtyping sr sl
      coercion lhsTy $ \_x -> sigSemTerm sr
-   (ConSem {}, ConSem {}) -> return (IdCoer lhsTy)
    (DataSem {}, DataSem {}) -> return (IdCoer lhsTy)
    (DataSem {} , TypeSem tr kr) ->
      coercion lhsTy $ \_dk -> typeSemTerm tr kr

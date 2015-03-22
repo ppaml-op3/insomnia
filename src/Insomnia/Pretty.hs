@@ -223,9 +223,13 @@ instance Pretty Kind where
   pp KType = onUnicode "⋆" "*"
   pp (KArr k1 k2) = infixOp 1 rightArrow AssocRight (pp k1) (pp k2)
 
+instance Pretty InferredValConPath where
+  pp (InferredValConPath tp f) = pp tp <> "@" <> pp f
+
 instance Pretty ValueConstructor where
   pp (VCLocal n) = pp n
-  pp (VCGlobal p) = pp p
+  pp (VCGlobal (Left p)) = pp p
+  pp (VCGlobal (Right p)) = pp p
 
 instance Pretty TypePath where
   pp (TypePath pmod f) = pp pmod <> "." <> pp f

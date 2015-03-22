@@ -16,10 +16,11 @@ data Field =
   FVal
   | FType
   | FSig
-  -- data type definition field
-  | FData
+  -- data type definition fields
+  | FDataOut
+  | FDataIn
   -- data type constructor field
-  | FCon
+  | FCon !String
   -- integer indexed field
   | FTuple !Int
   -- user defined record fields
@@ -70,6 +71,8 @@ data Term =
   | Case !Term ![Clause] !(Maybe Term)
   | Abort !Type
   deriving (Show, Typeable, Generic)
+
+infixl 6 `Proj` 
 
 data Clause = Clause !(Bind (Embed Field, Var) Term)
             deriving (Show, Typeable, Generic)

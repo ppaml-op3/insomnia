@@ -139,9 +139,10 @@ caseConstruct :: ToF m
                  -> m F.Term
 caseConstruct ysubj vc (InstantiationSynthesisCoercion _ tyargs _) fys successTm (FailCont failContTm) = 
   withFreshName "z" $ \z -> do
-    (_dtIn, f, dtOut) <- valueConstructor vc
+    (dtInOut, f) <- valueConstructor vc
     (tyArgs', ks) <- liftM unzip $ mapM type' tyargs
     let
+      dtOut = dtInOut `F.Proj` F.FDataOut
       -- For  polymorphic types constructors we need to build a higher-order context.
       -- Consider the clause: case l of (Cons x ·¢· [Int] xs) -> x + sum xs 
       -- In that case, we need to translate to:

@@ -20,7 +20,6 @@ import Insomnia.Types (Kind(..), Type(..), Row(..),
 import Insomnia.Expr
 
 import Insomnia.Unify (applyCurrentSubstitution,
-                       MonadUnify(..),
                        Unifiable(..),
                        )
 
@@ -63,11 +62,11 @@ checkExpr e_ t_ = case e_ of
   V v -> checkVariable lookupLocal V v t_
   Q q -> checkVariable lookupGlobal Q q t_
   C c -> do
-    constr <- lookupValueConstructor c
+    (c', constr) <- lookupValueConstructor c
     ty <- mkConstructorType constr
     instantiate ty $ \ty' mkCo -> do
       ty' =?= t_
-      return $ mkCo (C c)
+      return $ mkCo (C c')
   App e1_ e2_ -> do
     (t1, e1') <- inferExpr e1_
     (tdom, tcod) <- unifyFunctionT t1
@@ -143,7 +142,7 @@ checkPattern tscrut p =
       tscrut =?= TRecord row
       return (RecordP lps', ms)
     ConP (U.unembed -> c) _ ps -> do
-      alg <- lookupValueConstructor c
+      (c', alg) <- lookupValueConstructor c
       instantiateConstructorArgs alg $ \ tparams targs co -> do
         unless (length ps == length targs) $
           typeError ("constructor " <> formatErr c
@@ -158,7 +157,7 @@ checkPattern tscrut p =
         tscrut =?= dty
         (ps', ms) <- unzip <$> zipWithM checkPattern targs ps
         co' <- traverseTypes applyCurrentSubstitution co
-        return (ConP (U.embed c) (U.embed $ Just co') ps', mconcat ms)
+        return (ConP (U.embed c') (U.embed $ Just co') ps', mconcat ms)
 -- | check a sequence of bindings and pass them to the given continuation
 -- in an environment suitably extended by the new bindings.
 checkBindings :: Bindings -> (Bindings -> TC a) -> TC a
@@ -255,10 +254,10 @@ inferExpr e_ = case e_ of
     t <- inferLiteral lit
     return (t, e_)
   C c -> do
-    constr <- lookupValueConstructor c
+    (c', constr) <- lookupValueConstructor c
     ty <- mkConstructorType constr
     instantiate ty $ \ty' mkCo -> 
-      return (ty', mkCo $ C c)
+      return (ty', mkCo $ C c')
   Ann e1_ t_ -> do
     t <- checkType t_ KType
          <??@ ("while checking type annotation " <> formatErr e_)

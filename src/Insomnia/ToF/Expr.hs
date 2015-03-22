@@ -11,7 +11,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Identifier
 import Insomnia.Expr
-import Insomnia.Types (Label(..))
+import Insomnia.Types (Label(..), TypePath(..))
 import Insomnia.TypeDefn
 import Insomnia.Common.Telescope
 
@@ -35,8 +35,8 @@ expr e_ =
                   StructureTermVar {} -> F.Proj (F.V xv) F.FVal
    L l -> return $ F.L l
    C vc -> do
-     (inX, _f, _outX) <- valueConstructor vc
-     return inX
+     (inX, fcon) <- valueConstructor vc
+     return (inX `F.Proj` F.FDataIn `F.Proj` fcon)
    Q (QVar p f) -> do
      let
        findIt ident = do
@@ -116,36 +116,31 @@ letSimple mkLet x ann e kont = do
   return $ mkLet $ U.bind (x', U.embed m) mbody
 
 
--- | Given a value constructor, returns the triple (in, f, out) where
--- 'in' is a term of type '∀ αs . σ → δ αs' that injects the
--- constructor arguments into the data type, 'out' is a term of type
--- '∀ C αs . C (δ αs) → C (Σ {... fi = σi...})' that coerces a value
--- of a datatype (under any context) to a sum type (under that same
--- context).  And 'f' is the field name among the 'fi's that
+-- | Given a value constructor, returns the pair (inout, f) where
+-- 'inout' is a term of type '{dataIn : ... ; dataOut : ...}' that
+-- injects or projects the constructor arguments into (out of) the
+-- data type, and 'f' is the field name among the 'fi's that
 -- corresponds to this particular value constructor.
 valueConstructor :: ToF m
                     => ValueConstructor
-                    -> m (F.Term, F.Field, F.Term)
+                    -> m (F.Term, F.Field)
 valueConstructor (VCLocal valCon) = do
   mv <- view (valConEnv . at valCon)
-  (inX, fld, outX) <- case mv of
-    Just (inX, fld, outX) -> return (inX, fld, outX)
+  (inoutX, fld) <- case mv of
+    Just a -> return a
     Nothing -> throwError "internal error: ToF.valueConstructor VCLocal valCon not in environment"
-  return (F.Proj (F.V inX) F.FCon, fld, F.Proj (F.V outX) F.FData)
-valueConstructor (VCGlobal (ValConPath modPath f)) = do
+  return (F.V inoutX, fld)
+valueConstructor (VCGlobal (Right (InferredValConPath (TypePath modPath fty) f))) = do
   let
     findIt ident = do
       ma <- view (modEnv . at ident)
       case ma of
        Just (sig, x) -> return (sig, F.V x)
        Nothing -> throwError "ToF.valueConstructor: constructor path has unbound module identifier at the root"
-  (vcsig, inM) <- followUserPathAnything findIt (ProjP modPath f)
-  outM <- case vcsig of
-           F.ConSem ty (F.FUser dtfld) -> do
-             (_dtsig, dtm) <- followUserPathAnything findIt (ProjP modPath dtfld)
-             return dtm
-           _ -> throwError "ToF.valueConstructor: constructor's path not associated with constructor semantic sig"
-  return (F.Proj inM F.FCon, F.FUser f, F.Proj outM F.FData)
+  (_, tyM) <- followUserPathAnything findIt (ProjP modPath fty)
+  return (tyM, F.FCon f)
+valueConstructor (VCGlobal (Left _)) =
+  throwError "internal error: ToF.valueConstructor VCGlobal without datatype annotation"
 
 -- | Given an instantiation coerction ∀αs.ρ ≤ [αs↦τs]ρ construct a function
 -- of type  (∀αs.ρ) → [αs↦τs]ρ. Namely λx:(∀αs.ρ). x [τs]

@@ -47,7 +47,10 @@ type ValConName = Name ValueConstructor
 -- | A ValConPath picks out a value constructor field in the model
 -- associated with the given path.
 data ValConPath = ValConPath !Path !Field
-                deriving (Show, Typeable, Generic, Eq, Ord)
+                deriving (Show, Eq, Ord, Typeable, Generic)
+
+data InferredValConPath = InferredValConPath !TypePath !Field
+                        deriving (Show, Typeable, Generic)
 
 -- | Value constructors may be either local to the current model, or
 -- specified along a global path.  (This datatype is here, rather
@@ -56,8 +59,10 @@ data ValConPath = ValConPath !Path !Field
 -- mere type alias for a 'Name ValueConstructor'.)
 data ValueConstructor =
   VCLocal !ValConName
-  | VCGlobal !ValConPath
-  deriving (Show, Typeable, Generic, Eq, Ord)
+   -- before typechecking, a path to the constructor;
+   -- after typechecking, a path to the type and the name of the construtor
+  | VCGlobal !(Either ValConPath InferredValConPath)
+  deriving (Show, Typeable, Generic)
 
 -- | A value constructor with the given name, taking arguments of
 -- the given types.
@@ -78,12 +83,14 @@ instance Alpha ConstructorDef
 instance Alpha TypeDefn
 instance Alpha TypeAlias
 instance Alpha ValConPath
+instance Alpha InferredValConPath
 instance Alpha ValueConstructor
 
 instance Subst Path TypeDefn
 instance Subst Path ConstructorDef
 instance Subst Path TypeAlias
 instance Subst Path ValConPath
+instance Subst Path InferredValConPath
 instance Subst Path ValueConstructor
 
 -- Capture avoid substitution of types for type variables in the following.
@@ -105,6 +112,9 @@ instance Subst ValueConstructor ConstructorDef
 instance Subst ValueConstructor TypeDefn
 
 instance Subst ValueConstructor ValConPath where
+  subst _ _ = id
+  substs _ = id
+instance Subst ValueConstructor InferredValConPath where
   subst _ _ = id
   substs _ = id
 instance Subst ValueConstructor TypeAlias where

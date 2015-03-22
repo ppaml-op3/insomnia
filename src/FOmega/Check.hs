@@ -6,7 +6,6 @@ module FOmega.Check where
 
 import Control.Monad.Reader hiding (forM)
 import Data.Monoid
-import qualified Data.List as List
 import qualified Data.Set as S
 import Control.Monad.Except hiding (forM)
 
@@ -441,29 +440,30 @@ ensureDistinctFields _ = return () -- TODO: actually ensure
 
 -- | Records that contain builtin-fields have a certain expected form:
 -- 1. If a FVal, FType or FSig field is present, it is the only field.
--- 2. If a FData field is present, there may be zero or more FCon fields and no others.
--- 3. Otherwise all fields must be FUser
+-- 2. Both FDataIn and FDataOut fields are present.
+-- 3. All the fields are FCon  (this happens in an FDataIn)
+-- 4. Otherwise all fields must be FUser
 wellFormedStylizedRecord :: MonadTC m => [(Field, a)] -> m ()
 wellFormedStylizedRecord [(FVal, _)] = return ()
 wellFormedStylizedRecord [(FType, _)] = return ()
-wellFormedStylizedRecord [(FData, _)] = return ()
-wellFormedStylizedRecord [(FCon, _)] = return ()
 wellFormedStylizedRecord [(FSig, _)] = return ()
 wellFormedStylizedRecord fs = do
   let userRecord = all isUser fs
-      isDatatype =
-        case List.partition isData fs of
-         ([_d], cs) -> all isCon cs
-         _ -> False
+      isDatatype = case fs of
+                    [(FDataIn, _), (FDataOut, _)] -> True
+                    [(FDataOut, _), (FDataIn, _)] -> True
+                    _ -> False
+      isConProduct = all isCon fs
       isTuple = all isTupleIdx fs
-  unless (userRecord || isDatatype || isTuple) $
+  unless (userRecord || isDatatype || isConProduct || isTuple) $
     throwError $ MalformedStylizedRecord (Got $ map fst fs)
   where
     isUser (FUser {}, _) = True
     isUser _ = False
-    isData (FData, _) = True
+    isData (FDataOut, _) = True
+    isData (FDataIn, _) = True
     isData _ = False
-    isCon (FCon {}, _) = True
+    isCon  (FCon {}, _) = True
     isCon _ = False
     isTupleIdx (FTuple {}, _) = True
     isTupleIdx _ = False
@@ -471,11 +471,14 @@ wellFormedStylizedRecord fs = do
 wellFormedSumType :: MonadTC m => [(Field, a)] -> m ()
 wellFormedSumType fs = do
   let allUser = all isUser fs
-  unless allUser $
+      isConSum = all isCon fs
+  unless (allUser || isConSum) $
     throwError $ MalformedSumType (Got $ map fst fs)
   where
     isUser (FUser {}, _) = True
     isUser _ = False
+    isCon (FCon {}, _) = True
+    isCon _ = False
 
 lookupField :: MonadTC m => [(Field, a)] -> Field -> m a
 lookupField fs_ f = go fs_

@@ -94,8 +94,8 @@ valueConstructorMakerForTypeConstructor :: TypeConstructor
                                            -> ValConName -> ValueConstructor
 valueConstructorMakerForTypeConstructor tc =
   case tc of
-   (TCGlobal (TypePath pmod _)) ->
-     VCGlobal . ValConPath pmod . U.name2String
+   (TCGlobal tp) ->
+     \name -> VCGlobal (Right $ InferredValConPath tp (U.name2String name))
    (TCLocal _) -> VCLocal
 
 -- | @mkConstructor d vks (ConstructorDef c params)@ returns @(c,

@@ -14,7 +14,8 @@ import Insomnia.Identifier (Path(..))
 import Insomnia.Types (TypeConstructor(..), TypePath(..))
 import Insomnia.Expr (QVar(..))
 import Insomnia.TypeDefn (TypeDefn(..), ValConName,
-                          ValConPath(..), ValueConstructor(..),
+                          ValConPath(..), InferredValConPath(..),
+                          ValueConstructor(..),
                           ConstructorDef(..))
 import Insomnia.ModuleType (Signature(..),
                             SigV(..),
@@ -46,7 +47,7 @@ selfifySignature pmod msig_ =
           -- the full projection from the model path.  Also replace the
           -- type constructors
           tcon = TCGlobal p
-          substVCons = selfifyTypeSigDecl pmod tsd
+          substVCons = selfifyTypeSigDecl pmod p tsd
           substTyCon = [(tyId, tcon)]
           tsd' = U.substs substTyCon $ U.substs substVCons tsd
           msig' = U.substs substTyCon $ U.substs substVCons msig
@@ -71,20 +72,20 @@ selfifySignature pmod msig_ =
            selfSig' <- selfifySignature pmod msig'
            return $ GenerativeSelfSig p mtnf selfSig'
 
-selfifyTypeSigDecl :: Path -> TypeSigDecl -> [(ValConName, ValueConstructor)]
-selfifyTypeSigDecl pmod tsd =
+selfifyTypeSigDecl :: Path -> TypePath -> TypeSigDecl -> [(ValConName, ValueConstructor)]
+selfifyTypeSigDecl pmod tpath tsd =
   case tsd of
     AbstractTypeSigDecl _k -> mempty
-    ManifestTypeSigDecl defn -> selfifyTypeDefn pmod defn
+    ManifestTypeSigDecl defn -> selfifyTypeDefn pmod tpath defn
     AliasTypeSigDecl _alias -> mempty
 
 -- | Given the path to a type defintion and the type definition, construct
 -- a substitution that replaces unqualified references to the components of
 -- the definition (for example the value constructors of an algebraic datatype)
 -- by their qualified names with respect to the given path.
-selfifyTypeDefn :: Path -> TypeDefn -> [(ValConName, ValueConstructor)]
-selfifyTypeDefn _pmod (EnumDefn _) = []
-selfifyTypeDefn pmod (DataDefn bnd) = let
+selfifyTypeDefn :: Path -> TypePath -> TypeDefn -> [(ValConName, ValueConstructor)]
+selfifyTypeDefn _pmod _ (EnumDefn _) = []
+selfifyTypeDefn pmod dtPath (DataDefn bnd) = let
   (_, constrDefs) = UU.unsafeUnbind bnd
   cs = map (\(ConstructorDef c _) -> c) constrDefs
   in map (mkSubst pmod) cs
@@ -92,5 +93,4 @@ selfifyTypeDefn pmod (DataDefn bnd) = let
     mkSubst :: Path -> ValConName -> (ValConName, ValueConstructor)
     mkSubst p short =
       let fld = U.name2String short
-          long = ValConPath p fld
-      in (short, VCGlobal long)
+      in (short, VCGlobal (Right $ InferredValConPath dtPath fld))

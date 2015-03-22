@@ -25,7 +25,10 @@ import Control.Monad.Except (Except, runExcept)
 
 import Insomnia.Identifier
 import Insomnia.Types
-import Insomnia.TypeDefn (TypeAlias(..), ValueConstructor(..))
+import Insomnia.TypeDefn (TypeAlias(..),
+                          ValConName, ValConPath(..),
+                          InferredValConPath(..),
+                          ValueConstructor(..))
 import Insomnia.Expr (Var, QVar)
 import Insomnia.ModuleType (ModuleTypeNF(..))
 
@@ -90,6 +93,11 @@ data TyConDesc =
 -- | A Type alias closure captures the environment (actually just the tycon descriptors, due to phase distinction)
 data TypeAliasClosure = TypeAliasClosure !Env !TypeAlias
 
+data ValueConstructorIdx =
+  VCILocal !ValConName
+  | VCIGlobal !ValConPath
+    deriving (Show, Eq, Ord)
+
 -- | Typechecking environment
 data Env = Env {
   -- | signatures
@@ -100,7 +108,7 @@ data Env = Env {
     -- | type constructor descriptors
   , _envDCons :: M.Map TypeConstructor TyConDesc
     -- | value constructors
-  , _envCCons :: M.Map ValueConstructor AlgConstructor
+  , _envCCons :: M.Map ValueConstructorIdx AlgConstructor
     -- | declared global vars
   , _envGlobals :: M.Map QVar Type
     -- | defined vars in the current module
@@ -123,6 +131,11 @@ $(makeLenses ''Env)
 
 instance Pretty AlgConstructor where
   pp = text . show
+
+instance Pretty ValueConstructorIdx where
+  pp (VCILocal n) = pp n
+  pp (VCIGlobal p ) = pp p
+  
 
 instance Pretty AlgType where
   pp alg = vcat ["params"
@@ -278,12 +291,29 @@ lookupDCon d = do
     Just k -> return k
     Nothing -> typeError $ "no data type " <> formatErr d
 
-lookupValueConstructor :: ValueConstructor -> TC AlgConstructor
+lookupValueConstructor :: ValueConstructor -> TC (ValueConstructor, AlgConstructor)
 lookupValueConstructor vc = do
-  m <- view (envCCons . at vc)
+  let
+    vci = case vc of
+      VCLocal i -> VCILocal i
+      VCGlobal (Left p) -> VCIGlobal p
+  m <- view (envCCons . at vci)
   case m of
-    Just constr -> return constr
+    Just constr -> do
+      let vc' = a2vc constr
+      return (vc', constr)
     Nothing -> typeError $ "no datatype defines a constructor " <> formatErr vc
+  where
+    a2vc c =
+      case vc of
+      VCLocal {} -> vc
+      VCGlobal (Left (ValConPath _ f)) ->
+        VCGlobal (Right (InferredValConPath
+                         (c^.algConstructorDCon.to toTypePath)
+                         f))
+    toTypePath (TCGlobal p) = p
+    toTypePath (TCLocal _) =
+      error "internal error: local type constructor for global value constructor"
 
 -- | Lookup the kind of a type variable
 lookupTyVar :: TyVar -> TC Kind
@@ -332,7 +362,11 @@ extendDConCtx dcon k = local (envDCons . at dcon ?~ k)
 
 extendConstructorsCtx :: MonadReader Env m => [(ValueConstructor, AlgConstructor)] -> m a -> m a
 extendConstructorsCtx cconstrs =
-  local (envCCons %~ M.union (M.fromList cconstrs))
+  local (envCCons %~ M.union (M.fromList $ map (\(vc, a) -> (vc2i vc, a)) cconstrs))
+  where
+    vc2i (VCLocal vc) = VCILocal vc
+    vc2i (VCGlobal (Left p)) = VCIGlobal p
+    vc2i (VCGlobal (Right (InferredValConPath (TypePath p _) f))) = VCIGlobal (ValConPath p f)
 
 extendValueDefinitionCtx :: Var -> TC a -> TC a
 extendValueDefinitionCtx v =
@@ -380,12 +414,16 @@ guardDuplicateDConDecl dcon = do
 
 guardDuplicateCConDecl :: ValueConstructor -> TC ()
 guardDuplicateCConDecl ccon = do
-  mcon <- view (envCCons . at ccon)
+  let vci = case ccon of
+        VCLocal i -> VCILocal i
+        VCGlobal (Left p) -> VCIGlobal p
+  mcon <- view (envCCons . at vci)
   case mcon of
     Nothing -> return ()
     Just _ -> typeError ("value constructor "
                          <> formatErr ccon
                          <> " is already defined")
+  where
 
 ensureNoDefn :: Var -> TC ()
 ensureNoDefn v = do

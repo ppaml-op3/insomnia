@@ -52,7 +52,7 @@ data Env = Env { _tyConEnv :: M.Map TyConName F.SemanticSig
                , _sigEnv   :: M.Map SigIdentifier F.AbstractSig
                , _modEnv   :: M.Map Identifier (F.SemanticSig, F.Var)
                , _tyVarEnv :: M.Map TyVar (F.TyVar, F.Kind)
-               , _valConEnv :: M.Map ValConName (F.Var, F.Field, F.Var)
+               , _valConEnv :: M.Map ValConName (F.Var, F.Field)
                , _valEnv    :: M.Map Var (F.Var, TermVarProvenance)
                }
 
