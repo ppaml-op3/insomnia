@@ -39,8 +39,11 @@ module Prelude :: PRELUDE {
 
    data Proxy (a :: *) = Proxy
 
-   parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
-   parameter sig flip :: Real -> Dist Bool
+   module AssumeDists = assume {
+     parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
+     parameter sig flip :: Real -> Dist Bool
+   }
+   import AssumeDists
 
    parameter sig foo :: S.W -> S.S2.T
    fun foo x = x
@@ -48,40 +51,28 @@ module Prelude :: PRELUDE {
 
 module Raining {
 
-  parameter sig double :: Real -> Real
+  module AssumeDouble = assume {
+    parameter sig double :: Real -> Real
+  }
+  import AssumeDouble
 
-  enum T 10
-
-  sig thinksRain :: T -> Prelude.Bool
-
-  parameter sig pointOne :: Real
-  parameter pointOne = 0.1
-
-  parameter sig pointNine :: Real
-  parameter pointNine = 0.9
-
-  model ModelTest  {
-    sig raining :: Prelude.Bool2
-    val raining ~ (Prelude.uniform Prelude.Proxy)
-
+  model Test {
     sig x :: Real
     val x ~ Prelude.uniform Prelude.Proxy
 
     sig y :: Real
     val y = double x 
+  }
 
-    -- fun thinksRain t = let {
-    --    forall (x :: T) in
-    --      g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
-    --    } in g t
+  enum T 10
 
-    -- Ryan observes that the version above creates a new table every time
-    -- that 'thinksRain' is called.  Instead what we want is to create the
-    -- table once.
-    val thinksRain = let
-      forall (x :: T) in
-        g x ~ Prelude.cond raining (Prelude.flip pointNine) (Prelude.flip pointOne)
-      in g
+  model RainBelief  {
+    sig raining :: Prelude.Bool2
+    val raining ~ (Prelude.uniform Prelude.Proxy)
+
+    sig thinksRain :: T -> Prelude.Bool
+    forall (x :: T) in
+      thinksRain x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
   }
 
 }

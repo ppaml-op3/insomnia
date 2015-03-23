@@ -39,8 +39,11 @@ module Prelude :: PRELUDE {
 
    data Proxy (a :: *) = Proxy
 
-   parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
-   parameter sig flip :: Real -> Dist Bool
+   module AssumeDists = assume {
+     parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
+     parameter sig flip :: Real -> Dist Bool
+   }
+   import AssumeDists
 
    parameter sig foo :: S.W -> S.S2.T
    fun foo x = x
@@ -48,8 +51,11 @@ module Prelude :: PRELUDE {
 
 module Raining {
 
-  parameter sig double :: Real -> Real
-
+  module AssumeDouble  = assume {
+    parameter sig double :: Real -> Real
+  }
+  import AssumeDouble
+  
   enum T 10
 
   parameter sig pointOne :: Real
@@ -68,7 +74,7 @@ module Raining {
     sig y :: Real
     val y = double x 
 
-    -- sig thinksRain :: T -> Prelude.Bool
+    sig thinksRain :: T -> Prelude.Bool
 
     forall (x :: T) in
       thinksRain x ~ Prelude.cond raining (Prelude.flip pointNine) (Prelude.flip pointOne)
