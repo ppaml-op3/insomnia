@@ -2,7 +2,7 @@
 --  see http://haskell.org/cabal/users-guide/
 
 name:                insomnia
-version:             0.0
+version:             0.0.1
 synopsis:            Typed probabilistic programming language
 description:         Insomnia is a typed, modular probabilistic programming language.
                      .
