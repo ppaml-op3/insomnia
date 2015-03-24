@@ -54,6 +54,8 @@ data OmegaErr =
   | EmptyCaseConstruct --  case m of {}
   | SumTypeHasNoField !(Expected Type) !(Got Field)
   | ExpectedValueInLetRec !Var
+  | MemoizeNonFunction !(Got Type)
+  | MemoResultNotDist !(Got Type)
   | NoErr
   deriving (Show)
 
@@ -259,6 +261,18 @@ inferTy m_ =
      k <- inferK t
      expectKType t k
      return t
+   Memo m -> do
+     t <- inferTy m
+     tN <- whnfTy t KType
+     case tN of
+      TArr tDom tCod -> do
+        tCodN <- whnfTy tCod KType
+        case tCodN of
+         TDist tans -> do
+           return $ TDist (tDom `TArr` tans)
+         _ -> throwError $ MemoResultNotDist (Got tCod)
+      _ -> throwError $ MemoizeNonFunction (Got t)
+           
    
 instExistPack :: MonadTC m => Type -> Kind -> ExistPack -> m Type
 instExistPack t k bnd =
@@ -323,7 +337,11 @@ valueRestriction theName m_ =
     isValue (PLam {}) = True
     isValue (Lam {}) = True
     isValue (Record fms) = all (\(_f, m) -> isValue m) fms
+    isValue (Memo m) = isValue m || isVar m
     isValue _ = False
+
+    isVar (V {}) = True
+    isVar _ = False
 
 ------------------------------------------------------------
 -- * Type normalization and equivalence

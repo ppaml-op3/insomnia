@@ -66,6 +66,7 @@ data Term =
   | Return !Term
   | LetSample !(Bind (Var, Embed Term) Term)
   | LetRec !(Bind RecBindings Term)
+  | Memo !Term
   | Assume !Type
   | Inj !Field !Term !Type
   | Case !Term ![Clause] !(Maybe Term)
@@ -234,6 +235,16 @@ unpacks :: LFresh m => [TyVar] -> Var -> Term -> Term -> m Term
 unpacks tvs x e1 ebody = do
   rest <- unpacksM tvs x
   return $ rest e1 ebody
+
+lets :: [(Var, Term)] -> Term -> Term
+lets [] = id
+lets ((v,m):vs) = Let . bind (v, embed m) . lets vs
+
+
+tuple :: [Term] -> Term
+tuple ms = 
+  let ims = zipWith (\m i -> (FTuple i, m)) ms [0..]
+  in Record ims
 
 unitT :: Type
 unitT = TRecord []

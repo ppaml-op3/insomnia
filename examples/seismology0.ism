@@ -1,11 +1,24 @@
 
-module Prelude {
+module Boot {
+  data Bool = True | False
+}
+
+module Builtins = assume {
   sig (.+) :: Real -> Real -> Real
   sig (.-) :: Real -> Real -> Real
   sig (.*) :: Real -> Real -> Real
 
   sig abs :: Real -> Real
   sig log :: Real -> Real
+
+  sig (-) :: Int -> Int -> Int
+
+  sig isZero :: Int -> Boot.Bool
+}
+
+module Prelude {
+  import Boot
+  import Builtins
 }
 
 
@@ -19,6 +32,10 @@ module List :: LIST {
   data List (a :: *) = Nil | Cons a (List a)
 
   sig replicate :: forall (a :: *) . Int -> a -> List a
+  fun replicate j x =
+    case Prelude.isZero j of
+      Boot.True -> Nil
+      Boot.False -> Cons x (replicate (j Prelude.- 1) x)
 }
 
 module type STD_DIST {
@@ -192,9 +209,9 @@ module SeismicEarth :: SEISMIC_EARTH {
   sig absorptivity_parameters :: StdDist.Gaussian_params -- #4
   val absorptivity_parameters = { μ = 2.0, σ² = 1.0 }
 
-  model Earth (module Station :: { type Station :: *
-                                   sig loc :: Station -> R -- [0..1]
-                                  }
+  model Earth (module S :: { type Station :: *
+                             sig loc :: Station -> R -- [0..1]
+                           }
               ) {
     sig λ₀ :: Rp
     val λ₀ ~ StdDist.gamma rate_parameters
@@ -207,7 +224,7 @@ module SeismicEarth :: SEISMIC_EARTH {
     val α₀ ~ let β₀ ~ StdDist.gauss absorptivity_parameters
              in return (β₀ .* β₀)
 
-    type Station = Station.Station
+    type Station = S.Station
 
     type Event =
       { location  :: R -- [0..1]
@@ -224,7 +241,7 @@ module SeismicEarth :: SEISMIC_EARTH {
                           δm ~ StdDist.exponential (Prelude.log 10.0)
                           magnitude = 2.0 .+ δm
                           forall (s :: Station) in
-                            log_amplitude s ~ return (magnitude .- (α₀ .* Prelude.abs (l .- Station.loc s)))
+                            log_amplitude s ~ return (magnitude .- (α₀ .* Prelude.abs (l .- S.loc s)))
                           forall (s :: Station) in
                             detection_probability s ~ return 0.5 -- TODO: fill in with big formula
                         in
@@ -245,7 +262,10 @@ module Seismology = (Seismic :: SEISMOLOGY)
 -- Suppose we have a module that describes a concrete configuration of stations.
 module FiveStations :: STATION {
   enum Station 5
-  sig loc :: Station -> Real
+  module A = assume {
+    sig loc :: Station -> Real
+  }
+  import A
   -- fun loc s = ...
 }
 

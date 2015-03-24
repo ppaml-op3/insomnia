@@ -120,6 +120,7 @@ ppTerm m_ =
      fsep ["return", precParens 2 $ ppTerm m]
    LetSample {} -> nestedLet m_
    LetRec {} -> nestedLet m_
+   Memo m -> infixOp 2 mempty AssocLeft "memo" (ppTerm m)
    Assume t ->
      fsep ["assume", precParens 2 $ ppType t]
    Abort t ->

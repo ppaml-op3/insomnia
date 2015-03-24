@@ -50,8 +50,7 @@ expr e_ =
    Lam bnd ->
      U.lunbind bnd $ \((x, U.unembed -> ann), e) -> do
        (t', _k) <- annot ann
-       withFreshName (U.name2String x) $ \x' ->
-         local (valEnv %~ M.insert x (x', LocalTermVar)) $ do
+       withLocalVar x $ \x' -> do
            m <- expr e
            return $ F.Lam $ U.bind (x', U.embed t') m
    Instantiate e co -> do
@@ -73,6 +72,24 @@ expr e_ =
      U.lunbind bnd $ \(bndings, body) ->
        letBindings bndings $ expr body
 
+withLocalVar :: ToF m
+                => Var
+                -> (F.Var -> m res)
+                -> m res
+withLocalVar x kont =
+  withFreshName (U.name2String x) $ \x' ->
+  local (valEnv %~ M.insert x (x', LocalTermVar)) (kont x')
+
+withLocalVars :: ToF m
+                 => [Var]
+                 -> ([F.Var] -> m res)
+                 -> m res
+withLocalVars [] kont = kont []
+withLocalVars (v:vs) kont =
+  withLocalVar v $ \v' ->
+  withLocalVars vs $ \vs' -> kont (v':vs')
+
+
 letBindings :: ToF m
                => Bindings
                -> m F.Term
@@ -87,10 +104,11 @@ letBinding :: ToF m
 letBinding bnding kont =
   case bnding of
    ValB (x, U.unembed -> ann) (U.unembed -> e) ->
-     letSimple F.Let x ann e kont
+     letSimple F.Let x e kont
    SampleB (x, U.unembed -> ann) (U.unembed -> e) -> 
-     letSimple F.LetSample x ann e kont
-   TabB {} -> throwError "unimplemented ToF.letBinding TabB"
+     letSimple F.LetSample x e kont
+   TabB x (U.unembed -> tabFun) ->
+     letTabFun x tabFun kont
 
 annot :: ToF m
          => Annot -> m (F.Type, F.Kind)
@@ -102,12 +120,10 @@ annot (Annot mt) =
 letSimple :: ToF m
              => (U.Bind (F.Var, Embed F.Term) F.Term -> F.Term)
              -> Var
-             -> Annot
              -> Expr
              -> m F.Term
              -> m F.Term
-letSimple mkLet x ann e kont = do
-  (_ty, _k) <- annot ann
+letSimple mkLet x e kont = do
   m <- expr e
   x' <- U.lfresh (U.s2n $ U.name2String x)
   mbody <- U.avoid [U.AnyName x']
@@ -115,7 +131,69 @@ letSimple mkLet x ann e kont = do
            $ kont
   return $ mkLet $ U.bind (x', U.embed m) mbody
 
+-- forall (i1 :: T1) ... (iN :: TN) in
+--   f j1 ... jM ~ e
+-- where f may occur in e
+--
+-- becomes
+--    let rec f : D(T1×⋯×TM → T) = mem λ(j1, ..., jM) . 〚e〛
+--        f ~ f
+--    in return λj1.⋯λjM.f(j1,…,jM)
+letTabFun :: ToF m
+             => Var
+             -> TabulatedFun
+             -> m F.Term
+             -> m F.Term
+letTabFun v (TabulatedFun bnd) kont =
+  U.lunbind bnd $ \(indices, tabSample) ->
+    withLocalVars (map fst indices) $ \is -> do
+      (tys, _ks) <- liftM unzip $ mapM (annot . U.unembed . snd) indices
+      let its = zip (map fst indices) (zip is tys)
+      withLocalVar v $ \ v' -> do
+        recBindings <- tabulatedSampleRec v' its tabSample
+        let body = F.lams (map (\(x,yz) -> yz) its)
+                   $ F.App (F.V v') (F.tuple $ map F.V is)
+            sampl = F.LetSample $ U.bind (v', U.embed $ F.V v') (F.Return body)
+        k <- kont
+        return $ F.LetSample $ U.bind (v', U.embed $ F.LetRec $ U.bind recBindings sampl) k
 
+--
+-- tabulatedSampleRec "f" (i1:t1) ... (iN:tN) (j1...jM . e)
+-- returns
+--      rec f : t1×⋯×tN→ Dist t'  = mem λj . let j1 = j.#0  ... jM = j.#M-1 in [e]
+tabulatedSampleRec :: ToF m
+                      => F.Var
+                      -> [(Var, (F.Var, F.Type))]
+                      -> TabSample
+                      -> m F.RecBindings
+tabulatedSampleRec _v _is (TabSample _ _ (Annot Nothing)) =
+  throwError "internal error: tabulatedSampleRec called with unannotated tabulated function"
+tabulatedSampleRec v is (TabSample js body (Annot (Just resultTy))) = do
+  (resultTy', _k) <- type' resultTy
+  withFreshName "j" $ \j -> do
+    (projects, tys) <- makeTabIndices is j js
+    body' <- expr body
+    let tCross = F.tupleT tys
+        memType = F.TDist (tCross `F.TArr` resultTy')
+        bodyLets = F.lets projects body'
+        bodyLams = F.Lam $ U.bind (j, U.embed tCross) bodyLets
+        recMem = (v, U.embed memType, U.embed $ F.Memo $  bodyLams)
+    return $ U.rec [recMem]
+
+makeTabIndices :: ToF m
+                  => [(Var, (F.Var, F.Type))]
+                  -> F.Var
+                  -> [TabSelector]
+                  -> m ([(F.Var, F.Term)], [F.Type])
+makeTabIndices is j sels =
+  let subj = F.V j
+      m = M.fromList is
+      findIt (TabIndex s) idx = do
+        case M.lookup s m of
+         Just (v,ty) -> return ((v, F.Proj subj (F.FTuple idx)), ty)
+         Nothing -> throwError ("internal error: makeTabIndices selector not among the index vars")
+  in liftM unzip $ zipWithM findIt sels [0..]
+   
 -- | Given a value constructor, returns the pair (inout, f) where
 -- 'inout' is a term of type '{dataIn : ... ; dataOut : ...}' that
 -- injects or projects the constructor arguments into (out of) the

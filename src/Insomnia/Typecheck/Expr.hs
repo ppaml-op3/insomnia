@@ -199,7 +199,7 @@ checkBinding (TabB y (U.unembed -> tf)) kont =
 
 checkTabulatedFunction :: Var -> TabulatedFun -> (TabulatedFun -> Type -> TC a) -> TC a
 checkTabulatedFunction y (TabulatedFun bnd) kont =
-  U.lunbind bnd $ \(avs, TabSample sels e) -> do
+  U.lunbind bnd $ \(avs, TabSample sels e _) -> do
     -- map each var to a uvar unified with the var's typing annotation
     vts <- forM avs $ \(v, U.unembed -> a) -> do
       tu <- freshUVarT KType
@@ -212,8 +212,9 @@ checkTabulatedFunction y (TabulatedFun bnd) kont =
         return (sels', selTys, e', tdist)
     tsample <- unifyDistT tdist
     let tfun = functionT' selTys tsample
+        ann = Annot $ Just tsample
     extendLocalCtx y tfun
-      $ kont (TabulatedFun $ U.bind avs $ TabSample sels' e') tfun
+      $ kont (TabulatedFun $ U.bind avs $ TabSample sels' e' ann) tfun
 
 inferTabSelector :: TabSelector -> TC (TabSelector, Type)
 inferTabSelector (TabIndex v) = do
@@ -293,6 +294,13 @@ inferExpr e_ = case e_ of
   Return e1 -> do
     (t1, e1') <- inferExpr e1
     return (distT t1, Return e1')
+  Let bnd ->
+    U.lunbind bnd $ \(binds, body) ->
+    checkBindings binds $ \binds' -> do
+      (t_, body') <- inferExpr body
+      when (anyBindings isStochasticBinding binds') $ do
+        void $ unifyDistT t_
+      return (t_, Let $ U.bind binds' body')
   _ -> typeError ("cannot infer type of " <> formatErr e_
                   <> " try adding a type annotation")
 

@@ -112,7 +112,7 @@ data TabulatedFun = TabulatedFun (Bind [AnnVar] TabSample)
                deriving (Show, Typeable, Generic)
 
 -- | the "... x1 x2 ~ e" part of a TabulatedFun
-data TabSample = TabSample ![TabSelector] !Expr
+data TabSample = TabSample ![TabSelector] !Expr !Annot
                  deriving (Show, Typeable, Generic)
 
 -- | The selectors that may appear in the "argument position" of
@@ -297,8 +297,8 @@ instance TraverseExprs TabulatedFun TabulatedFun where
     in (TabulatedFun . bind avs) <$> traverseExprs f ts
 
 instance TraverseExprs TabSample TabSample where
-  traverseExprs f (TabSample sels e) =
-    TabSample sels <$> f e
+  traverseExprs f (TabSample sels e ann) =
+    TabSample sels <$> f e <*> pure ann
 
 instance TraverseTypes Expr Expr where
   traverseTypes _ (e@V {}) = pure e
@@ -359,4 +359,9 @@ instance TraverseTypes TabulatedFun TabulatedFun where
                                               ._2
                                               .iso unembed Embed
                                               . traverseTypes) f avs
-                         <*> pure ts)
+                         <*> traverseTypes f ts)
+
+instance TraverseTypes TabSample TabSample where
+  traverseTypes f (TabSample sels e ann) =
+    TabSample sels e
+    <$> traverseTypes f ann

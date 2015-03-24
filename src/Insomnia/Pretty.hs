@@ -129,7 +129,7 @@ instance Pretty Binding where
 
 ppTabFun :: PM Doc  -> TabulatedFun -> PM Doc
 ppTabFun ppVar (TabulatedFun bnd) =
-  let (avs, TabSample sels e) = UU.unsafeUnbind bnd
+  let (avs, TabSample sels e _ann) = UU.unsafeUnbind bnd
   in
    fsep ["forall" <+> (nesting $ fsep $ map ppAnnVar avs)
         , "in"
@@ -138,7 +138,7 @@ ppTabFun ppVar (TabulatedFun bnd) =
 
 ppShortTabFun :: PM Doc -> TabulatedFun -> PM Doc
 ppShortTabFun ppVar (TabulatedFun bnd) =
-  let (avs, TabSample sels _e) = UU.unsafeUnbind bnd
+  let (avs, TabSample sels _e _ann) = UU.unsafeUnbind bnd
   in
    fsep ["forall" <+> (nesting $ fsep $ map ppAnnVar avs)
         , "in"

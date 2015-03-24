@@ -1,0 +1,22 @@
+module M {
+
+  enum E 2
+
+  module Assumed = assume {
+    sig (+) :: Int -> Int -> Int
+
+    sig c :: E -> Dist Int
+  }
+  import Assumed
+
+  fun f x = let
+    forall (i :: E) (j :: E) in
+      s i j ~ let
+        x ~ c i
+        y ~ c j
+      in
+        return (x + y)
+    in
+      return (s x x)
+
+}

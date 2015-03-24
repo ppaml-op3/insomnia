@@ -35,6 +35,7 @@ fomegaLang = LanguageDef {
                      "λ",
                      "⋆",
                      "pack", "as", "unpack", "in"
+                    , "memo"
                     ]
   , reservedOpNames = ["\\", ":", ",", ".", "=", "*"]
   , caseSensitive = True

@@ -20,6 +20,7 @@ module type PRELUDE {
   parameter sig cond :: forall (d :: *) . Bool -> d -> d -> d
 
   data Proxy (a :: *) = Proxy
+
   parameter sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
   parameter sig flip :: Real -> Dist Bool
 
@@ -77,8 +78,11 @@ module Prelude :: PRELUDE {
 
    data Proxy (a :: *) = Proxy
 
-   parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
-   parameter sig flip :: Real -> Dist Bool
+   module AssumeDist = assume {
+     parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
+     parameter sig flip :: Real -> Dist Bool
+   }
+   import AssumeDist
 
    type H = S.W -> S.S2.T
 

@@ -572,7 +572,7 @@ tabSample :: TabSample -> TA I.TabSample
 tabSample (TabSample selectors e) = do
   selectors' <- traverse tabSelector selectors
   e' <- expr e
-  return $ I.TabSample selectors' e'
+  return $ I.TabSample selectors' e' (I.Annot Nothing)
 
 tabSelector :: TabSelector -> TA I.TabSelector
 tabSelector (TabIndex ident) = return (I.TabIndex $ U.s2n ident)
