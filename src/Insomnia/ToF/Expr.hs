@@ -16,7 +16,6 @@ import Insomnia.TypeDefn
 import Insomnia.Common.Telescope
 
 import qualified FOmega.Syntax as F
-import qualified FOmega.SemanticSig as F
 
 import Insomnia.ToF.Env
 import Insomnia.ToF.Type 
@@ -108,7 +107,9 @@ letBinding bnding kont =
    SampleB (x, U.unembed -> ann) (U.unembed -> e) -> 
      letSimple F.LetSample x e kont
    TabB x (U.unembed -> tabFun) ->
-     letTabFun x tabFun kont
+     letTabFun x tabFun $ \_v' f -> do
+       m <- kont
+       return (f m)
 
 annot :: ToF m
          => Annot -> m (F.Type, F.Kind)
@@ -142,8 +143,8 @@ letSimple mkLet x e kont = do
 letTabFun :: ToF m
              => Var
              -> TabulatedFun
-             -> m F.Term
-             -> m F.Term
+             -> (F.Var -> (F.Term -> F.Term) -> m ans)
+             -> m ans
 letTabFun v (TabulatedFun bnd) kont =
   U.lunbind bnd $ \(indices, tabSample) ->
     withLocalVars (map fst indices) $ \is -> do
@@ -154,8 +155,7 @@ letTabFun v (TabulatedFun bnd) kont =
         let body = F.lams (map (\(x,yz) -> yz) its)
                    $ F.App (F.V v') (F.tuple $ map F.V is)
             sampl = F.LetSample $ U.bind (v', U.embed $ F.V v') (F.Return body)
-        k <- kont
-        return $ F.LetSample $ U.bind (v', U.embed $ F.LetRec $ U.bind recBindings sampl) k
+        kont v' (F.LetSample . U.bind (v', U.embed $ F.LetRec $ U.bind recBindings sampl))
 
 --
 -- tabulatedSampleRec "f" (i1:t1) ... (iN:tN) (j1...jM . e)

@@ -19,4 +19,9 @@ module M {
     in
       return (s x x)
 
+
+  model S {
+    forall (i :: E) in
+      g i ~ c i
+  }
 }

@@ -371,7 +371,10 @@ valueDecl mk f vd kont =
      simpleValueBinding F.Let f v e kont
    ValDecl e -> throwError ("internal error: unexpected ValDecl in ToF.valueDecl;"
                       ++" Insomnia typechecker should have converted into a SampleDecl or a ParameterDecl")
-   TabulatedSampleDecl tabfun -> throwError "unimplemented ToF.valueDecl TabulatedSampelDecl"
+   TabulatedSampleDecl tabfun -> do
+     when (mk /= ModelMK) $
+       throwError "internal error: ToF.valueDecl TabulatedSampleDecl in a module"
+     tabledSampleDecl f v tabfun kont
    
 simpleValueBinding :: ToF m
                       => (U.Bind (F.Var, U.Embed F.Term) F.Term -> F.Term)
@@ -395,6 +398,23 @@ simpleValueBinding mkValueBinding f v e kont = do
                [(F.FUser f, F.V xv)],
                Endo mhole)
   kont thisOne
+
+tabledSampleDecl :: ToF m
+                    => Field
+                    -> Var
+                    -> TabulatedFun
+                    -> (ModSummary -> m ans)
+                    -> m ans
+tabledSampleDecl f v tf kont = do
+  (v', mhole) <- letTabFun v tf (\v' mhole -> return (v', mhole))
+  let
+    mval = F.Let . U.bind (v', U.embed $ F.valSemTerm $ F.V v')
+    thisOne = (mempty,
+               [(F.FUser f, F.V v')],
+               Endo mhole <> Endo mval)
+  kont thisOne
+
+
 
 generalize :: (U.Alpha a, ToF m) =>
               Generalization a -> ([(F.TyVar, F.Kind)] -> PrenexCoercion -> a -> m r) -> m r
