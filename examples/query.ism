@@ -1,0 +1,5 @@
+model M {
+  val x = 1
+}
+
+query sample M 10

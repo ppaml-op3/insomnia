@@ -21,12 +21,14 @@ import Insomnia.Common.Literal
 import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
 import Insomnia.Common.Telescope
+import Insomnia.Common.SampleParameters
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr
 import Insomnia.TypeDefn
 import Insomnia.Module
 import Insomnia.ModuleType
+import Insomnia.Query
 import Insomnia.Toplevel
 import Insomnia.Unify
 
@@ -433,6 +435,8 @@ instance Pretty ToplevelItem where
   pp (ToplevelModule identifier mdl) = ppModule (pp identifier) mdl
   pp (ToplevelModuleType identifier moduleType) =
     fsep ["module", "type", pp identifier, pp moduleType]
+  pp (ToplevelQuery qe) =
+    fsep ["query", pp qe]
 
 instance Pretty ModuleExpr where
   pp (ModuleStruct mdl) = "module" <+> pp mdl
@@ -477,8 +481,6 @@ instance Pretty WhereClause where
     let (_, p) = UU.unsafeUnbind bnd
     in fsep ["type", ppTypePathNoRoot p, indent "=" (pp rhs)]
 
-
-
 instance Pretty ModuleTypeNF where
   pp (SigMTNF sigv) = pp sigv
   pp (FunMTNF bnd) =
@@ -510,7 +512,11 @@ instance Pretty Signature where
     let ((mId, U.unembed -> mTy), sig) = UU.unsafeUnbind bnd
     in fsep ["module", pp mId, indent coloncolon (pp mTy)]
        $$ pp sig
-        
+
+instance Pretty QueryExpr where
+  pp (GenSamplesQE p params) =
+    fsep ["sample", pp p, pp (params^.numSamplesParameter)]
+
 instance Pretty (UVar w a) where
   pp = text . show
 

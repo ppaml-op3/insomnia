@@ -31,6 +31,7 @@ import Data.Format (Format(..), WrapShow(..))
 import Insomnia.Common.Literal
 import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
+import Insomnia.Common.SampleParameters
 import Insomnia.SurfaceSyntax.Syntax
 import Insomnia.SurfaceSyntax.FixityParser (Fixity(..), Assoc(..))
 
@@ -58,6 +59,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , reservedNames = ["model", "module", "local", "import",
+                     "query",
                      "where",
                      "forall", "∀",
                      "⋆", "∷",
@@ -208,6 +210,7 @@ toplevelItem :: Parser ToplevelItem
 toplevelItem =
   (toplevelModule <?> "toplevel module or model definition")
   <|> (toplevelModuleType <?> "toplevel module or model type definition")
+  <|> (toplevelQuery <?> "toplevel query expression")
 
 toplevelModule :: Parser ToplevelItem
 toplevelModule =
@@ -255,6 +258,20 @@ toplevelModuleType =
     mkToplevelModuleType (modK, ident) (Right sig) =
       ToplevelModuleType modK ident (SigMT sig)
 
+toplevelQuery :: Parser ToplevelItem
+toplevelQuery =
+  ToplevelQuery <$ reserved "query" <*> queryExpr
+
+queryExpr :: Parser QueryExpr
+queryExpr =
+  mkGenSamplesQE <$ sampleKW <*> modelId <*> natural
+  where
+    sampleKW = 
+      (try (identifier >>= guard . (== "sample"))) <?> "sample keyword"
+    mkGenSamplesQE p n =
+      GenSamplesQE p (SampleParameters (fromInteger n) useDefault)
+
+  
 signature :: Parser Signature
 signature =
   Sig <$> localIndentation Ge (many $ absoluteIndentation sigDecl)

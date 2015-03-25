@@ -33,6 +33,7 @@ newtype Got a = Got { unGot :: a }
 data OmegaErr =
   TypeAppArgKindMismatch !Type !(Expected Kind) !Type !(Got Kind)
   | TypeAppNotArr !Type !(Got Kind)
+  | FixptTypeBodyKindMismatch !(Expected Kind) !(Got Kind)
   | ExpectedKType !Type !(Got Kind)
   | UnboundTypeVariable !TyVar
   | UnboundVariable !Var
@@ -94,6 +95,12 @@ inferK t_ =
       KArr karg' kres | karg == karg' -> return kres
                       | otherwise -> throwError (TypeAppArgKindMismatch tfn (Expected karg') targ (Got karg))
       KType -> throwError (TypeAppNotArr tfn (Got KType))
+   TFix bnd ->
+     U.lunbind bnd $ \((v, U.unembed -> k), tbody) -> do
+       kbody <- extendEnv (CType v k) $ inferK tbody
+       when (kbody /= k) $
+         throwError (FixptTypeBodyKindMismatch (Expected k) (Got kbody))
+       return k
    TForall bnd ->
      U.lunbind bnd $ \((v, U.unembed -> k), tbody) -> do
        kbody <- extendEnv (CType v k) $ inferK tbody
@@ -181,18 +188,7 @@ inferTy m_ =
      _bodyNorm <- tyEquiv (Expected t) (Got t') KType
      return $ TExist ep
    Unpack bnd ->
-     U.lunbind bnd $ \((tv, xv, U.unembed -> m), mbody) -> do
-       t <- inferTy m
-       tN <- whnfTy t KType
-       case tN of
-        TExist ep ->
-          U.lunbind ep $ \((tv', U.unembed -> k), tx_) -> do
-            let tx = U.subst tv' (TV tv) tx_
-            tbody <- extendEnv (CType tv k) $ extendEnv (CVal xv tx) $ inferTy mbody
-            (inferK tbody >>= expectKType tbody)
-              `mplus` (throwError $ UnpackBodyMentionsVar tbody tv (Got tN))
-            return tbody
-        _ -> throwError $ UnpackNotExist (Got tN)
+     checkUnpack inferTy bnd 
    Record fms -> do
      fts <- forM fms $ \(f, m) -> do
        t <- inferTy m
@@ -272,7 +268,39 @@ inferTy m_ =
            return $ TDist (tDom `TArr` tans)
          _ -> throwError $ MemoResultNotDist (Got tCod)
       _ -> throwError $ MemoizeNonFunction (Got t)
-           
+
+inferCmdTy :: MonadTC m => Command -> m Type
+inferCmdTy c_ =
+  case c_ of
+   LetC bnd ->
+     U.lunbind bnd $ \((x, U.unembed -> m), c) -> do
+       t <- inferTy m
+       extendEnv (CVal x t) $ inferCmdTy c
+   UnpackC bnd ->
+     checkUnpack inferCmdTy bnd
+   BindC bnd ->
+     U.lunbind bnd $ \((x, U.unembed -> c1), c2) -> do
+       t' <- inferCmdTy c1
+       extendEnv (CVal x t') $ inferCmdTy c2
+   ReturnC m -> 
+     inferTy m
+   EffectC pc m -> inferPrimitiveCommandTy pc m
+
+inferPrimitiveCommandTy :: MonadTC m
+                           => PrimitiveCommand
+                           -> Term
+                           -> m Type
+inferPrimitiveCommandTy pc m =
+  case pc of
+   SamplePC _params -> do
+     t <- inferTy m
+     tN <- whnfTy t KType
+     case tN of
+      TDist t' -> return $ listT `TApp` t'
+      _ -> throwError $ SampleFromNonDist (Got t)
+   PrintPC -> do
+     _t <- inferTy m
+     return $ unitT
    
 instExistPack :: MonadTC m => Type -> Kind -> ExistPack -> m Type
 instExistPack t k bnd =
@@ -280,6 +308,25 @@ instExistPack t k bnd =
     unless (k == k') $
       throwError $ ExistentialKindMismatch (Expected k') (Got t) (Got k)
     return $ U.subst v t tbody
+
+checkUnpack :: (MonadTC m, U.Alpha a)
+               => (a -> m Type)
+               -> (U.Bind (TyVar, Var, U.Embed Term) a)
+               -> m Type
+checkUnpack inferBody bnd =
+  U.lunbind bnd $ \((tv, xv, U.unembed -> m), body) -> do
+    t <- inferTy m
+    tN <- whnfTy t KType
+    case tN of
+     TExist ep ->
+       U.lunbind ep $ \((tv', U.unembed -> k), tx_) -> do
+         let tx = U.subst tv' (TV tv) tx_
+         tbody <- extendEnv (CType tv k) $ extendEnv (CVal xv tx) $ inferBody body
+         (inferK tbody >>= expectKType tbody)
+           `mplus` (throwError $ UnpackBodyMentionsVar tbody tv (Got tN))
+         return tbody
+     _ -> throwError $ UnpackNotExist (Got tN)
+
 
 -- | checks that the pattern of the given clause matches one of fields
 -- in the list, and returns the type of the body of the clause.

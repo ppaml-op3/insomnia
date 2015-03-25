@@ -5,6 +5,7 @@ module Insomnia.Toplevel where
 import Insomnia.Identifier
 import Insomnia.ModuleType
 import Insomnia.Module
+import Insomnia.Query
 
 -- | A toplevel contains a list of toplevel items.
 --
@@ -18,4 +19,5 @@ newtype Toplevel = Toplevel [ToplevelItem]
 data ToplevelItem =
   ToplevelModule Identifier ModuleExpr
   | ToplevelModuleType SigIdentifier ModuleType
+  | ToplevelQuery QueryExpr
     deriving Show

@@ -5,6 +5,7 @@ import Data.Monoid ((<>))
 import Insomnia.Common.Literal
 import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
+import Insomnia.Common.SampleParameters
 import Insomnia.SurfaceSyntax.FixityParser (Fixity)
 
 type Ident = String
@@ -35,7 +36,12 @@ data Toplevel = Toplevel ![ToplevelItem]
 data ToplevelItem =
   ToplevelModule !ModuleKind !Ident !(Maybe ModuleType) !ModuleExpr
   | ToplevelModuleType !ModuleKind !Ident !ModuleType
+  | ToplevelQuery !QueryExpr
     deriving (Show)
+
+data QueryExpr =
+  GenSamplesQE !QualifiedIdent !SampleParameters
+  deriving (Show)
 
 data ModuleExpr =
   ModuleStruct !Module

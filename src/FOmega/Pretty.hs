@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
 module FOmega.Pretty where
 
+import Control.Lens
 import Data.Monoid (Monoid(..), (<>))
 
 import Text.PrettyPrint (Doc)
@@ -9,6 +10,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Pretty
+import Insomnia.Common.SampleParameters
 
 import {-# SOURCE #-} FOmega.Syntax
 
@@ -21,6 +23,15 @@ ppField FDataIn = "dataIn"
 ppField (FCon s) = "con" <+> text s
 ppField (FTuple i) = "#" <> int i
 ppField (FUser s) = text s
+
+ppCommand :: Command -> PM Doc
+ppCommand c_ =
+  case c_ of
+   ReturnC m -> ppReturn m
+   EffectC pc m -> ppPrimitiveCommand pc m
+   LetC {} -> nestedLetCommand c_
+   UnpackC {} -> nestedLetCommand c_
+   BindC {} -> nestedLetCommand c_
 
 ppKind :: Kind -> PM Doc
 ppKind KType = onUnicode "⋆" "*"
@@ -36,6 +47,11 @@ ppType t_ =
      let ((tv, U.unembed -> k), body) = UU.unsafeUnbind bnd
      in precParens 1
         $ fsep [lambda, pp tv, coloncolon, ppKind k,
+                indent "." (withPrec 0 AssocNone $ Left $ ppType body)]
+   TFix bnd ->
+     let ((tv, U.unembed -> k), body) = UU.unsafeUnbind bnd
+     in precParens 1
+        $ fsep [onUnicode "μ" "fix", pp tv, coloncolon, ppKind k,
                 indent "." (withPrec 0 AssocNone $ Left $ ppType body)]
    TForall bnd ->
      let ((tv, U.unembed -> k), body) = UU.unsafeUnbind bnd
@@ -116,8 +132,8 @@ ppTerm m_ =
      $ fsep ["case", pp m, "of",
              braces $ sep $ prePunctuate ";" (map ppClause clauses
                                               ++ ppDefaultClause optDefault)]
-   Return m ->
-     fsep ["return", precParens 2 $ ppTerm m]
+   Return m -> ppReturn m
+     
    LetSample {} -> nestedLet m_
    LetRec {} -> nestedLet m_
    Memo m -> infixOp 2 mempty AssocLeft "memo" (ppTerm m)
@@ -126,40 +142,72 @@ ppTerm m_ =
    Abort t ->
      fsep ["abort", precParens 2 $ ppType t]
 
+ppReturn :: Term -> PM Doc
+ppReturn m = fsep ["return", precParens 2 $ ppTerm m]
+
 nestedLet :: Term -> PM Doc
-nestedLet m_ =
+nestedLet = nestedLet' nestedLetBinding
+
+nestedLetCommand :: Command -> PM Doc
+nestedLetCommand = nestedLet' nestedCommand
+
+nestedLet' :: (a -> Either (PM Doc) ([PM Doc], a)) -> a -> PM Doc
+nestedLet' deconstructBinding =
   let
-    (docs, body) = nestedLetBinding m_
-  in precParens 1
+    go m_ = case deconstructBinding m_ of
+      Left pbody -> (mempty, pbody)
+      Right (docs, m) -> 
+        let (docs', body) = go m
+        in (docs <> docs', body)
+  in \m_ -> let
+    (docs, body) = go m_
+    in
+     precParens 1
      $ fsep ["let",
              indent "" (sep docs),
-             "in" <+> (withLowestPrec $ ppTerm body)]
+             "in" <+> (withLowestPrec body)]
 
-nestedLetBinding :: Term -> ([PM Doc], Term)
+nestedCommand :: Command -> Either (PM Doc) ([PM Doc], Command)
+nestedCommand c_ =
+  case c_ of
+   LetC bnd ->
+     let ((v, U.unembed -> m), body) = UU.unsafeUnbind bnd
+         doc = fsep [pp v, indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m)]
+     in 
+      Right ([doc], body)
+   UnpackC bnd ->
+     let ((tv, xv, U.unembed -> m), body) = UU.unsafeUnbind bnd
+         doc = fsep ["unpack", pp tv, ",", pp xv,
+                     indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m)]
+     in Right ([doc], body)
+   BindC bnd ->
+     let ((v, U.unembed -> c), body) = UU.unsafeUnbind bnd
+         doc = fsep [pp v, indent "←" (withPrec 2 AssocNone $ Left $ ppCommand c)]
+     in
+      Right ([doc], body)
+   _ -> Left (ppCommand c_)
+   
+nestedLetBinding :: Term -> Either (PM Doc) ([PM Doc], Term)
 nestedLetBinding m_ =
   case m_ of
    Unpack bnd ->
      let ((tv, xv, U.unembed -> m), body) = UU.unsafeUnbind bnd
          doc = fsep ["unpack", pp tv, ",", pp xv,
                      indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m)]
-         (docs,last) = nestedLetBinding body
-     in (doc:docs, last)
+     in Right ([doc], body)
    Let bnd ->
      let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
          doc = fsep [pp x, indent "=" (withPrec 2 AssocNone $ Left $ ppTerm m1)]
-         (docs,last) = nestedLetBinding m2
-     in (doc:docs, last)
+     in Right ([doc], m2)
    LetSample bnd ->
      let ((x, U.unembed -> m1), m2) = UU.unsafeUnbind bnd
          doc = fsep [pp x, indent "~" (withPrec 2 AssocNone $ Left $ ppTerm m1)]
-         (docs,last) = nestedLetBinding m2
-     in (doc:docs, last)
+     in Right ([doc], m2)
    LetRec bnd ->
      let (U.unrec -> constituents, body) = UU.unsafeUnbind bnd
          docs1 = map ppRec constituents
-         (docs, last) = nestedLetBinding body
-     in (docs1 ++ docs, last)
-   for -> (mempty, m_)
+     in Right (docs1, body)
+   _ -> Left (ppTerm m_)
 
 ppRec :: (Var, U.Embed Type, U.Embed Term) -> PM Doc
 ppRec (f, U.unembed -> ty, U.unembed -> m) =
@@ -182,3 +230,11 @@ ppExistPack bnd =
   let ((tv, U.unembed -> k), t) = UU.unsafeUnbind bnd
   in fsep [ pp tv, coloncolon, ppKind k,
             indent "." (ppType t) ]
+
+ppPrimitiveCommand :: PrimitiveCommand -> Term -> PM Doc
+ppPrimitiveCommand (SamplePC params) m =
+  fsep ["query", "sample"
+       , withPrec 2 AssocNone $ Left $ ppTerm m
+       , pp (params^.numSamplesParameter)]
+ppPrimitiveCommand PrintPC m =
+  fsep ["print", withPrec 2 AssocNone $ Left $ ppTerm m]

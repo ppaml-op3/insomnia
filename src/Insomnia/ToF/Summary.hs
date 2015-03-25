@@ -52,4 +52,5 @@ type SigSummary = ExposedAbstractSig F.Field
 -- construction-time.)
 --
 -- Note that this type is also a Monoid. So we can build up ModSummary values incrementally
-type ModSummary = (SigSummary, [(F.Field, F.Term)], Endo F.Term)
+type ModSummary' a = (SigSummary, [(F.Field, F.Term)], Endo a)
+type ModSummary = ModSummary' F.Term

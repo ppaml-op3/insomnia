@@ -46,6 +46,7 @@ library
                        Insomnia.Common.Literal
                        Insomnia.Common.Stochasticity
                        Insomnia.Common.ModuleKind
+                       Insomnia.Common.SampleParameters
                        Insomnia.Common.FreshName
                        Insomnia.Common.Telescope
                        --
@@ -59,6 +60,7 @@ library
                        --
                        Insomnia.Module
                        --
+                       Insomnia.Query
                        Insomnia.Toplevel
                        --
                        Insomnia.IReturn
@@ -93,6 +95,7 @@ library
                        Insomnia.Typecheck.NaturalSignature
                        Insomnia.Typecheck.FunctorApplication
                        Insomnia.Typecheck.Module
+                       Insomnia.Typecheck.Query
                        Insomnia.Typecheck.Toplevel
                        Insomnia.Typecheck
                        --
@@ -113,6 +116,7 @@ library
                        Insomnia.ToF.Expr
                        Insomnia.ToF.ModuleType
                        Insomnia.ToF.Module
+                       Insomnia.ToF.Query
                        Insomnia.ToF.Toplevel
                        Insomnia.ToF
                        --

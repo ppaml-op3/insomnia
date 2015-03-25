@@ -1,13 +1,16 @@
-{-# LANGUAGE DeriveDataTypeable, DeriveGeneric, MultiParamTypeClasses #-}
+{-# LANGUAGE DeriveDataTypeable, DeriveGeneric,
+      MultiParamTypeClasses, FlexibleInstances
+  #-}
 module FOmega.Syntax where
 
 import Data.Typeable (Typeable)
 import GHC.Generics (Generic)
 
 import Insomnia.Common.Literal
+import Insomnia.Common.SampleParameters
 
 import Unbound.Generics.LocallyNameless
-import {-# SOURCE #-} FOmega.Pretty (ppType, ppTerm, ppKind)
+import {-# SOURCE #-} FOmega.Pretty (ppType, ppTerm, ppKind, ppCommand)
 import Insomnia.Pretty (Pretty(..))
 
 -- | There will be some stylized records that have predefined field
@@ -40,11 +43,13 @@ data Type =
   | TLam !(Bind (TyVar, Embed Kind) Type)
   | TApp !Type !Type
   | TForall !(Bind (TyVar, Embed Kind) Type)
+  | TFix !(Bind (TyVar, Embed Kind) Type)
   | TExist !ExistPack
   | TRecord ![(Field, Type)] -- TRecord [] is the unit type
   | TSum ![(Field, Type)] -- TSum [] is the void type
   | TArr !Type !Type
-  | TDist !Type
+  | TDist !Type -- probability distribution monad
+                        
   deriving (Show, Typeable, Generic)
 
 type ExistPack = Bind (TyVar, Embed Kind) Type
@@ -73,6 +78,19 @@ data Term =
   | Abort !Type
   deriving (Show, Typeable, Generic)
 
+data Command =
+  LetC !(Bind (Var, Embed Term) Command)
+  | UnpackC !(Bind (TyVar, Var, Embed Term) Command)
+  | BindC !(Bind (Var, Embed Command) Command)
+  | ReturnC !Term
+  | EffectC !PrimitiveCommand !Term
+  deriving (Show, Typeable, Generic)
+
+data PrimitiveCommand =
+  SamplePC SampleParameters
+  | PrintPC 
+  deriving (Show, Typeable, Generic)
+
 infixl 6 `Proj` 
 
 data Clause = Clause !(Bind (Embed Field, Var) Term)
@@ -89,6 +107,8 @@ instance Alpha Kind
 instance Alpha Type
 instance Alpha Term
 instance Alpha Clause
+instance Alpha Command
+instance Alpha PrimitiveCommand
 
 instance Subst Type Type where
   isvar (TV a) = Just (SubstName a)
@@ -101,6 +121,17 @@ instance Subst Type Kind where
 instance Subst Type Field where
   subst _ _ = id
   substs _ = id
+
+instance Subst Type Literal where
+  subst _ _ = id
+  substs _ = id
+
+instance Subst Type Clause
+
+instance Subst Type Term
+
+instance Subst Type Command
+
 
 instance Subst Term Term where
   isvar (V a) = Just (SubstName a)
@@ -124,11 +155,18 @@ instance Subst Term Literal where
   subst _ _ = id
   substs _ = id
 
+instance Subst Term Command
+
+instance Subst b PrimitiveCommand where
+  subst _ _ = id
+  substs _ = id
+
 -- * Pretty printing
 
 instance Pretty Kind where pp = ppKind
 instance Pretty Type where pp = ppType
 instance Pretty Term where pp = ppTerm
+instance Pretty Command where pp = ppCommand
 
 -- * Utilities
 
@@ -231,6 +269,14 @@ unpacksM (tv:tvs) x = do
   rest <- avoid [AnyName x1] (unpacksM tvs x)
   return $ \e1 -> Unpack . bind (tv, x1, embed e1) . rest (V x1)
 
+unpacksCM :: LFresh m => [TyVar] -> Var -> m (Term -> Command -> Command)
+unpacksCM [] x = return $ \e1 cbody -> LetC $ bind (x, embed e1) cbody
+unpacksCM (tv:tvs) x = do
+  x1 <- lfresh x
+  rest <- avoid [AnyName x1] (unpacksCM tvs x)
+  return $ \e1 -> UnpackC . bind (tv, x1, embed e1) . rest (V x1)
+
+
 unpacks :: LFresh m => [TyVar] -> Var -> Term -> Term -> m Term
 unpacks tvs x e1 ebody = do
   rest <- unpacksM tvs x
@@ -255,6 +301,22 @@ unitVal = Record []
 
 voidT :: Type
 voidT = TSum []
+
+-- μ (δ : ⋆→⋆) . λ (α : ⋆) . { Nil : {} | Cons : { #0 : α; #1 : δ α } }
+listT :: Type
+listT =
+  let
+    vd = s2n "δ"
+    va = s2n "α"
+    d = TV vd
+    a = TV va
+
+    body = TSum [(FUser "Nil", unitT)
+                , (FUser "Cons", tupleT [a, d `TApp` a])]
+
+    l = TLam $ bind (va, embed KType) body
+  in
+   TFix $ bind (vd, embed (KType `KArr` KType)) l
 
 
 -- | λ _ : ()  . abort T

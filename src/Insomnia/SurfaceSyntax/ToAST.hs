@@ -29,6 +29,7 @@ import qualified Insomnia.Types       as I
 import qualified Insomnia.TypeDefn    as I
 import qualified Insomnia.ModuleType  as I
 import qualified Insomnia.Module      as I
+import qualified Insomnia.Query       as I
 import qualified Insomnia.Toplevel    as I
 
 import Insomnia.SurfaceSyntax.Syntax
@@ -138,6 +139,8 @@ toplevelItem (ToplevelModuleType modK ident mt) =
   I.ToplevelModuleType
   <$> sigIdentifier ident
   <*> local (currentModuleKind .~ modK) (moduleType mt)
+toplevelItem (ToplevelQuery qe) =
+  I.ToplevelQuery <$> queryExpr qe
 
 modIdentifier :: Ident -> TA I.Identifier
 modIdentifier s = return $ U.s2n s
@@ -396,6 +399,11 @@ valueDecl (SampleDecl e) = I.SampleDecl <$> expr e
 valueDecl (SigDecl mstoch ty) = do
   stoch <- contextualStochasticity mstoch
   I.SigDecl stoch <$> type' ty
+
+queryExpr :: QueryExpr -> TA I.QueryExpr
+queryExpr (GenSamplesQE qid params) =
+  return $ I.GenSamplesQE (qualifiedIdPath qid) params
+
 
 annot :: Maybe Type -> TA I.Annot
 annot Nothing = return $ I.Annot Nothing

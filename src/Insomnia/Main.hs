@@ -106,7 +106,7 @@ checking = Stage {
   , formatStage = F.format . ppDefault
   }
 
-toFOmega :: Stage Toplevel FOmega.Term
+toFOmega :: Stage Toplevel FOmega.Command
 toFOmega = Stage {
   bannerStage = "Convert to FΩ"
   , performStage = \pgm ->
@@ -115,11 +115,11 @@ toFOmega = Stage {
   , formatStage = F.format . ppDefault
 }
 
-checkFOmega :: Stage FOmega.Term FOmega.Term
+checkFOmega :: Stage FOmega.Command FOmega.Command
 checkFOmega = Stage {
   bannerStage = "Typechecking FΩ"
   , performStage = \m -> do
-    mty <- FCheck.runTC (FCheck.inferTy m)
+    mty <- FCheck.runTC (FCheck.inferCmdTy m)
     case mty of
       Left err -> showErrorAndDie "typechecking FOmega" (show err)
       Right ty -> do

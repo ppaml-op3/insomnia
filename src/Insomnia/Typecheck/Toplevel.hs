@@ -11,6 +11,7 @@ import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.ModuleType (checkModuleType)
 import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtxNF)
 import Insomnia.Typecheck.Module (inferModuleExpr)
+import Insomnia.Typecheck.Query (checkQueryExpr)
 
 checkToplevel :: Toplevel -> TC Toplevel
 checkToplevel (Toplevel items_) =
@@ -40,5 +41,7 @@ checkToplevelItem item kont =
                                 <> formatErr modTypeIdent)
       extendModuleTypeCtx modTypeIdent sigV
         $ kont $ ToplevelModuleType modTypeIdent modType'
-        
+    ToplevelQuery qe -> do
+      qe' <- checkQueryExpr qe
+      kont (ToplevelQuery qe')
 
