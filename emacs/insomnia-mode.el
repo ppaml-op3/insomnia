@@ -20,7 +20,19 @@
 (unless (fboundp 'insomnia-mode)
   (define-generic-mode 'insomnia-mode
     '(("--" . nil))
-    '("module" "model" "type" "sig" "fun" "val" "let" "in" "end" "forall" "∀" "infix" "infixl" "infixr" "import" "local" "data" "enum" "parameter" "random" "return" "case" "of" "assume")
+    '("module" "model"
+      "query"
+      "type" "sig" "where"
+      "fun" "val"
+      "let" "in" "end"
+      "forall" "∀"
+      "infix" "infixl" "infixr"
+      "import" "local"
+      "data" "enum"
+      "parameter" "random"
+      "return"
+      "case" "of"
+      "assume")
     
     '(("\\_<[[:upper:]]\\(\\s_\\|[[:upper:]]\\)+\\_>" . 'font-lock-constant-face) ;; module types
       ("\\_<[[:upper:]]\\(\\s_\\|\sw\\)+\\_>" . 'font-lock-type-face)
