@@ -155,7 +155,7 @@ caseConstruct ysubj vc (InstantiationSynthesisCoercion _ tyargs _) fys successTm
                  appdD = (F.TV d) `F.tApps` tyArgs'
              in F.TLam $ U.bind (d, U.embed kD) appdD
       subject = F.App (F.PApp dtOut here) (F.V ysubj)
-      clause = F.Clause $ U.bind (U.embed f, z) (projectFields fys z successTm)
+      clause = F.Clause f $ U.bind z (projectFields fys z successTm)
     return $ F.Case subject [clause] (Just failContTm)
 
 

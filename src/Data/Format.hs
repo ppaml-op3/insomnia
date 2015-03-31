@@ -8,6 +8,8 @@ module Data.Format
        , docToString
        , putStrDoc
        , hPutStrDoc
+       , putStrLnDoc
+       , hPutStrLnDoc
        , WrapShow(..)
        ) where
 
@@ -99,9 +101,17 @@ docToString = T.unpack . docToText
 putStrDoc :: Doc -> IO ()
 putStrDoc = hPutStrDoc IO.stdout
 
+-- | display the given 'Doc' on 'IO.stdout'
+putStrLnDoc :: Doc -> IO ()
+putStrLnDoc = hPutStrLnDoc IO.stdout
+
 -- | display the given 'Doc' on the given 'IO.Handle'
 hPutStrDoc :: IO.Handle -> Doc -> IO ()
 hPutStrDoc h = T.hPutStr h . docToText
+
+-- | display the given 'Doc' on the given 'IO.Handle'
+hPutStrLnDoc :: IO.Handle -> Doc -> IO ()
+hPutStrLnDoc h = T.hPutStrLn h . docToText
 
 renderDoc :: PP.Doc -> Doc
 renderDoc = renderDoc' PP.style { PP.lineLength = 78 }

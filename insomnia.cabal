@@ -120,6 +120,9 @@ library
                        Insomnia.ToF.Toplevel
                        Insomnia.ToF
                        --
+                       FOmega.Value
+                       FOmega.Eval
+                       --
                        Insomnia.Interp.Lam
                        Insomnia.Interp.Eval
                        Insomnia.Interp.PMonad

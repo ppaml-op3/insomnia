@@ -21,6 +21,7 @@ import qualified Insomnia.IReturn as IReturn
 import qualified Insomnia.ToF as ToF
 import qualified FOmega.Syntax as FOmega
 import qualified FOmega.Check as FCheck
+import qualified FOmega.Eval as FOmega
 
 main :: IO ()
 main = do
@@ -34,6 +35,7 @@ type InsomniaMain a = ReaderT InsomniaMainConfig IO a
 data InsomniaMainConfig = InsomniaMainConfig {
   ismCfgDebugOut :: IO.Handle -- ^ handle to use for debug output
   , ismCfgErrorOut :: IO.Handle -- ^ handle to use for error output
+  , ismCfgEvaluateFOmega :: Bool -- ^ if True, run the FOmega code, ow just typecheck it.
   }
 
 runInsomniaMain :: InsomniaMain a -> InsomniaMainConfig -> IO a
@@ -43,6 +45,7 @@ defaultConfig :: InsomniaMainConfig
 defaultConfig = InsomniaMainConfig {
   ismCfgDebugOut = IO.stdout
   , ismCfgErrorOut = IO.stderr
+  , ismCfgEvaluateFOmega = True
   }
 
 data Command =
@@ -68,6 +71,7 @@ parseAndCheck fp =
   ->->- checking
   ->->- toFOmega
   ->->- checkFOmega
+  ->->- conditionalStage (asks ismCfgEvaluateFOmega) runFOmega
   ->->- compilerDone
 
 parsing :: Stage FilePath Toplevel
@@ -130,6 +134,19 @@ checkFOmega = Stage {
   , formatStage = const mempty
   }
 
+runFOmega :: Stage FOmega.Command FOmega.Command
+runFOmega = Stage {
+  bannerStage = "Running FΩ"
+  , performStage = \m -> do
+    mv <- FOmega.runEvalCommand m
+    case mv of
+     Left err -> showErrorAndDie "running FOmega" (show err)
+     Right v -> do
+       putDebugDoc (F.format $ ppDefault v)
+    return m
+  , formatStage = const mempty
+  }
+
 data Stage a b = Stage { bannerStage :: F.Doc 
                        , performStage :: a -> InsomniaMain b
                        , formatStage :: b -> F.Doc }
@@ -158,6 +175,20 @@ startingFrom :: a -> Stage a () -> InsomniaMain ()
 startingFrom a stages = do
   putDebugDoc (bannerStage stages <> F.newline)
   performStage stages a
+
+conditionalStage :: InsomniaMain Bool -> Stage a a -> Stage a a
+conditionalStage shouldRun stage =
+  Stage { bannerStage = bannerStage stage
+        , performStage = \inp -> do
+          b <- shouldRun
+          case b of
+           True -> performStage stage inp
+           False -> do
+             putErrorDoc ("SKIPPED " <> bannerStage stage)
+             return inp
+        , formatStage = formatStage stage
+        }
+            
 
 showErrorAndDie :: (Format err) => String -> err -> InsomniaMain a
 showErrorAndDie phase msg = do

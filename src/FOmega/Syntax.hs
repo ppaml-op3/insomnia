@@ -75,6 +75,8 @@ data Term =
   | Assume !Type
   | Inj !Field !Term !Type
   | Case !Term ![Clause] !(Maybe Term)
+  | Roll !Type !Term !(Bind TyVar Type) -- roll μ..., m as δ.T
+  | Unroll !Type !Term !(Bind TyVar Type) -- unroll μ..., m as δ.T
   | Abort !Type
   deriving (Show, Typeable, Generic)
 
@@ -93,7 +95,7 @@ data PrimitiveCommand =
 
 infixl 6 `Proj` 
 
-data Clause = Clause !(Bind (Embed Field, Var) Term)
+data Clause = Clause !Field !(Bind Var Term)
             deriving (Show, Typeable, Generic)
 
 -- terms should be values
@@ -302,6 +304,17 @@ unitVal = Record []
 voidT :: Type
 voidT = TSum []
 
+-- | λε:⋆. { Nil : {} | Cons : { #0 : τ; #1 : (listT τ) } }
+listSumT :: Type
+listSumT  =
+  let
+    ve = s2n "ε"
+    e = TV ve
+  in
+   TLam $ bind (ve, embed KType)
+   $ TSum [(FUser "Nil", unitT)
+          , (FUser "Cons", tupleT [e, listT `TApp` e])]
+
 -- μ (δ : ⋆→⋆) . λ (α : ⋆) . { Nil : {} | Cons : { #0 : α; #1 : δ α } }
 listT :: Type
 listT =
@@ -323,3 +336,34 @@ listT =
 abortThunk :: Type -> Term
 abortThunk = Lam . bind (s2n "_abort", embed unitT) . Abort
 
+-- | construct: Λε:⋆ . roll (listT ε) (Inj Nil [] (listSumT ε)) as α.(α ε)
+nilListVal :: Term
+nilListVal =
+  let
+    ve = s2n "ε"
+    va = s2n "α"
+    e = TV ve
+    a = TV va
+    inj = Inj (FUser "Nil") unitVal (listSumT `TApp` e)
+    ctx = bind va (a `TApp` e)
+  in PLam $ bind (ve, embed KType)
+     $ Roll (listT `TApp` e) inj ctx
+
+-- | construct: Λ ε:⋆. λ p : (ε, listT ε) . roll (listT ε) (Inj Cons p (listSumT ε)) as α.(α ε)
+consListVal :: Term
+consListVal =
+  let
+    ve = s2n "ε"
+    va = s2n "α"
+    vp = s2n "p"
+    e = TV ve
+    a = TV va
+    p = V vp
+    pt = tupleT [e, listT `TApp` e]
+    inj = Inj (FUser "Cons") p (listSumT `TApp` e)
+    ctx = bind va (a `TApp` e)
+  in PLam $ bind (ve, embed KType)
+     $ Lam $ bind (vp, embed pt)
+     $ Roll (listT `TApp` e) inj ctx
+    
+    

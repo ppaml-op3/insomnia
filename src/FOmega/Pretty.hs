@@ -132,6 +132,12 @@ ppTerm m_ =
      $ fsep ["case", pp m, "of",
              braces $ sep $ prePunctuate ";" (map ppClause clauses
                                               ++ ppDefaultClause optDefault)]
+   Roll ty m ctx ->
+     precParens 2
+     $ fsep ["roll", ppType ty, indent "," (ppTerm m), indent "as" (ppCtx ctx)]
+   Unroll ty m ctx ->
+     precParens 2
+     $ fsep ["unroll", ppType ty, indent "," (ppTerm m), indent "as" (ppCtx ctx)]
    Return m -> ppReturn m
      
    LetSample {} -> nestedLet m_
@@ -214,10 +220,14 @@ ppRec (f, U.unembed -> ty, U.unembed -> m) =
   fsep ["rec", pp f, indent coloncolon (withLowestPrec $ ppType ty),
         indent "=" (withLowestPrec $ ppTerm m)]
 
+ppCtx :: (U.Bind TyVar Type) -> PM Doc
+ppCtx bnd =
+  let (a, ty) = UU.unsafeUnbind bnd
+  in fsep [pp a, indent "." (ppType ty)]
 
 ppClause :: Clause -> PM Doc
-ppClause (Clause bnd) =
-  let ((U.unembed -> f, v), m) = UU.unsafeUnbind bnd
+ppClause (Clause f bnd) =
+  let (v, m) = UU.unsafeUnbind bnd
   in
    fsep [parens $ fsep [ppField f, pp v], indent "→" (withLowestPrec $ ppTerm m)]
 

@@ -57,6 +57,7 @@ data OmegaErr =
   | ExpectedValueInLetRec !Var
   | MemoizeNonFunction !(Got Type)
   | MemoResultNotDist !(Got Type)
+  | ExpectedFixType !(Got Type)
   | NoErr
   deriving (Show)
 
@@ -253,6 +254,10 @@ inferTy m_ =
      tin <- inferTy m
      checkInj alts f tin
      return tN
+   Roll t m pk -> do
+     checkRollUnroll True t m pk
+   Unroll t m pk -> do
+     checkRollUnroll False t m pk
    Abort t -> do
      k <- inferK t
      expectKType t k
@@ -285,6 +290,7 @@ inferCmdTy c_ =
    ReturnC m -> 
      inferTy m
    EffectC pc m -> inferPrimitiveCommandTy pc m
+
 
 inferPrimitiveCommandTy :: MonadTC m
                            => PrimitiveCommand
@@ -328,11 +334,42 @@ checkUnpack inferBody bnd =
      _ -> throwError $ UnpackNotExist (Got tN)
 
 
+checkRollUnroll :: MonadTC m
+                   => Bool -- True = rolling, False = unrolling
+                   -> Type -- μα:κ.β
+                   -> Term -- m
+                   -> (U.Bind TyVar Type) -- δ.Ctx
+                   -> m Type -- Ctx[?/δ] where ? is either the rolled or the unrolled type of m
+checkRollUnroll isRoll t m pk = do
+  k <- inferK t
+  tN <- whnfTy t k
+  -- tun = β [μα:κ.β / α]
+  tun <- case tN of
+    TFix bnd ->
+      U.lunbind bnd $ \((tv, _), tbody) ->
+      return (U.subst tv tN tbody)
+    _ -> throwError $ ExpectedFixType (Got tN)
+  -- trolled = ctx [μα:κ.β/δ]
+  -- tunrolled = ctx [β[μα:κ.β/β]/δ]
+  (trolled, tunrolled) <- U.lunbind pk $ \(tv, tctx) ->
+    extendEnv (CType tv k) $ do
+      kctx <- inferK tctx
+      expectKType tctx kctx
+      let trolled = U.subst tv tN tctx
+          tunrolled = U.subst tv tun tctx
+      return (trolled, tunrolled)
+  do
+    infTy <- inferTy m
+    _ <- tyEquiv (Expected (if isRoll then tunrolled else trolled)) (Got infTy) KType
+    return ()
+  return (if isRoll then trolled else tunrolled)
+
+
 -- | checks that the pattern of the given clause matches one of fields
 -- in the list, and returns the type of the body of the clause.
 checkClause :: MonadTC m => [(Field, Type)] -> Clause -> m Type
-checkClause fts (Clause bnd) =
-  U.lunbind bnd $ \ ((U.unembed -> f, v), body) -> do
+checkClause fts (Clause f bnd) =
+  U.lunbind bnd $ \ (v, body) -> do
     t <- case lookup f fts of
           Just ty -> return ty
           Nothing -> throwError $ SumTypeHasNoField (Expected $ TSum fts) (Got f)
@@ -525,9 +562,6 @@ wellFormedStylizedRecord fs = do
   where
     isUser (FUser {}, _) = True
     isUser _ = False
-    isData (FDataOut, _) = True
-    isData (FDataIn, _) = True
-    isData _ = False
     isCon  (FCon {}, _) = True
     isCon _ = False
     isTupleIdx (FTuple {}, _) = True

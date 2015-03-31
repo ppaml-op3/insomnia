@@ -1,0 +1,28 @@
+module Id {
+  sig id :: forall (a :: *) . a -> a
+  fun id x = x
+
+  sig const :: forall (a :: *) (b :: *) . a -> b -> a
+  fun const x y = x
+
+  val x = id (id 5)
+
+  val y = id (const 7) 3
+
+  val z = (const id) 10 11
+}
+
+module F (module X :: {
+            sig id :: forall (a :: *) . a -> a
+          }) {
+  val z = X.id 2
+}
+  
+
+module M2 = F (Id)
+
+model Blip {
+  val blip = 2.0
+}
+
+query sample Blip 2
