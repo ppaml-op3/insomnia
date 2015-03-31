@@ -1,3 +1,6 @@
+-- insomnia test flags:
+-- eval: False
+
 module type S_SIG {
   type T :: *
 }

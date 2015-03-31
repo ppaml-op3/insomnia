@@ -1,3 +1,6 @@
+-- insomnia test flags:
+-- eval: False
+
 module M {
 
   enum E 2

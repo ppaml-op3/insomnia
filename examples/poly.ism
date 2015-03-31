@@ -1,3 +1,6 @@
+-- insomnia test flags:
+-- eval: False
+
 module Poly {
   sig idC :: forall (c :: * -> *) (a :: *) . c a -> c a
   fun idC x = x

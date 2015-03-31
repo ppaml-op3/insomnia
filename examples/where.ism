@@ -1,3 +1,5 @@
+-- insomnia test flags:
+-- eval: False
 module Prelude {
   data Bool = True | False
   data Order = Lt | Eq | Gt

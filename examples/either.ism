@@ -1,3 +1,6 @@
+-- insomnia test flags:
+-- eval: False
+
 module Example {
 -- Example tprob file.
 

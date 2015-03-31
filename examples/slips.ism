@@ -3,6 +3,9 @@
 -- This version uses nested distributions,
 --   to describe hypothetical experiment outcomes.
 
+-- insomnia test flags:
+-- eval: False
+
 -- basics
 module type PRELUDE {
 

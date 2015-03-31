@@ -1,3 +1,6 @@
+-- insomnia test flags:
+-- eval: False
+
 model Example {
 -- Example tprob file.
 

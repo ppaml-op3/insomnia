@@ -1,3 +1,6 @@
+-- insomnia test flags:
+-- eval: False
+
 model type POISSOND {
   type N :: *
   sig x :: N

@@ -1,3 +1,6 @@
+-- insomnia test flags:
+-- eval: False
+
 module List {
 
   data List (a :: *) = Nil | Cons a (List a)

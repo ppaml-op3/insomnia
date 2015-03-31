@@ -15,15 +15,18 @@ import qualified Insomnia.Main as Insomnia
 import Test.Tasty (TestTree, TestName)
 import Test.Tasty.Providers (IsTest(..), singleTest, testPassed, testFailed)
 
+import InsomniaFlagScraper (scrapeFlags, ScrapedFlags(..))
+
 newtype InsomniaTest = InsomniaTest { insomniaTestFilePath :: FilePath }
                        deriving (Show, Typeable)
 
 instance IsTest InsomniaTest where
   run _opts (InsomniaTest fp) _reportProgress = do
-    let succeeded = testPassed "Typechecked OK (did not Eval)"
     IOTemp.withTempFile "dist/test" "ism." $ \logFP logHandle -> do
-      (runInsomnia logHandle fp >> return succeeded)
-      `Exn.catch` (\e ->
+      let succeeded = testPassed ""
+      (ScrapedFlags evalFOmega) <- scrapeFlags' fp
+      (runInsomnia logHandle evalFOmega fp >> return succeeded)
+        `Exn.catch` (\e ->
                     case e of
                      ExitCode.ExitSuccess -> return succeeded
                      ExitCode.ExitFailure _ -> do
@@ -33,14 +36,24 @@ instance IsTest InsomniaTest where
 
   testOptions = Tagged []
 
-runInsomnia :: IO.Handle -> FilePath -> IO ()
-runInsomnia logHandle fp = 
+runInsomnia :: IO.Handle -> Bool -> FilePath -> IO ()
+runInsomnia logHandle evalFOmega fp =  do
   Insomnia.runInsomniaMain (Insomnia.parseAndCheck fp)
   $ Insomnia.defaultConfig {
     Insomnia.ismCfgDebugOut = logHandle
     , Insomnia.ismCfgErrorOut = logHandle
-    , Insomnia.ismCfgEvaluateFOmega = False -- XXX TODO: read some magic from the test file to decide if we should run
+    , Insomnia.ismCfgEvaluateFOmega = evalFOmega -- TODO: make this configurable on a per-test basis
     }
 
 testInsomnia :: TestName -> FilePath -> TestTree
 testInsomnia name = singleTest name . InsomniaTest
+    
+scrapeFlags' :: FilePath -> IO ScrapedFlags
+scrapeFlags' fp = do
+  m <- scrapeFlags fp
+  return $ case m of
+    Nothing -> defaultScrapedFlags
+    Just f -> f
+
+defaultScrapedFlags :: ScrapedFlags
+defaultScrapedFlags = ScrapedFlags True
