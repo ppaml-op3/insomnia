@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Insomnia.ToF.Type where
 
 import Control.Lens

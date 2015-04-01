@@ -1,4 +1,4 @@
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE ViewPatterns, FlexibleContexts #-}
 module Insomnia.ToF.Expr where
 
 import Control.Lens
