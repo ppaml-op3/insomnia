@@ -123,8 +123,6 @@ library
                        FOmega.Value
                        FOmega.Eval
                        --
-                       Insomnia.Interp.Lam
-                       Insomnia.Interp.Eval
                        Insomnia.Interp.PMonad
                        --
                        Insomnia.Pretty
