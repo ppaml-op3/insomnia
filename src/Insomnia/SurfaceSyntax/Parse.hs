@@ -6,6 +6,7 @@ import Control.Applicative
 import Control.Monad (guard)
 
 import Data.Char (isUpper, isLower)
+import Data.List (isPrefixOf)
 import Data.Functor.Identity (Identity(..))
 import Data.Text (Text)
 import qualified Data.Text.IO as T
@@ -124,7 +125,7 @@ tyconIdentifier :: Parser Ident
 tyconIdentifier = (try $ do
   i <- identifier
   let c = head i
-  guard (isUpper c)
+  guard (isUpper c || "__" `isPrefixOf` i)
   return i) <?> "type identifier"
 
 infixIdent :: Parser Ident
@@ -143,11 +144,18 @@ qualifiedName p =
             (ss, x) <- components
             return (s:ss, x)
           Right x -> return ([], x)
-      component = (do
+      upComponent = do
         c <- identStart insomniaLang
         guard (isUpper c)
         cs <- many (identLetter insomniaLang)
-        return (c:cs)) <?> "module path component"
+        return (c:cs)
+      doubleUnderComponent = do
+        _ <- try (char '_')
+        _ <- char '_'
+        cs <- many (identLetter insomniaLang)
+        return ("__"++cs)
+      component =
+        (doubleUnderComponent <|> upComponent) <?> "module path component"
   in lexeme $ components
 
 qualifiedInfixIdent :: Parser QualifiedIdent
