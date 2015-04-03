@@ -1,5 +1,5 @@
 -- insomnia test flags:
--- eval: False
+-- eval: True
 
 module List {
 
