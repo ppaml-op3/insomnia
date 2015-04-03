@@ -462,6 +462,14 @@ tyEquiv' t1_ t2_ k = do
    (TV {}, TV {}, _) -> do
      (tA, _k) <- tyAtEquiv t1N_ t2N_
      return tA
+   (TFix bnd1, TFix bnd2, _) ->
+     U.lunbind2 bnd1 bnd2 $ \m ->
+     case m of
+      Just (p@(v, U.unembed -> k1), t1, (_, U.unembed -> k2), t2) -> do
+        guard (k1 == k2)
+        tN <- extendEnv (CType v k1) $ tyEquiv' t1 t2 k1
+        return $ TFix $ U.bind p tN
+      Nothing -> mzero
    (TApp {}, TApp {}, _) -> do
      (tA, _k) <- tyAtEquiv t1N_ t2N_
      return tA
@@ -525,6 +533,14 @@ tyAtEquiv t1_ t2_ =
        k <- lookupTyVar v1
        return (t1_, k)
      else mzero
+   (TFix bnd1, TFix bnd2) ->
+     U.lunbind2 bnd1 bnd2 $ \m ->
+     case m of
+      Just (p@(v, U.unembed -> k1), t1, (_, U.unembed -> k2), t2) -> do
+        guard (k1 == k2)
+        tN <- extendEnv (CType v k1) $ tyEquiv' t1 t2 k1
+        return (TFix $ U.bind p tN, k1)
+      Nothing -> mzero
    (TApp t1A s1, TApp t2A s2) -> do
      (tA, kt) <- tyAtEquiv t1A t2A
      case kt of
