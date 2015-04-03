@@ -1,0 +1,24 @@
+-- insomnia test flags:
+-- eval: True
+
+module __BOOT = assume {
+  sig intAdd :: Int -> Int -> Int
+  sig ifIntLt :: forall (a :: *) . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
+}
+
+module Prelude {
+  sig (+) :: Int -> Int -> Int
+  fun (+) x y = __BOOT.intAdd x y
+
+  data Bool = True | False
+
+  fun (<) x y = __BOOT.ifIntLt x y (\ _v -> True) (\_v -> False) {}
+}
+
+module M {
+
+  import Prelude
+
+  val x = (1 + 1) < 3
+
+}
