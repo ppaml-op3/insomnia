@@ -3,6 +3,7 @@
   #-}
 module Insomnia.ToF.Module where
 
+import Control.Applicative ((<$>))
 import Control.Lens
 import Control.Monad.Reader
 import Control.Monad.Except (MonadError(..))
@@ -30,16 +31,28 @@ import Insomnia.ToF.Summary
 import Insomnia.ToF.Type
 import Insomnia.ToF.Expr
 import Insomnia.ToF.ModuleType
-
+import Insomnia.ToF.Builtins
 
 ---------------------------------------- Modules
 
-moduleExpr :: ToF m => ModuleExpr -> m (F.AbstractSig, F.Term)
-moduleExpr mdl_ =
+-- The translation of moduleExpr takes a 'Maybe Path' which is the name
+-- of the module provided that it is defined at the toplevel, or else a simple structure
+--  within another named module.   This is a (gross) hack so that we can write things like
+--
+-- @@@
+--   module Foo {
+--     module Bar = assume { sig x : ... }
+--  }
+-- @@@
+--
+-- And try to find "Foo.Bar.x" in the list of known builtin primitives.
+--
+moduleExpr :: ToF m => Maybe Path -> ModuleExpr -> m (F.AbstractSig, F.Term)
+moduleExpr modPath mdl_ =
   case mdl_ of
-   ModuleStruct mdl -> structure ModuleMK mdl
+   ModuleStruct mdl -> structure modPath ModuleMK mdl
    ModuleSeal me mt -> sealing me mt
-   ModuleAssume mty -> moduleAssume mty
+   ModuleAssume mty -> moduleAssume modPath mty
    ModuleId p -> do
      (sig, m) <- modulePath p
      return (F.AbstractSig $ U.bind [] sig, m)
@@ -53,7 +66,7 @@ modelExpr :: ToF m => ModelExpr -> m (F.AbstractSig, F.Term)
 modelExpr mdle =
   case mdle of
    ModelStruct str -> do
-     (sigStr, m) <- structure ModelMK str
+     (sigStr, m) <- structure Nothing ModelMK str
      let
        sig = F.ModelSem sigStr
        s = F.AbstractSig $ U.bind [] sig
@@ -66,16 +79,24 @@ modelExpr mdle =
      return (sig, m)
 
 moduleAssume :: ToF m
-                => ModuleType
+                => Maybe Path
+                -> ModuleType
                 -> m (F.AbstractSig, F.Term)
-moduleAssume modTy = do
-  absSig <- moduleType modTy
-  ty <- F.embedAbstractSig absSig
-  return (absSig, F.Assume ty)
+moduleAssume modPath_ modTy = do
+  case looksLikeBuiltin modPath_ modTy of
+   Just builtins -> makeBuiltinsModule builtins
+   Nothing -> do
+     absSig <- moduleType modTy
+     ty <- F.embedAbstractSig absSig
+     return (absSig, F.Assume ty)
 
-structure :: ToF m => ModuleKind -> Module -> m (F.AbstractSig, F.Term)
-structure mk (Module decls) = do
-  declarations mk decls $ \(summary@(tvks,sig), fields, termHole) -> do
+structure :: ToF m
+             => Maybe Path
+             -> ModuleKind
+             -> Module
+             -> m (F.AbstractSig, F.Term)
+structure modPath mk (Module decls) = do
+  declarations modPath mk decls $ \(summary@(tvks,sig), fields, termHole) -> do
     let semSig = F.ModSem sig
     ty <- F.embedSemanticSig semSig
     let r = F.Record fields
@@ -109,7 +130,7 @@ modelLocal :: ToF m => Module -> ModelExpr -> ModuleType -> m (F.AbstractSig, F.
 modelLocal lcl_ body_ mt_ = do
   ascribedSig <- moduleType mt_
   let (Module lclDecls) = lcl_
-  declarations ModelMK lclDecls $ \(_lclSummary, _lclFields, lclTermHole) -> do
+  declarations Nothing ModelMK lclDecls $ \(_lclSummary, _lclFields, lclTermHole) -> do
     (F.AbstractSig bodySigBnd, bodyTerm) <- modelExpr body_
     U.lunbind bodySigBnd $ \(gammas,bodySig) -> do
       (taus, coer) <- do
@@ -153,7 +174,7 @@ modelLocal lcl_ body_ mt_ = do
 sealing :: ToF m => ModuleExpr -> ModuleType -> m (F.AbstractSig, F.Term)
 sealing me mt = do
   xi@(F.AbstractSig xiBnd) <- moduleType mt
-  (F.AbstractSig sigBnd, m) <- moduleExpr me
+  (F.AbstractSig sigBnd, m) <- moduleExpr Nothing me
   U.lunbind sigBnd $ \(betas, sigma) -> do
     (taus, coer) <- do
       (sig2, taus) <- F.matchSubst sigma xi
@@ -180,7 +201,7 @@ moduleFunctor :: ToF m
                  -> m (F.AbstractSig, F.Term)
 moduleFunctor teleArgs bodyMe =
   withFunctorArguments teleArgs $ \(tvks, argSigs) -> do
-    (resultAbs, mbody) <- moduleExpr bodyMe
+    (resultAbs, mbody) <- moduleExpr Nothing bodyMe
     let funSig = F.SemanticFunctor (map snd argSigs) resultAbs
         s = F.FunctorSem $ U.bind tvks funSig
     args <- forM argSigs $ \(v,argSig) -> do
@@ -234,16 +255,17 @@ moduleApp pfn pargs = do
 -- just extends the SigSummary, while the actual definition extends the record.
 -- TODO: (This gets mutually recursive functions wrong.  Need a letrec form in fomega)
 declarations :: ToF m
-                => ModuleKind
+                => Maybe Path
+                -> ModuleKind
                 -> [Decl]
                 -> (ModSummary -> m ans)
                 -> m ans
-declarations _mk [] kont = kont mempty 
-declarations mk (d:ds) kont = let
-  kont1 out1 = declarations mk ds $ \outs -> kont $ out1 <> outs
+declarations _ _mk [] kont = kont mempty 
+declarations modPath mk (d:ds) kont = let
+  kont1 out1 = declarations modPath mk ds $ \outs -> kont $ out1 <> outs
   in case d of
       ValueDecl f vd -> valueDecl mk f vd kont1
-      SubmoduleDefn f me -> submoduleDefn mk f me kont1
+      SubmoduleDefn f me -> submoduleDefn modPath mk f me kont1
       SampleModuleDefn f me -> do
         when (mk /= ModelMK) $
           throwError "internal error: ToF.declarations SampleModuleDecl in a module"
@@ -278,14 +300,15 @@ typeAliasDefn _mk f (TypeAlias bnd) kont =
       kont thisOne
 
 submoduleDefn :: ToF m
-                 => ModuleKind
+                 => Maybe Path
+                 -> ModuleKind
                  -> Field
                  -> ModuleExpr
                  -> ((SigSummary, [(F.Field, F.Term)], Endo F.Term) -> m ans)
                  -> m ans
-submoduleDefn _mk f me kont = do
+submoduleDefn modPath _mk f me kont = do
   let modId = U.s2n f
-  (F.AbstractSig bnd, msub) <- moduleExpr me
+  (F.AbstractSig bnd, msub) <- moduleExpr (flip ProjP f <$> modPath) me
   U.lunbind bnd $ \(tvks, modsig) -> do
     let xv = U.s2n f
     local (modEnv %~ M.insert modId (modsig, xv)) $ do
@@ -304,7 +327,7 @@ sampleModuleDefn :: ToF m
                     -> m ans
 sampleModuleDefn f me kont = do
   let modId = U.s2n f
-  (F.AbstractSig bndMdl, msub) <- moduleExpr me
+  (F.AbstractSig bndMdl, msub) <- moduleExpr Nothing me
   bnd <- U.lunbind bndMdl $ \(tvNull, semMdl) ->
     case (tvNull, semMdl) of
      ([], F.ModelSem (F.AbstractSig bnd)) -> return bnd

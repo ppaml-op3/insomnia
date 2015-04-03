@@ -51,7 +51,7 @@ moduleExpr txt = do
     Right (ok, _) -> return ok
   putStrDoc (format $ ppDefault modExpr')
   putStrLn "\n-----"
-  let z@(_, tm) = ToF.runToFM $ ToF.moduleExpr modExpr'
+  let z@(_, tm) = ToF.runToFM $ ToF.moduleExpr Nothing modExpr'
   putStrDoc (format $ ppDefault tm)
   putStrLn "\n"
   mty <- F.runTC (F.inferTy tm)

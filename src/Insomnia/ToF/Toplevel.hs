@@ -44,7 +44,7 @@ toplevelItems (it:its) kont = let
 
 toplevelModule :: ToF m => Identifier -> ModuleExpr -> (TopSummary -> m ans) -> m ans
 toplevelModule ident me kont = do
-  (F.AbstractSig bnd, msub) <- moduleExpr me
+  (F.AbstractSig bnd, msub) <- moduleExpr (Just $ IdP ident) me
   U.lunbind bnd $ \(tvks, modsig) -> do
     let nm = U.name2String ident
         xv = U.s2n nm

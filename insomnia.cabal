@@ -116,6 +116,7 @@ library
                        Insomnia.ToF.Expr
                        Insomnia.ToF.DataType
                        Insomnia.ToF.ModuleType
+                       Insomnia.ToF.Builtins
                        Insomnia.ToF.Module
                        Insomnia.ToF.Query
                        Insomnia.ToF.Toplevel
