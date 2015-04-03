@@ -728,7 +728,13 @@ literal = RealL <$> try float
           <?> "literal double or integer"
 
 lamExpr :: Parser Expr
-lamExpr = fail "unimplemented lamExpr"
+lamExpr =
+  mkLam <$ (reservedOp "\\" <|> reservedOp "λ")
+  <*> annVar
+  <* (reservedOp "->" <|> reservedOp "→")
+  <*> expr
+  where
+    mkLam (x,mt) e = Lam x mt e
 
 caseExpr :: Parser Expr
 caseExpr = Case
@@ -744,7 +750,6 @@ letExpr :: Parser Expr
 letExpr = Let
           <$> (reserved "let" *> (eBindings <|> iBindings))
           <*> (reserved "in"  *> expr)
-          <?> "let expression"
   where
     eBindings = braces (semiSep binding)
     iBindings = localIndentation Gt (many $ absoluteIndentation binding)
