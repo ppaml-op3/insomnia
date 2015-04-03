@@ -1,5 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell, OverloadedStrings #-}
 module FOmega.Value where
+
+import Control.Lens
+import Data.Monoid (Monoid(..), (<>), Endo(..))
 
 import Unbound.Generics.LocallyNameless
 
@@ -12,7 +15,7 @@ import FOmega.Pretty
 data Value =
   RecordV ![(Field, Value)]
   | InjV !Field !Value
-  | PClosureV !Env !(Bind TyVar Term)
+  | PClosureV !Env !PolyClosure
   | ClosureV !Env !Closure
   | DistV !Env !DistThunk
   | LitV !Literal
@@ -21,8 +24,36 @@ data Value =
 
 data Closure =
   PlainLambdaClz !(Bind Var Term)
-  | PrimitiveClz !String
+  | PrimitiveClz !PrimitiveClosure
 --  | MemoizedFnRef !(IORef Value)
+
+data PolyClosure =
+  PlainPolyClz !(Bind TyVar Term)
+  | PrimitivePolyClz !PolyPrimitiveClosure
+
+type PrimitiveClosureHead = String
+
+-- the number is a count of type arguments.  Note that we assume a type erasure impl,
+-- so the types simply get thrown away.
+data PolyPrimitiveClosure =
+  PolyPrimitiveClosure
+  { _polyPrimClz :: !PrimitiveClosure
+  , _polyPrimSatArity :: !Int
+  }
+  
+-- (possibly partially applied) primitives
+data PrimitiveClosure =
+  PrimitiveClosure {
+    _primClzHead :: PrimitiveClosureHead
+    , _primClzSatArity :: Int -- number of arguments needed before saturation, always >= 1
+    , _primClzSpine :: PrimitiveClosureSpine
+    }
+
+data PrimitiveClosureSpine =
+  NilPCS
+  | AppPCS !PrimitiveClosureSpine !Value
+
+infixl 5 `AppPCS`
 
 data DistThunk =
   ReturnTh !Term
@@ -30,24 +61,56 @@ data DistThunk =
   | MemoTh !Term
   | PrimitiveTh !String
 
+
 newtype Env = Env { envLookup :: Var -> Value }
+
+$(makeLenses ''PrimitiveClosure)
+$(makeLenses ''PolyPrimitiveClosure)
 
 tupleV :: [Value] -> Value
 tupleV vs = RecordV $ zipWith (\v n -> (FTuple n, v)) vs [0..]
 
+emptyEnv :: Env
+emptyEnv = Env (const (error "unbound variable in FOmega.Eval baseEnv"))
+
 instance Show Value where
   showsPrec d v_ =
     case v_ of
-     RecordV fvs -> showParen (d > 10) (showString "RecordV " . showsPrec 10 fvs)
+     RecordV fvs -> showParen (d > 10) (showString "RecordV " . showsPrec 11 fvs)
      InjV f v -> showParen (d > 10) 
-                (showString "InjV " . showsPrec 10 f
-                 . showsPrec 10 v)
+                (showString "InjV " . showsPrec 11 f
+                 .showString " "
+                 . showsPrec 11 v)
      PClosureV {} -> showString "≪Λ…≫"
-     ClosureV {} -> showString "≪λ…≫"
+     ClosureV _env clz -> showsPrec d clz
      DistV {} -> showString "≪D…≫"
-     LitV l -> showParen (d > 10) (showString "LitV " . showsPrec 10 l)
-     PackV t m -> showParen (d > 10) (showString "PackV " . showsPrec 10 t . showsPrec 10 m)
-     RollV m -> showParen (d > 10) (showString "RollV " . showsPrec 10 m)
+     LitV l -> showParen (d > 10) (showString "LitV " . showsPrec 11 l)
+     PackV t m -> showParen (d > 10) (showString "PackV " . showsPrec 11 t
+                                      . showString " "
+                                      . showsPrec 11 m)
+     RollV m -> showParen (d > 10) (showString "RollV " . showsPrec 11 m)
+
+instance Show Closure where
+  showsPrec d v_ =
+    case v_ of
+     PlainLambdaClz {} -> showString "≪λ…≫"
+     PrimitiveClz p -> showsPrec d p
+
+instance Show PrimitiveClosure where
+  showsPrec _ (PrimitiveClosure h n sp) =
+    showString "≪"
+    . showString h
+    . showString " "
+    . showsPrec 10 sp
+    . showString " "
+    . showsPrec 10 n
+    . showString "≫"
+
+instance Show PrimitiveClosureSpine where
+  showsPrec d sp_ =
+    case sp_ of
+     NilPCS -> id
+     AppPCS sp v -> showsPrec 10 sp . showParen (d > 10) (showsPrec 11 v)
 
 instance Pretty Value where
   pp (RecordV fvs) =
@@ -57,9 +120,24 @@ instance Pretty Value where
      braces $ fsep $ punctuate "," $ map ppF fvs
   pp (InjV f v) = precParens 2 $ fsep ["inj", ppField f, pp v]
   pp (PClosureV {}) = "≪Λ…≫"
-  pp (ClosureV {}) = "≪λ…≫"
+  pp (ClosureV _env clz) = pp clz
   pp (DistV {}) = "≪D…≫"
   pp (LitV l) = pp l
   pp (PackV t v) = precParens 2 $ fsep ["pack", withPrec 2 AssocLeft (Right $ ppType t)
                                        , indent "," (pp v)]
   pp (RollV v) = precParens 2 $ fsep ["pack", pp v]
+
+instance Pretty Closure where
+  pp (PlainLambdaClz {}) = "≪λ…≫"
+  pp (PrimitiveClz p) = pp p
+
+instance Pretty PrimitiveClosure where
+  pp (PrimitiveClosure h n sp) =
+    doubleAngles $ fsep $ [pp h] ++ appEndo (ppSpine sp) (replicate n "_")
+    where
+      doubleAngles p = "≪" <> p <> "≫"
+      ppCons p = Endo ((:) p)
+    
+      ppSpine NilPCS = mempty
+      ppSpine (AppPCS sp v) = ppSpine sp
+                              <> ppCons (pp v)

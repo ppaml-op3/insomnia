@@ -122,6 +122,7 @@ library
                        Insomnia.ToF
                        --
                        FOmega.Value
+                       FOmega.Primitives
                        FOmega.Eval
                        --
                        Insomnia.Interp.PMonad

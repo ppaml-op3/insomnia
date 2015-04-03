@@ -7,9 +7,12 @@ import Control.Monad (forM, replicateM)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader(..), ReaderT(..), asks)
 import Control.Monad.Except (MonadError(..), ExceptT(..), runExceptT)
+import Control.Monad.Trans (MonadTrans(..))
+import qualified Data.Map as M
 
 import qualified Data.Format as F
 
+import Insomnia.Common.Literal
 import Insomnia.Common.SampleParameters
 import Insomnia.Pretty (ppDefault)
 
@@ -18,6 +21,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import FOmega.Syntax
 import FOmega.Value
+import qualified FOmega.Primitives as Primitives
 
 class (U.Fresh m) => MonadEval m where
   localEnv :: (Env -> Env) -> m a -> m a
@@ -25,9 +29,16 @@ class (U.Fresh m) => MonadEval m where
   asksEnv :: (Env -> a) -> m a
   unimplemented :: String -> m a
   evaluationError :: String -> m a
+  lookupPrimitive :: PrimitiveClosureHead -> m (PrimitiveClosureSpine -> m Value)
 
-newtype EvalT m a = EvalT { unEvalT :: ReaderT Env (U.FreshMT (ExceptT String m)) a }
+type EvalTransformerStack m = ReaderT Env (ReaderT (PrimImplEnv m)
+                                           (U.FreshMT (ExceptT String m)))
+newtype EvalT m a = EvalT { unEvalT :: (EvalTransformerStack m) a }
                     deriving (Functor, Applicative, Monad, MonadIO)
+
+newtype PrimImplEnv m =
+  PrimImplEnv { primImplEnvMap :: M.Map PrimitiveClosureHead (PrimitiveClosureSpine -> EvalT m Value) }
+                                                        
 
 instance Monad m => U.Fresh (EvalT m) where
   fresh = EvalT . U.fresh
@@ -38,11 +49,55 @@ instance Monad m => MonadEval (EvalT m) where
   asksEnv f = EvalT (asks f)
   unimplemented what = EvalT (throwError $ "unimplemented in FOmega.Eval " ++ what)
   evaluationError what = EvalT (throwError $ "unexpected runtime error - FOmega.Eval " ++ what)
+  lookupPrimitive = lookupPrimitiveEvalT
+
+lookupPrimitiveEvalT :: Monad m
+                        => PrimitiveClosureHead
+                        -> EvalT m (PrimitiveClosureSpine -> EvalT m Value)
+lookupPrimitiveEvalT h = EvalT $ do
+  mfn <- lift (asks (M.lookup h . primImplEnvMap))
+  case mfn of
+   Just fn -> return fn
+   Nothing -> unEvalT $ evaluationError $ "unknown primitive " ++ show h
 
 runEvalCommand :: (MonadIO m) => Command -> m (Either String Value)
-runEvalCommand cmd = runExceptT (U.runFreshMT (runReaderT (unEvalT (evalCommand cmd)) baseEnv))
-  where baseEnv = Env (const (error "unbound variable in FOmega.Eval baseEnv"))
+runEvalCommand cmd = runEvalCommand' cmd (addPrimitiveVars emptyEnv) (PrimImplEnv primitiveEvalMap)
 
+runEvalCommand' :: (MonadIO m) => Command -> Env -> PrimImplEnv m -> m (Either String Value)
+runEvalCommand' cmd env primImpl =
+  runExceptT (U.runFreshMT (runReaderT
+                            (runReaderT (unEvalT (evalCommand cmd)) env)
+                            primImpl))
+
+addPrimitiveVars :: Env -> Env 
+addPrimitiveVars env =
+  M.foldWithKey extendEnv env Primitives.primitives
+  
+primitiveEvalMap :: MonadEval m => M.Map PrimitiveClosureHead (PrimitiveClosureSpine -> m Value)
+primitiveEvalMap =
+  M.fromList [ primitive "__BOOT.intAdd"  intAddImpl
+             , primitive "__BOOT.ifIntLt" ifIntLtImpl
+             ]
+  where
+    primitive h c = (h, c)
+
+-- intAdd :: Int -> Int -> Int
+intAddImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+intAddImpl (NilPCS
+            `AppPCS` (LitV (IntL n1))
+            `AppPCS` (LitV (IntL n2))) =
+  return $ LitV $ IntL $! n1 + n2
+intAddImpl _ = evaluationError "__BOOT.intAdd incorrect arguments"
+
+-- ifIntLt :: forall a . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
+ifIntLtImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+ifIntLtImpl (NilPCS
+             `AppPCS` (LitV (IntL n1))
+             `AppPCS` (LitV (IntL n2))
+             `AppPCS` k1 `AppPCS` k2) =
+  return $ if n1 < n2 then k1 else k2
+ifIntLtImpl _ = evaluationError "__BOOT.ifIntLt incorrect arguments"
+  
 extendEnv :: Var -> Value -> Env -> Env
 extendEnv x v e =
   Env $ \x' -> if x == x' then v else envLookup e x'
@@ -56,7 +111,7 @@ eval m_ =
    PLam bnd -> asksEnv (mkPClosure bnd)
    PApp m t -> do
      v1 <- eval m
-     applyPClosure v1 t
+     applyPClosureV v1 t
    App m1 m2 -> do
      v1 <- eval m1
      v2 <- eval m2
@@ -133,19 +188,53 @@ applyClosure :: MonadEval m
 applyClosure (PlainLambdaClz bnd) v2 = do
   (x, m) <- U.unbind bnd
   localEnv (extendEnv x v2) $ eval m
-applyClosure (PrimitiveClz str) v2 = unimplemented "apply primitive closure"
+applyClosure (PrimitiveClz p) v2 = applyPrimitiveVal p v2
 
-applyPClosure :: MonadEval m
+applyPClosureV :: MonadEval m
                  => Value
                  -> Type
                  -> m Value
-applyPClosure v1 t = do
+applyPClosureV v1 t = do
   case v1 of
-   PClosureV e bnd -> do
-     (a, body) <- U.unbind bnd
-     localEnv (const e) $ eval (U.subst a t body)
+   PClosureV env clz ->
+     localEnv (const env) $ applyPolyClosure clz t
    _ -> evaluationError "polymorphic application of something other than a polymorphic closure"
 
+applyPolyClosure :: MonadEval m
+                    => PolyClosure
+                    -> Type
+                    -> m Value
+applyPolyClosure (PlainPolyClz bnd) t = do
+  (a, body) <- U.unbind bnd
+  eval (U.subst a t body)
+applyPolyClosure (PrimitivePolyClz prim) t = do
+  return $ if prim^.polyPrimSatArity > 1
+           then PClosureV emptyEnv $ PrimitivePolyClz (prim & polyPrimSatArity -~ 1)
+           else ClosureV emptyEnv $ PrimitiveClz $ prim^.polyPrimClz
+
+applyPrimitive :: MonadEval m
+                  => PrimitiveClosure
+                  -> (PrimitiveClosureSpine -> PrimitiveClosureSpine)
+                  -> m Value
+applyPrimitive prim growSpine =
+  if prim^.primClzSatArity > 1
+  then return
+       $ ClosureV emptyEnv
+       $ PrimitiveClz (prim
+                       & primClzSatArity -~ 1
+                       & primClzSpine %~ growSpine)
+  else evaluatePrimitive (prim^.primClzHead) (growSpine (prim^.primClzSpine))
+
+applyPrimitiveVal :: MonadEval m => PrimitiveClosure -> Value -> m Value
+applyPrimitiveVal prim v = applyPrimitive prim (flip AppPCS v)
+
+evaluatePrimitive :: MonadEval m
+                     => PrimitiveClosureHead
+                     -> PrimitiveClosureSpine
+                     -> m Value
+evaluatePrimitive h sp = do
+  fn <- lookupPrimitive h
+  fn sp
 
 mkClosureLam :: U.Bind (Var, U.Embed Type) Term -> Env -> Value
 mkClosureLam bnd env = 
@@ -155,7 +244,7 @@ mkClosureLam bnd env =
 mkPClosure :: U.Bind (TyVar, U.Embed Kind) Term -> Env -> Value
 mkPClosure bnd env = 
   let ((a, _k), m) = UU.unsafeUnbind bnd
-  in PClosureV env $ U.bind a m
+  in PClosureV env $ PlainPolyClz $ U.bind a m
 
 mkDistClosureRet :: Term -> Env -> Value
 mkDistClosureRet m = mkDistClosure (ReturnTh m)
@@ -273,11 +362,11 @@ embedToList vs_ = do
   let
     make vs =
       case vs of
-      [] -> applyPClosure n unitT
+      [] -> applyPClosureV n unitT
       (v:vs') -> do
         vs'' <- make vs'
         let w = tupleV [v, vs'']
-        c' <- applyPClosure c unitT
+        c' <- applyPClosureV c unitT
         applyClosureV c' w
   make vs_
   
