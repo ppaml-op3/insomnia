@@ -18,10 +18,12 @@ import Insomnia.ToF.Env
 import Insomnia.ToF.Type (type')
 import Insomnia.ToF.ModuleType (mkAbstractModuleSig)
 
+import qualified FOmega.Primitives as Primitives
+
 looksLikeBuiltin :: Maybe Path -> ModuleType -> Maybe [(QVar, Type)]
 looksLikeBuiltin (Just p) (SigMT (SigV sig ModuleMK)) =
    looksLikeBuiltinSig p sig
--- looksLikeBuiltin _ _ = Nothing
+looksLikeBuiltin _ _ = Nothing
 
 looksLikeBuiltinSig :: Path -> Signature -> Maybe [(QVar, Type)]
 looksLikeBuiltinSig p UnitSig = return []
@@ -34,7 +36,9 @@ looksLikeBuiltinSig p (ValueSig f t rest) = do
   return $ (q,t):rest'
 
 looksLikeBuiltinQVar :: QVar -> Bool
-looksLikeBuiltinQVar q = True
+looksLikeBuiltinQVar q =
+  let v = builtinNameFromQVar q
+  in Primitives.isPrimitive v
 
 builtinNameFromQVar :: QVar -> F.Var
 builtinNameFromQVar (QVar p f) =

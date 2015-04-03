@@ -79,7 +79,19 @@ runTC c = runLFreshMT $ runExceptT (runReaderT c initialCtx)
     initialCtx = Ctx
       [ CType (U.s2n "Int") KType
       , CType (U.s2n "Real") KType
+      , CVal (U.s2n "__BOOT.intAdd") intAddTy
+      , CVal (U.s2n "__BOOT.ifIntLt") ifIntLtTy
       ]
+
+intAddTy :: Type
+intAddTy = [intT, intT] `tArrs` intT
+
+ifIntLtTy :: Type
+ifIntLtTy =
+  let va = U.s2n "a"
+      a = TV va
+      kontT = unitT `TArr` a
+  in TForall $ U.bind (va, U.embed KType) $ [intT, intT, kontT, kontT] `tArrs` kontT
           
 inferK :: MonadTC m => Type -> m Kind
 inferK t_ =
