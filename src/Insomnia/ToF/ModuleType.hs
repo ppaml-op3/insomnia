@@ -22,7 +22,8 @@ import qualified FOmega.SemanticSig as F
 
 import Insomnia.ToF.Env
 import Insomnia.ToF.Summary
-import Insomnia.ToF.Type (kind, type', withTyVars, typeAlias)
+import Insomnia.ToF.Type (kind, type', typeAlias)
+import Insomnia.ToF.DataType
 
 ---------------------------------------- Module Types
 
@@ -204,36 +205,4 @@ typeDefn f selfTc td_ kont =
          $ kont thisOne
 
    DataDefn bnd ->
-     U.lunbind bnd $ \(tvks, constrs) ->
-     withFreshName "Δ" $ \dataTyModV ->
-     withFreshName "δ" $ \dtv -> do
-       (dataSem, conEnv, thisOne) <-
-         withTyVars tvks $ \tvks' -> do
-           let kdoms = map snd tvks'
-               k = kdoms `F.kArrs` F.KType
-           (conVs, constructorFields) <-
-             -- extend env for constructos so they can be recursive
-             local (tyConEnv %~ M.insert selfTc (F.TypeSem (F.TV dtv) k)) $
-             liftM unzip $ forM constrs $ \(ConstructorDef cname tDoms) -> do
-               tDoms' <- mapM (liftM fst . type') tDoms
-               let fcon = F.FCon (U.name2String cname)
-               return ((cname, (dataTyModV, fcon)), (fcon, tDoms'))
-           let
-             dtsem = let tveks = map (\(tv,k) -> (tv, U.embed k)) tvks'
-                     in F.DataTypeSem (U.bind tveks constructorFields)
-             dataSem = F.DataSem dtv dtsem k
-             conEnv  = M.fromList conVs
-             abstr = [(dtv, U.embed k)]
-             -- ∃δ.{dataIn : ... ; dataOut : ... }
-             absDataSem = F.AbstractSig $ U.bind abstr dataSem 
-           absDtTy <- F.embedAbstractSig absDataSem
-           let
-             dataTyModM = F.Assume absDtTy
-             unpackHole = Endo (F.Unpack . U.bind (dtv, dataTyModV, U.embed dataTyModM))
-             absSig = (abstr, [(F.FUser f, dataSem)])
-             fieldData = [(F.FUser f, F.V dataTyModV)]
-             thisOne = (absSig, fieldData, unpackHole)
-           return (dataSem, conEnv, thisOne)
-       local (tyConEnv %~ M.insert selfTc dataSem)
-         . local (valConEnv %~ M.union conEnv)
-         $ kont thisOne
+     datatypeDefinition f selfTc bnd kont

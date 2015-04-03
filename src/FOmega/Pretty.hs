@@ -113,7 +113,7 @@ ppTerm m_ =
      fsep [withPrec 2 AssocRight $ Left $ ppTerm m, brackets $ ppType t]
    Pack t m ep ->
      precParens 2
-     $ fsep ["pack", ppType t, indent "," (ppTerm m),
+     $ fsep ["pack", withPrec 2 AssocLeft (Right $ ppType t), indent "," (ppTerm m),
              indent "as" (ppExistPack ep)]
    Unpack {} -> nestedLet m_
    Record fms ->

@@ -109,7 +109,7 @@ embedAbstractSig (AbstractSig bnd) =
     return $ tExists' tvks t
 
 -- | embed a datatype into the type language
---   δ ≙ lfp λδ:κs→⋆. λαs:κs. f1(τ11,…,τn1), ⋯, fN(τ1N,…,τmN)
+--   δ ≙ μδ:κs→⋆. λαs:κs. f1(τ11,…,τn1), ⋯, fN(τ1N,…,τmN)
 -- becomes
 --   { dataOut : ∀γ:(κs→⋆)→⋆ . γ δ → γ (λαs:κs . {f1 : ⊗τ1s | ⋯ | fN : ⊗τNs })
 --   , dataIn : { f1 : ∀αs:κs . τ1s → δ αs ; … ; fN : ∀αs:κs . τNs → δ αs }

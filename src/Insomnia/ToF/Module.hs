@@ -5,7 +5,7 @@ module Insomnia.ToF.Module where
 
 import Control.Lens
 import Control.Monad.Reader
-import Control.Monad.Except (MonadError(..), ExceptT, runExceptT)
+import Control.Monad.Except (MonadError(..))
 import Data.Monoid (Monoid(..), (<>), Endo(..))
 import qualified Data.Map as M
 

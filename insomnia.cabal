@@ -114,6 +114,7 @@ library
                        Insomnia.ToF.Type
                        Insomnia.ToF.Pattern
                        Insomnia.ToF.Expr
+                       Insomnia.ToF.DataType
                        Insomnia.ToF.ModuleType
                        Insomnia.ToF.Module
                        Insomnia.ToF.Query

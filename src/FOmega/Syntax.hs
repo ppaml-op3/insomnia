@@ -187,6 +187,11 @@ tLams [] = id
 tLams ((tv,k):tvks) =
   TLam . bind (tv, embed k) . tLams tvks
 
+tLams' :: [(TyVar, Embed Kind)] -> Type -> Type
+tLams' [] = id
+tLams' (tvk:tvks) =
+  TLam . bind tvk . tLams' tvks
+
 tForalls :: [(TyVar, Kind)] -> Type -> Type
 tForalls [] = id
 tForalls ((tv,k):tvks) =

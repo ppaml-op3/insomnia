@@ -60,5 +60,6 @@ instance Pretty Value where
   pp (ClosureV {}) = "≪λ…≫"
   pp (DistV {}) = "≪D…≫"
   pp (LitV l) = pp l
-  pp (PackV t v) = precParens 2 $ fsep ["pack", ppType t, "indent ", (pp v)]
+  pp (PackV t v) = precParens 2 $ fsep ["pack", withPrec 2 AssocLeft (Right $ ppType t)
+                                       , indent "," (pp v)]
   pp (RollV v) = precParens 2 $ fsep ["pack", pp v]
