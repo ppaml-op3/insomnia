@@ -17,7 +17,7 @@ data Value =
   | InjV !Field !Value
   | PClosureV !Env !PolyClosure
   | ClosureV !Env !Closure
-  | DistV !Env !DistThunk
+  | DistV !DistClosure
   | LitV !Literal
   | PackV !Type !Value
   | RollV !Value
@@ -55,17 +55,26 @@ data PrimitiveClosureSpine =
 
 infixl 5 `AppPCS`
 
+data DistClosure =
+  DistClosure {
+    _distClosureEnv :: !Env
+    , _distClosureThunk :: !DistThunk
+    }
+
 data DistThunk =
   ReturnTh !Term
   | LetSampleTh !(Bind (Var, Embed Term) Term)
   | MemoTh !Term
-  | PrimitiveTh !String
+  | PrimitiveTh !PrimitiveDistribution
 
+data PrimitiveDistribution =
+  ChoosePD !Double !DistClosure !DistClosure
 
 newtype Env = Env { envLookup :: Var -> Value }
 
 $(makeLenses ''PrimitiveClosure)
 $(makeLenses ''PolyPrimitiveClosure)
+$(makeLenses ''DistClosure)
 
 tupleV :: [Value] -> Value
 tupleV vs = RecordV $ zipWith (\v n -> (FTuple n, v)) vs [0..]

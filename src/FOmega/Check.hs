@@ -81,6 +81,7 @@ runTC c = runLFreshMT $ runExceptT (runReaderT c initialCtx)
       , CType (U.s2n "Real") KType
       , CVal (U.s2n "__BOOT.intAdd") intAddTy
       , CVal (U.s2n "__BOOT.ifIntLt") ifIntLtTy
+      , CVal (U.s2n "__BOOT.Distribution.choose") distChooseTy
       ]
 
 intAddTy :: Type
@@ -92,6 +93,13 @@ ifIntLtTy =
       a = TV va
       kontT = unitT `TArr` a
   in TForall $ U.bind (va, U.embed KType) $ [intT, intT, kontT, kontT] `tArrs` kontT
+
+distChooseTy :: Type
+distChooseTy =
+  let va = U.s2n "a"
+      a = TV va
+      da = TDist a
+  in TForall $ U.bind (va, U.embed KType) $ [realT, da, da] `tArrs` da
           
 inferK :: MonadTC m => Type -> m Kind
 inferK t_ =

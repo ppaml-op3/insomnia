@@ -100,5 +100,6 @@ followUserPathAnything rootLookup (ProjP path f) = do
          p _ = False
      case List.find p flds of
       Just (_, mod2) -> return (mod2, F.Proj m (F.FUser f))
-      Nothing -> throwError "unexpectd failure in followUserPathAnything: field not found"
+      Nothing -> throwError ("unexpected failure in followUserPathAnything: field "
+                             ++ show f ++ " not found in " ++ show path)
    _ -> throwError "unexpected failure in followUserPathAnything: not a module record"

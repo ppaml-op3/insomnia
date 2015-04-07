@@ -3,17 +3,20 @@ module FOmega.Eval where
 
 import Control.Applicative (Applicative(..))
 import Control.Lens
-import Control.Monad (forM, replicateM)
+import Control.Monad (forM, replicateM, unless)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader(..), ReaderT(..), asks)
 import Control.Monad.Except (MonadError(..), ExceptT(..), runExceptT)
+import Control.Monad.State (MonadState(..), StateT(..), mapStateT, evalStateT)
 import Control.Monad.Trans (MonadTrans(..))
 import qualified Data.Map as M
+import qualified System.Random as RNG
 
 import qualified Data.Format as F
 
 import Insomnia.Common.Literal
 import Insomnia.Common.SampleParameters
+import Insomnia.Interp.PMonad as PMonad
 import Insomnia.Pretty (ppDefault)
 
 import qualified Unbound.Generics.LocallyNameless as U
@@ -38,7 +41,7 @@ newtype EvalT m a = EvalT { unEvalT :: (EvalTransformerStack m) a }
 
 newtype PrimImplEnv m =
   PrimImplEnv { primImplEnvMap :: M.Map PrimitiveClosureHead (PrimitiveClosureSpine -> EvalT m Value) }
-                                                        
+
 
 instance Monad m => U.Fresh (EvalT m) where
   fresh = EvalT . U.fresh
@@ -65,9 +68,10 @@ runEvalCommand cmd = runEvalCommand' cmd (addPrimitiveVars emptyEnv) (PrimImplEn
 
 runEvalCommand' :: (MonadIO m) => Command -> Env -> PrimImplEnv m -> m (Either String Value)
 runEvalCommand' cmd env primImpl =
-  runExceptT (U.runFreshMT (runReaderT
-                            (runReaderT (unEvalT (evalCommand cmd)) env)
-                            primImpl))
+  runExceptT
+  $ U.runFreshMT (runReaderT
+                  (runReaderT (unEvalT (evalCommand cmd)) env)
+                  primImpl)
 
 addPrimitiveVars :: Env -> Env 
 addPrimitiveVars env =
@@ -77,6 +81,7 @@ primitiveEvalMap :: MonadEval m => M.Map PrimitiveClosureHead (PrimitiveClosureS
 primitiveEvalMap =
   M.fromList [ primitive "__BOOT.intAdd"  intAddImpl
              , primitive "__BOOT.ifIntLt" ifIntLtImpl
+             , primitive "__BOOT.Distribution.choose" distChooseImpl
              ]
   where
     primitive h c = (h, c)
@@ -98,6 +103,17 @@ ifIntLtImpl (NilPCS
   return $ if n1 < n2 then k1 else k2
 ifIntLtImpl _ = evaluationError "__BOOT.ifIntLt incorrect arguments"
   
+-- distChooseImpl :: forall a . Real -> Dist a -> Dist a -> Dist a
+distChooseImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+distChooseImpl (NilPCS
+                `AppPCS` (LitV (RealL r))
+                `AppPCS` (DistV dc1)
+                `AppPCS` (DistV dc2)) = do
+  unless (0.0 <= r && r <= 1.0) $
+    evaluationError "__BOOT.Distribution.choose: real parameter should be in the range [0.0 .. 1.0]"
+  return $ DistV $ DistClosure emptyEnv $ PrimitiveTh $ ChoosePD r dc1 dc2
+distChooseImpl _ = evaluationError "__BOOT.Distribution.choose incorrect arguments"
+
 extendEnv :: Var -> Value -> Env -> Env
 extendEnv x v e =
   Env $ \x' -> if x == x' then v else envLookup e x'
@@ -207,7 +223,7 @@ applyPolyClosure :: MonadEval m
 applyPolyClosure (PlainPolyClz bnd) t = do
   (a, body) <- U.unbind bnd
   eval (U.subst a t body)
-applyPolyClosure (PrimitivePolyClz prim) t = do
+applyPolyClosure (PrimitivePolyClz prim) _t = do
   return $ if prim^.polyPrimSatArity > 1
            then PClosureV emptyEnv $ PrimitivePolyClz (prim & polyPrimSatArity -~ 1)
            else ClosureV emptyEnv $ PrimitiveClz $ prim^.polyPrimClz
@@ -256,7 +272,7 @@ mkDistClosureMemo :: Term -> Env -> Value
 mkDistClosureMemo m = mkDistClosure (MemoTh m)
 
 mkDistClosure :: DistThunk -> Env -> Value
-mkDistClosure cmp env = DistV env cmp
+mkDistClosure cmp env = DistV $ DistClosure env cmp
 
 selectField :: MonadEval m => [(Field, Value)] -> Field -> m Value
 selectField fvs_ f = (go fvs_)
@@ -342,7 +358,8 @@ evalPrimitiveCommand :: (MonadEval m, MonadIO m)
                         -> m Value
 evalPrimitiveCommand pc arg =
   case pc of
-   SamplePC params -> evalSampleDistribution params arg
+   SamplePC params -> do
+     evalSampleDistribution params arg
    PrintPC -> do
      liftIO $ F.putStrLnDoc (F.format $ ppDefault arg)
      return $ embedUnitV
@@ -352,7 +369,9 @@ evalSampleDistribution :: (MonadEval m, MonadIO m)
                           -> Value
                           -> m Value
 evalSampleDistribution params v_ = do
-  vs <- replicateM (params^.numSamplesParameter) (forceValue v_)
+  let
+    comp = replicateM (params^.numSamplesParameter) (forceValue v_)
+  vs <- runSampleTIO comp
   embedToList vs
 
 embedToList :: MonadEval m => [Value] -> m Value
@@ -375,7 +394,7 @@ embedUnitV = RecordV []
 
 -- Assuming the term evaluates to a DistV, force the underlying thunk
 -- and return its value.
-forceEval :: (MonadEval m)
+forceEval :: (MonadEval m, PMonad.ProbabilityMonad m)
              => Term
              -> m Value
 forceEval m = do
@@ -384,18 +403,50 @@ forceEval m = do
 
 -- Assuming the value is a DistV, force the underlying thunk and
 -- return its value.
-forceValue :: (MonadEval m)
+forceValue :: (MonadEval m, PMonad.ProbabilityMonad m)
               => Value
               -> m Value
 forceValue v_ =
   case v_ of
-   DistV env th -> do
-     localEnv (const env) (forceDistThunk th)
+   DistV clos -> do
+     forceDistClosure clos
    _ -> evaluationError "forcing a value that is not a distribution thunk"
   
+newtype SampleT g m a = SampleT {unSampleT :: StateT g m a }
+                      deriving (Functor, Applicative, Monad, U.Fresh)
+
+runSampleTIO :: MonadIO m => SampleT RNG.StdGen m a -> m a
+runSampleTIO comp = do
+  g <- liftIO $ RNG.newStdGen
+  evalStateT (unSampleT comp) g
+
+instance (RNG.RandomGen g, Monad m) => PMonad.ProbabilityMonad (SampleT g m) where
+  choose r m1 m2 = SampleT $ do
+    g <- get
+    let (x, g') = RNG.randomR (0.0, 1.0) g
+    put g'
+    unSampleT $ if x < r then m1 else m2
+
+instance (MonadEval m) => MonadEval (SampleT g m) where
+  localEnv f = SampleT . mapStateT (localEnv f) . unSampleT
+  askEnv = SampleT $ lift $ askEnv
+  asksEnv = SampleT . lift . asksEnv
+  unimplemented = SampleT . lift . unimplemented
+  evaluationError = SampleT . lift . evaluationError
+  lookupPrimitive p = SampleT $ do
+    f <- lift $ lookupPrimitive p
+    return $ \x -> SampleT $ lift (f x)
+    
+
+forceDistClosure :: (MonadEval m, PMonad.ProbabilityMonad m)
+                    => DistClosure
+                    -> m Value
+forceDistClosure clos =
+  localEnv (const $ clos^.distClosureEnv)
+  $ forceDistThunk $ clos^.distClosureThunk
 
 -- Force the given thunk and return its value
-forceDistThunk :: (MonadEval m)
+forceDistThunk :: (MonadEval m, PMonad.ProbabilityMonad m)
              => DistThunk
              -> m Value
 forceDistThunk th_ = do
@@ -406,5 +457,14 @@ forceDistThunk th_ = do
      v1 <- forceEval m1
      localEnv (extendEnv x v1) $ forceEval m2
    MemoTh {} -> unimplemented "force memo thunk"
-   PrimitiveTh _ -> unimplemented "force primitive thunk"
+   PrimitiveTh pd -> forcePrimitiveDistribution pd
+
+
+forcePrimitiveDistribution :: (MonadEval m, PMonad.ProbabilityMonad m)
+                              => PrimitiveDistribution
+                              -> m Value
+forcePrimitiveDistribution pd =
+  case pd of
+   ChoosePD r m1 m2 -> do
+     PMonad.choose r (forceDistClosure m1) (forceDistClosure m2)
      
