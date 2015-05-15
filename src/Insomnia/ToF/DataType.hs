@@ -104,7 +104,6 @@ buildDatatypeModule dtv dtsem@(F.DataTypeSem bnd) k = do
     r = F.Record [(F.FDataIn, injections)
                  , (F.FDataOut, projection)
                  ]
-    abstr = [(dtv, U.embed k)]
     dataSem = F.DataSem dtv dtsem k
   semTy <- F.embedSemanticSig dataSem
   let
