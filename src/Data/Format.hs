@@ -86,6 +86,9 @@ instance Format PP.Doc where
 
 instance Format (U.Name a)
 
+instance Show Doc where
+  showsPrec p (Doc b) = showParen (p > 10) (showString "Doc " . showsPrec 10 b)
+
 -- | Emit a newline
 newline :: Doc
 newline = Doc $ TB.singleton '\n'

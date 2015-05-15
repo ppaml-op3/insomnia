@@ -126,6 +126,9 @@ library
                        FOmega.Primitives
                        FOmega.Eval
                        --
+                       Gambling.Racket
+                       Gambling.Emit
+                       --
                        Insomnia.Interp.PMonad
                        --
                        Insomnia.Pretty
