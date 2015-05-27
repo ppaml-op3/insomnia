@@ -13,6 +13,8 @@ import Unbound.Generics.LocallyNameless.LFresh
 import Unbound.Generics.LocallyNameless.Operations (lunbind, unrec, unembed, unrebind)
 import Unbound.Generics.LocallyNameless (Name, name2String)
 
+import Insomnia.Common.Literal
+
 import Gambling.Racket
 
 -- | Emitter monad stack
@@ -95,7 +97,7 @@ instance Emit [Char] where
 
 
 instance Emit (Name a) where
-  emit = emit . name2String
+  emit = emit . show
 
 parens, brackets :: EmitM a -> EmitM a
 parens = enclosing PP.parens
@@ -112,8 +114,17 @@ enclosing :: (PP.Doc -> PP.Doc) -> EmitM a -> EmitM a
 enclosing wrap m = do
   nesting (emitOne wrap) $ nesting emitFSep $ m
 
+instance Emit Literal where
+  emit (IntL i) = emit (PP.integer i)
+  emit (RealL r) = emit (PP.double r)
+
 instance Emit Expr where
   emit (Var v) = emit v
+  emit (Literal l) = emit l
+  emit (QuoteSymbol s) = parens $ do
+    emit "quote"
+    emit s
+  emit (StringLit s) = emit (show s)
   emit (App es) = parens $ mapM_ emit es
   emit (Lam b) = parens $ lunbind b $ \(vs, body) -> do
     emit "lambda"
@@ -127,7 +138,26 @@ instance Emit Expr where
     emit "letrec"
     parens $ mapM_ emit (unrec recBinds)
     emit body
-  
+  emit (Match subj clauses) = parens $ do
+    emit "match"
+    emit subj
+    nesting emitVCat $ mapM_ emit clauses
+
+instance Emit Clause where
+  emit (Clause bnd) = brackets $ lunbind bnd $ \(pat, body) -> do
+    emit pat
+    emit body
+    
+instance Emit Pattern where
+  emit WildP = emit "_"
+  emit (VarP v) = emit v
+  emit (ConsP p1 p2) = parens $ do
+    emit "cons"
+    emit p1
+    emit p2
+  emit (QuoteSymbolP s) = parens $ do
+    emit "quote"
+    emit (unembed s)
 
 instance Emit Binding where
   emit (Binding v e) = brackets $ do
@@ -152,10 +182,10 @@ instance Emit Definition where
     emit (unembed e)
 
 instance Emit Module where
-  emit (Module modId modLang modDefns) = parens $ do
-    emit "module"
-    emit modId
-    emit modLang
+  emit (Module _modId modLang modDefns) = nesting emitVCat $ do
+    nesting emitFSep $ do
+      emit "#lang"
+      emit modLang
     emit modDefns
 
 instance Emit ModuleDefnCtx where
@@ -181,7 +211,10 @@ instance Emit Requires where
     emit "require"
     parens $ do
       emit "only-in"
-      emit (unembed modPath)
+      emit (show (unembed modPath))
       mapM_ emit vs
+  emit (RequiresAll modPath) = parens $ do
+    emit "require"
+    emit (show (unembed modPath))
     
     

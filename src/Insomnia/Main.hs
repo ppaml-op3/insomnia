@@ -23,11 +23,17 @@ import qualified FOmega.Syntax as FOmega
 import qualified FOmega.Check as FCheck
 import qualified FOmega.Eval as FOmega
 
+import qualified Gambling.FromF as ToGamble
+import qualified Gambling.Emit as EmitGamble
+import qualified Gambling.Racket
+
 main :: IO ()
 main = do
   act <- processArguments
   case act of
     Typecheck fp -> runInsomniaMain (parseAndCheck fp) defaultConfig
+    Gamble fp -> runInsomniaMain (parseAndCheckAndGamble fp)
+                                 (defaultConfig { ismCfgEvaluateFOmega = False })
     HelpUsage -> printUsage
 
 type InsomniaMain a = ReaderT InsomniaMainConfig IO a
@@ -50,6 +56,7 @@ defaultConfig = InsomniaMainConfig {
 
 data Command =
   Typecheck !FilePath
+  | Gamble !FilePath
   | HelpUsage
 
 processArguments :: IO Command
@@ -58,20 +65,32 @@ processArguments = do
   case args of
     [arg] | arg == "--help" -> return HelpUsage
           | otherwise -> return $ Typecheck arg
+    ["-c", arg] -> return $ Gamble arg
     _ -> return HelpUsage
 
 printUsage :: IO ()
-printUsage = putStrLn "Usage: insomnia [FILE | --help]"
+printUsage = putStrLn "Usage: insomnia [[-c] FILE | --help]"
 
-parseAndCheck :: FilePath -> InsomniaMain ()
-parseAndCheck fp =
-  startingFrom fp
-  $ parsing
+parseAndCheck' :: Stage FilePath FOmega.Command
+parseAndCheck' =
+  parsing
   ->->- desugaring
   ->->- checking
   ->->- toFOmega
   ->->- checkFOmega
   ->->- conditionalStage (asks ismCfgEvaluateFOmega) runFOmega
+
+parseAndCheck :: FilePath -> InsomniaMain ()
+parseAndCheck fp =
+  startingFrom fp $ 
+  parseAndCheck'
+  ->->- compilerDone
+
+parseAndCheckAndGamble :: FilePath -> InsomniaMain ()
+parseAndCheckAndGamble fp =
+  startingFrom fp $
+  parseAndCheck'
+  ->->- translateToGamble
   ->->- compilerDone
 
 parsing :: Stage FilePath Toplevel
@@ -145,6 +164,13 @@ runFOmega = Stage {
        putDebugDoc (F.format $ ppDefault v)
     return m
   , formatStage = const mempty
+  }
+
+translateToGamble :: Stage  FOmega.Command Gambling.Racket.Module
+translateToGamble = Stage {
+  bannerStage = "Translating to Gamble"
+  , performStage = return . ToGamble.fomegaToGamble "<unnamed>"
+  , formatStage = EmitGamble.emitIt 
   }
 
 data Stage a b = Stage { bannerStage :: F.Doc 

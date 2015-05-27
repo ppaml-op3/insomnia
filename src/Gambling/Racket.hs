@@ -8,15 +8,21 @@ import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
 
+import Insomnia.Common.Literal
+
 type Var = Name Expr
 
 -- term
 data Expr =
   Var Var
+  | StringLit String
+  | QuoteSymbol String
+  | Literal Literal
   | App [Expr]
   | Lam (Bind [Var] Body)
   | Let (Bind Bindings Body)
   | LetRec (Bind (Rec Bindings) Body)
+  | Match Expr [Clause]
     deriving (Show, Generic, Typeable)
     
 
@@ -26,6 +32,19 @@ type Bindings = [Binding]
 -- pattern
 data Binding = Binding Var (Embed Expr)
              deriving (Show, Generic, Typeable)
+
+-- term
+newtype Clause =
+  Clause (Bind Pattern Body)
+  deriving (Show, Generic, Typeable)
+  
+-- pattern
+data Pattern =
+  VarP Var
+  | WildP
+  | ConsP Pattern Pattern
+  | QuoteSymbolP (Embed String)
+  deriving (Show, Generic, Typeable)
 
 -- term
 --
@@ -71,6 +90,7 @@ data ModuleBinding =
 
 -- pattern
 data Requires = Requires (Embed ModulePath) [Var]
+              | RequiresAll (Embed ModulePath)
               deriving (Show, Generic, Typeable)
 
 -- term
@@ -81,6 +101,8 @@ data Provides = Provides [Var]
 instance Alpha Expr
 instance Alpha Body
 instance Alpha Binding
+instance Alpha Clause
+instance Alpha Pattern
 instance Alpha InternalDefn
 instance Alpha Definition
 instance Alpha Provides

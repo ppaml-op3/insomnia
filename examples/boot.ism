@@ -21,9 +21,11 @@ module Prelude {
 
 
   fun flip d = __BOOT.Distribution.choose d (return True) (return False)
+
+  fun bernoulli d = __BOOT.Distribution.choose d (return 1) (return 0)
 }
 
-module M {
+module TestArith {
 
   import Prelude
 
@@ -31,7 +33,7 @@ module M {
 
 }
 
-model Flip {
+model TestFlip {
   val coin1 ~ Prelude.flip 0.5
 }
 
