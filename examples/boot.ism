@@ -37,4 +37,4 @@ model TestFlip {
   val coin1 ~ Prelude.flip 0.5
 }
 
-query sample Flip 3
+query sample TestFlip 3
