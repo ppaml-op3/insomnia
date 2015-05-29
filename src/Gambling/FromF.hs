@@ -110,8 +110,10 @@ instance Gamble Term where
      FUser s -> gambleHashRef (R.StringLit s) <$> gamble m
      FVal -> gamble m
      FCon c -> gambleHashRef (R.QuoteSymbol c) <$> gamble m
+     FTuple i -> gambleVectorRef (R.Literal $ IntL $ toInteger i) <$> gamble m
      FDataIn -> gambleProjectDataIn <$> gamble m
      FDataOut -> gambleProjectDataOut <$> gamble m
+     _ -> error ("projecting a " ++ show f ++ " field")
   gamble (Unroll _muTy m _ctxTy) = gamble m
   gamble (Roll _muty m _ctxTy) = gamble m
   gamble (Inj c m _sumTy) = do
@@ -124,6 +126,7 @@ instance Gamble Term where
     clauses' <- traverse gamble clauses
     defaultClause' <- gamble (DefaultClause defaultClause)
     return $ R.Match subj' (clauses' ++ defaultClause')
+  gamble (Abort _ty) = return gambleAbort
   gamble m = error $ "Gamble.gamble " ++ show m ++ " unimplemented"
 
 newtype DefaultClause a = DefaultClause a
@@ -188,6 +191,11 @@ gambleHashRef k e = R.App [R.Var (s2n "hash-ref")
                           , e
                           , k]
 
+gambleVectorRef :: R.Expr -> R.Expr -> R.Expr
+gambleVectorRef j e = R.App [R.Var (s2n "vector-ref")
+                            , e
+                            , j]
+
 gambleInOutPair :: R.Expr -> R.Expr -> R.Expr
 gambleInOutPair eIn eOut = R.App [R.Var (s2n "vector-immutable")
                                  , eIn
@@ -206,7 +214,10 @@ gambleProjectDataOut e = R.App [R.Var (s2n "vector-ref")
                                , R.Literal (IntL 1)
                                ]
 
-
+gambleAbort :: R.Expr
+gambleAbort = R.App [R.Var (s2n "error")
+                     , R.QuoteSymbol "insomnia-abort"
+                     ]
 
 singleton :: a -> [a]
 singleton x = [x]
