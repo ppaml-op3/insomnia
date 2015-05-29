@@ -310,15 +310,15 @@ submoduleDefn modPath _mk f me kont = do
   let modId = U.s2n f
   (F.AbstractSig bnd, msub) <- moduleExpr (flip ProjP f <$> modPath) me
   U.lunbind bnd $ \(tvks, modsig) -> do
-    let xv = U.s2n f
-    local (modEnv %~ M.insert modId (modsig, xv)) $ do
+    xv <- U.lfresh (U.s2n f)
+    U.avoid [U.AnyName xv] $ local (modEnv %~ M.insert modId (modsig, xv)) $ do
       let tvs = map fst tvks
-      munp <- F.unpacksM tvs xv
+      (munp, avd) <- F.unpacksM tvs xv
       let m = Endo $ munp msub
           thisOne = ((tvks, [(F.FUser f, modsig)]),
                      [(F.FUser f, F.V xv)],
                      m)
-      kont thisOne
+      U.avoid avd $ kont thisOne
 
 sampleModuleDefn :: ToF m
                     => Field
@@ -335,12 +335,12 @@ sampleModuleDefn f me kont = do
   U.lunbind bnd $ \(tvks, modSig) -> do
     let xv = U.s2n f
     local (modEnv %~ M.insert modId (modSig, xv)) $ do
-      munp <- F.unpacksM (map fst tvks) xv
+      (munp, avd) <- F.unpacksM (map fst tvks) xv
       let m = Endo $ F.LetSample . U.bind (xv, U.embed msub) . munp (F.V xv)
           thisOne = ((tvks, [(F.FUser f, modSig)]),
                      [(F.FUser f, F.V xv)],
                      m)
-      kont thisOne
+      U.avoid avd $ kont thisOne
 
 valueDecl :: ToF m
              => ModuleKind

@@ -47,15 +47,15 @@ toplevelModule ident me kont = do
   (F.AbstractSig bnd, msub) <- moduleExpr (Just $ IdP ident) me
   U.lunbind bnd $ \(tvks, modsig) -> do
     let nm = U.name2String ident
-        xv = U.s2n nm
-    local (modEnv %~ M.insert ident (modsig, xv)) $ do
+    xv <- U.lfresh (U.s2n nm)
+    U.avoid [U.AnyName xv] $ local (modEnv %~ M.insert ident (modsig, xv)) $ do
       let tvs = map fst tvks
-      munp <- F.unpacksCM tvs xv
+      (munp, avd) <- F.unpacksCM tvs xv
       let c = Endo $ munp msub
           thisOne = ((tvks, [(F.FUser nm, modsig)]),
                      [(F.FUser nm, F.V xv)],
                      c)
-      kont thisOne
+      U.avoid avd $ kont thisOne
 
 toplevelModuleType :: ToF m => SigIdentifier -> ModuleType -> (TopSummary -> m ans) -> m ans
 toplevelModuleType sigIdent modTy kont = do

@@ -269,24 +269,30 @@ packs taus_ m_ (tvks_, tbody_) =
       in Pack tau m' (bind tvk t')
     go _ _ _ _ = error "expected lists of equal length"
 
-unpacksM :: LFresh m => [TyVar] -> Var -> m (Term -> Term -> Term)
-unpacksM [] x = return $ \e1 ebody -> Let $ bind (x, embed e1) ebody
+unpacksM :: LFresh m => [TyVar] -> Var -> m ((Term -> Term -> Term), [AnyName])
+unpacksM [] x = return ((\e1 ebody -> Let $ bind (x, embed e1) ebody),
+                        [])
 unpacksM (tv:tvs) x = do
   x1 <- lfresh x
-  rest <- avoid [AnyName x1] (unpacksM tvs x)
-  return $ \e1 -> Unpack . bind (tv, x1, embed e1) . rest (V x1)
+  let avd = [AnyName x1]
+  (rest, avd') <- avoid avd (unpacksM tvs x)
+  return ((\e1 -> Unpack . bind (tv, x1, embed e1) . rest (V x1)),
+          avd ++ avd')
 
-unpacksCM :: LFresh m => [TyVar] -> Var -> m (Term -> Command -> Command)
-unpacksCM [] x = return $ \e1 cbody -> LetC $ bind (x, embed e1) cbody
+unpacksCM :: LFresh m => [TyVar] -> Var -> m ((Term -> Command -> Command), [AnyName])
+unpacksCM [] x = return ((\e1 cbody -> LetC $ bind (x, embed e1) cbody),
+                         [])
 unpacksCM (tv:tvs) x = do
   x1 <- lfresh x
-  rest <- avoid [AnyName x1] (unpacksCM tvs x)
-  return $ \e1 -> UnpackC . bind (tv, x1, embed e1) . rest (V x1)
+  let avd = [AnyName x1]
+  (rest, avd') <- avoid avd (unpacksCM tvs x)
+  return ((\e1 -> UnpackC . bind (tv, x1, embed e1) . rest (V x1)),
+          avd ++ avd')
 
 
 unpacks :: LFresh m => [TyVar] -> Var -> Term -> Term -> m Term
 unpacks tvs x e1 ebody = do
-  rest <- unpacksM tvs x
+  (rest, _) <- unpacksM tvs x
   return $ rest e1 ebody
 
 lets :: [(Var, Term)] -> Term -> Term
