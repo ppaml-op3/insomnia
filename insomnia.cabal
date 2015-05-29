@@ -42,6 +42,7 @@ library
                        Insomnia.Main.Command
                        Insomnia.Main.Stage
                        Insomnia.Main.InsomniaStages
+                       Insomnia.Main.SaveFinalProductStage
                        --
                        Insomnia.SurfaceSyntax.Syntax
                        Insomnia.SurfaceSyntax.FixityParser
@@ -145,6 +146,7 @@ library
   -- other-extensions:    
   build-depends:       base >=4.6 && <4.9,
                        text < 1.3,
+                       filepath,
                        containers  >= 0.4,
                        transformers >= 0.3,
                        random >= 1.0.1.2,

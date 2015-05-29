@@ -25,6 +25,8 @@ import qualified Gambling.FromF as ToGamble
 import qualified Gambling.Emit as EmitGamble
 import qualified Gambling.Racket
 
+import Insomnia.Main.SaveFinalProductStage (saveFinalProductStage)
+
 parseAndCheck' :: Stage FilePath FOmega.Command
 parseAndCheck' =
   parsing
@@ -45,6 +47,8 @@ parseAndCheckAndGamble fp =
   startingFrom fp $
   parseAndCheck'
   ->->- translateToGamble
+  ->->- prettyPrintGamble
+  ->->- (saveFinalProductStage "Gamble code")
   ->->- compilerDone
 
 parsing :: Stage FilePath Toplevel
@@ -124,7 +128,13 @@ translateToGamble :: Stage  FOmega.Command Gambling.Racket.Module
 translateToGamble = Stage {
   bannerStage = "Translating to Gamble"
   , performStage = return . ToGamble.fomegaToGamble "<unnamed>"
-  , formatStage = EmitGamble.emitIt 
+  , formatStage = const mempty
   }
 
+prettyPrintGamble :: Stage Gambling.Racket.Module F.Doc
+prettyPrintGamble = Stage {
+  bannerStage = "Pretty-printing Gamble code"
+  , performStage = return . EmitGamble.emitIt
+  , formatStage = id
+  }
 

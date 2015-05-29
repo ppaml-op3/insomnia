@@ -2,15 +2,14 @@
 module Insomnia.Main.Stage (Stage(..)
                            , (->->-)
                            , conditionalStage
+                           , maybeStage
                            , startingFrom
                            , compilerDone) where
 
-import Control.Monad.Reader
 import Data.Monoid
 
 import qualified Data.Format as F
 
-import Insomnia.Main.Config
 import Insomnia.Main.Monad
 
 data Stage a b = Stage { bannerStage :: F.Doc 
@@ -36,6 +35,20 @@ compilerDone = Stage { bannerStage = mempty
                      , performStage = const (return ())
                      , formatStage = mempty
                      }
+
+maybeStage :: InsomniaMain (Maybe c) -> (Stage (c,a) a) -> Stage a a
+maybeStage shouldRun stage =
+  Stage { bannerStage = bannerStage stage
+        , performStage = \inp -> do
+          m <- shouldRun
+          case m of
+           Nothing -> do
+             putErrorDoc ("SKIPPED " <> bannerStage stage)
+             return inp
+           Just c -> do
+             performStage stage (c, inp)
+        , formatStage = formatStage stage
+        }
 
 conditionalStage :: InsomniaMain Bool -> Stage a a -> Stage a a
 conditionalStage shouldRun stage =

@@ -13,6 +13,9 @@ module Insomnia.Main (
   , defaultConfig
   ) where
 
+import qualified System.IO as IO
+import qualified System.FilePath as FP
+
 import Insomnia.Main.Monad (InsomniaMain, runInsomniaMain)
 import Insomnia.Main.Config (InsomniaMainConfig(..), defaultConfig)
 import Insomnia.Main.Command (Command(..), processArguments, printUsage)
@@ -27,8 +30,13 @@ commandMain :: Command -> IO ()
 commandMain act =
   case act of
     Typecheck fp -> runInsomniaMain (parseAndCheck fp) defaultConfig
-    Gamble fp -> runInsomniaMain (parseAndCheckAndGamble fp)
-                                 (defaultConfig { ismCfgEvaluateFOmega = False })
+    Gamble fp -> do
+      let fpOut = FP.addExtension (FP.dropExtension fp ) ".rkt"
+      IO.withFile fpOut IO.WriteMode $ \hOut -> do
+        let config = defaultConfig { ismCfgEvaluateFOmega = False
+                                   , ismCfgFinalProductOut = Just hOut
+                                   }
+        runInsomniaMain (parseAndCheckAndGamble fp) config
     HelpUsage -> printUsage
 
 compilerMain :: IO ()
