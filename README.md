@@ -52,7 +52,24 @@ Building from source - installation instructions
     followed by something like:
     
 
-        Demodularizing
-        insomnia: src/Insomnia/Interp/ToLam.hs:(363,3)-(374,71): Non-exhaustive patterns in case
+        --------------------✂✄--------------------
+        Typechecking FΩ
+        FOmega type is: 
+        {M ∷ Dist {x ∷ {val ∷ Int}}}
+        
+        
+        --------------------✂✄--------------------
+        Running FΩ
+        pack
+        inj Cons
+        {#0 = {x = {val = 1}},
+        ... several dozen more lines of output ...
+        
 
     (Sorry, the backend is a work in progress)
+
+Compiler
+--------
+
+There is an insomnia compiler, called `insomniac` that outputs [Gamble](https://github.com/rmculpepper/gamble) code.
+It's also a work in progress.
