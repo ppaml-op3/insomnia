@@ -37,6 +37,12 @@ library
   exposed-modules:
                        Insomnia.Main
                        --
+                       Insomnia.Main.Monad
+                       Insomnia.Main.Config
+                       Insomnia.Main.Command
+                       Insomnia.Main.Stage
+                       Insomnia.Main.InsomniaStages
+                       --
                        Insomnia.SurfaceSyntax.Syntax
                        Insomnia.SurfaceSyntax.FixityParser
                        Insomnia.SurfaceSyntax.Parse
