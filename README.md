@@ -36,20 +36,14 @@ Building from source - installation instructions
     Note that installing the upstream dependencies may take a significant
     amount of time.
 
-    Note 2: At the moment you may need to change the first command to
-
-        $ cabal install --only-dependencies --constraint 'blaze-markup < 0.6.3'
-
-    due to some upstream issues.
-
 5. Try an example
 
-        $ dist/build/Insomnia/insomnia examples/seismology0.ism
+        $ dist/build/insomnia/insomnia examples/query.ism
 
     The expected output is a message that the file typechecked okay,
     followed by a pretty-printing of the source code, followed by the
     state of the type unification algorithm at the end of typechecking,
-    followed by something like:
+    followed by the elaboration to core FΩ, followed by something like:
     
 
         --------------------✂✄--------------------
@@ -73,3 +67,7 @@ Compiler
 
 There is an insomnia compiler, called `insomniac` that outputs [Gamble](https://github.com/rmculpepper/gamble) code.
 It's also a work in progress.
+
+```
+    $ dist/build/insomniac/insomniac examples/evalSimplest.ism
+```
