@@ -69,6 +69,7 @@ data DistThunk =
 
 data PrimitiveDistribution =
   ChoosePD !Double !DistClosure !DistClosure
+  | UniformPD !Double !Double -- lo, hi
 
 newtype Env = Env { envLookup :: Var -> Value }
 

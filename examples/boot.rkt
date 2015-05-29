@@ -17,3 +17,6 @@
   (if (flip r)
       (d1)
       (d2)))
+
+(define (((__BOOT.Distribution.uniform lo) hi))
+  (uniform lo hi))

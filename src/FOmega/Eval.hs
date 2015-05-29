@@ -82,6 +82,7 @@ primitiveEvalMap =
   M.fromList [ primitive "__BOOT.intAdd"  intAddImpl
              , primitive "__BOOT.ifIntLt" ifIntLtImpl
              , primitive "__BOOT.Distribution.choose" distChooseImpl
+             , primitive "__BOOT.Distribution.uniform" distUniformImpl
              ]
   where
     primitive h c = (h, c)
@@ -113,6 +114,16 @@ distChooseImpl (NilPCS
     evaluationError "__BOOT.Distribution.choose: real parameter should be in the range [0.0 .. 1.0]"
   return $ DistV $ DistClosure emptyEnv $ PrimitiveTh $ ChoosePD r dc1 dc2
 distChooseImpl _ = evaluationError "__BOOT.Distribution.choose incorrect arguments"
+
+-- distUniformImpl :: Real -> Real -> Dist Real
+distUniformImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+distUniformImpl (NilPCS
+                 `AppPCS` (LitV (RealL lo))
+                 `AppPCS` (LitV (RealL hi))) = do
+  unless (lo <= hi) $
+    evaluationError "__BOOT.Distribution.uniform: lo not less then or equal to hi"
+  return $ DistV $ DistClosure emptyEnv $ PrimitiveTh $ UniformPD lo hi
+distUniformImpl _ = evaluationError "__BOOT.Distribution.uniform incorrect arguments"
 
 extendEnv :: Var -> Value -> Env -> Env
 extendEnv x v e =
@@ -394,7 +405,7 @@ embedUnitV = RecordV []
 
 -- Assuming the term evaluates to a DistV, force the underlying thunk
 -- and return its value.
-forceEval :: (MonadEval m, PMonad.ProbabilityMonad m)
+forceEval :: (MonadEval m, PMonad.ContinuousProbabilityMonad m)
              => Term
              -> m Value
 forceEval m = do
@@ -403,7 +414,7 @@ forceEval m = do
 
 -- Assuming the value is a DistV, force the underlying thunk and
 -- return its value.
-forceValue :: (MonadEval m, PMonad.ProbabilityMonad m)
+forceValue :: (MonadEval m, PMonad.ContinuousProbabilityMonad m)
               => Value
               -> m Value
 forceValue v_ =
@@ -422,9 +433,7 @@ runSampleTIO comp = do
 
 instance (RNG.RandomGen g, Monad m) => PMonad.ProbabilityMonad (SampleT g m) where
   choose r m1 m2 = SampleT $ do
-    g <- get
-    let (x, g') = RNG.randomR (0.0, 1.0) g
-    put g'
+    x <- state $ RNG.randomR (0.0, 1.0)
     unSampleT $ if x < r then m1 else m2
 
 instance (MonadEval m) => MonadEval (SampleT g m) where
@@ -437,8 +446,11 @@ instance (MonadEval m) => MonadEval (SampleT g m) where
     f <- lift $ lookupPrimitive p
     return $ \x -> SampleT $ lift (f x)
     
+instance (RNG.RandomGen g, Monad m) => PMonad.ContinuousProbabilityMonad (SampleT g m) where
+  u = SampleT $ state $ RNG.randomR (0.0, 1.0)
 
-forceDistClosure :: (MonadEval m, PMonad.ProbabilityMonad m)
+
+forceDistClosure :: (MonadEval m, PMonad.ContinuousProbabilityMonad m)
                     => DistClosure
                     -> m Value
 forceDistClosure clos =
@@ -446,7 +458,7 @@ forceDistClosure clos =
   $ forceDistThunk $ clos^.distClosureThunk
 
 -- Force the given thunk and return its value
-forceDistThunk :: (MonadEval m, PMonad.ProbabilityMonad m)
+forceDistThunk :: (MonadEval m, PMonad.ContinuousProbabilityMonad m)
              => DistThunk
              -> m Value
 forceDistThunk th_ = do
@@ -460,11 +472,14 @@ forceDistThunk th_ = do
    PrimitiveTh pd -> forcePrimitiveDistribution pd
 
 
-forcePrimitiveDistribution :: (MonadEval m, PMonad.ProbabilityMonad m)
+forcePrimitiveDistribution :: (MonadEval m, PMonad.ContinuousProbabilityMonad m)
                               => PrimitiveDistribution
                               -> m Value
 forcePrimitiveDistribution pd =
   case pd of
    ChoosePD r m1 m2 -> do
      PMonad.choose r (forceDistClosure m1) (forceDistClosure m2)
+   UniformPD lo hi -> do
+     r <- PMonad.u
+     return $ LitV $ RealL $ r * lo + (1 - r) * hi
      

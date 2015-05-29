@@ -82,6 +82,7 @@ runTC c = runLFreshMT $ runExceptT (runReaderT c initialCtx)
       , CVal (U.s2n "__BOOT.intAdd") intAddTy
       , CVal (U.s2n "__BOOT.ifIntLt") ifIntLtTy
       , CVal (U.s2n "__BOOT.Distribution.choose") distChooseTy
+      , CVal (U.s2n "__BOOT.Distribution.uniform") distUniformTy
       ]
 
 intAddTy :: Type
@@ -100,6 +101,10 @@ distChooseTy =
       a = TV va
       da = TDist a
   in TForall $ U.bind (va, U.embed KType) $ [realT, da, da] `tArrs` da
+
+distUniformTy :: Type
+distUniformTy = [realT, realT] `tArrs` TDist realT
+   
           
 inferK :: MonadTC m => Type -> m Kind
 inferK t_ =
