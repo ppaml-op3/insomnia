@@ -74,10 +74,9 @@ data Term =
   | Memo !Term
   | Assume !Type
   | Inj !Field !Term !Type
-  | Case !Term ![Clause] !(Maybe Term)
+  | Case !Term ![Clause] !DefaultClause
   | Roll !Type !Term !(Bind TyVar Type) -- roll μ..., m as δ.T
   | Unroll !Type !Term !(Bind TyVar Type) -- unroll μ..., m as δ.T
-  | Abort !Type
   deriving (Show, Typeable, Generic)
 
 data Command =
@@ -98,6 +97,12 @@ infixl 6 `Proj`
 data Clause = Clause !Field !(Bind Var Term)
             deriving (Show, Typeable, Generic)
 
+newtype DefaultClause = DefaultClause (Either CaseMatchFailure Term)
+                      deriving (Show, Typeable, Generic)
+
+newtype CaseMatchFailure = CaseMatchFailure Type
+                         deriving (Show, Typeable, Generic)
+
 -- terms should be values
 type RecBindings = Rec [(Var, Embed Type, Embed Term)]
 
@@ -109,6 +114,8 @@ instance Alpha Kind
 instance Alpha Type
 instance Alpha Term
 instance Alpha Clause
+instance Alpha DefaultClause
+instance Alpha CaseMatchFailure
 instance Alpha Command
 instance Alpha PrimitiveCommand
 
@@ -129,6 +136,8 @@ instance Subst Type Literal where
   substs _ = id
 
 instance Subst Type Clause
+instance Subst Type DefaultClause
+instance Subst Type CaseMatchFailure
 
 instance Subst Type Term
 
@@ -140,6 +149,8 @@ instance Subst Term Term where
   isvar _ = Nothing
 
 instance Subst Term Clause
+instance Subst Term DefaultClause
+instance Subst Term CaseMatchFailure
 
 instance Subst Term Type where
   subst _ _ = id
@@ -342,10 +353,6 @@ listT =
   in
    TFix $ bind (vd, embed (KType `KArr` KType)) l
 
-
--- | λ _ : ()  . abort T
-abortThunk :: Type -> Term
-abortThunk = Lam . bind (s2n "_abort", embed unitT) . Abort
 
 -- | construct: Λε:⋆ . roll (listT ε) (Inj Nil [] (listSumT ε)) as α.(α ε)
 nilListVal :: Term

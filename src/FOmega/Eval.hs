@@ -160,11 +160,11 @@ eval m_ =
    Inj f m _ -> do
      v <- eval m
      return $ InjV f v
-   Case m clauses fallthrough -> do
+   Case m clauses defaultClause -> do
      v <- eval m
      case v of
       InjV f v' -> do
-        s <- selectClause clauses fallthrough f
+        s <- selectClause clauses defaultClause f
         case s of
          Left defM -> eval defM
          Right bnd -> do
@@ -196,7 +196,6 @@ eval m_ =
       RollV v' -> return v'
       _ -> evaluationError "unroll of non-rolled value"
    Assume _ -> evaluationError "evaluation of an Assume directive"
-   Abort _ -> evaluationError "evaluation Aborted"
 
 applyClosureV :: MonadEval m
                  => Value
@@ -295,7 +294,7 @@ selectField fvs_ f = (go fvs_)
 
 selectClause :: MonadEval m
                 => [Clause]
-                -> Maybe Term
+                -> DefaultClause
                 -> Field
              -> m (Either Term (U.Bind Var Term))
 selectClause clauses_ defaultClause f =
@@ -303,8 +302,9 @@ selectClause clauses_ defaultClause f =
   where
     go [] =
       case defaultClause of
-       Just m -> return (Left m)
-       Nothing -> evaluationError "no match case clause found and no default available"
+       (DefaultClause (Right m)) -> return (Left m)
+       (DefaultClause (Left _matchFailure)) ->
+         evaluationError "no match case clause found and no default available"
     go (Clause f' bnd : clauses) | f == f' = return (Right bnd)
                                  | otherwise = go clauses
 

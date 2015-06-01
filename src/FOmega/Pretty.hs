@@ -127,11 +127,11 @@ ppTerm m_ =
      $ fsep ["inj", ppField f, ppTerm m, "as" <+> (ppType t)]
    Let {} ->
      nestedLet m_
-   Case m clauses optDefault ->
+   Case m clauses defaultCase ->
      precParens 1
      $ fsep ["case", pp m, "of",
              braces $ sep $ prePunctuate ";" (map ppClause clauses
-                                              ++ ppDefaultClause optDefault)]
+                                              ++ [ppDefaultClause defaultCase])]
    Roll ty m ctx ->
      precParens 2
      $ fsep ["roll", ppType ty, indent "," (ppTerm m), indent "as" (ppCtx ctx)]
@@ -145,8 +145,6 @@ ppTerm m_ =
    Memo m -> infixOp 2 mempty AssocLeft "memo" (ppTerm m)
    Assume t ->
      fsep ["assume", precParens 2 $ ppType t]
-   Abort t ->
-     fsep ["abort", precParens 2 $ ppType t]
 
 ppReturn :: Term -> PM Doc
 ppReturn m = fsep ["return", precParens 2 $ ppTerm m]
@@ -231,9 +229,14 @@ ppClause (Clause f bnd) =
   in
    fsep [parens $ fsep [ppField f, pp v], indent "→" (withLowestPrec $ ppTerm m)]
 
-ppDefaultClause :: Maybe Term -> [PM Doc]
-ppDefaultClause Nothing = []
-ppDefaultClause (Just m) = [fsep ["_", indent "→" (withLowestPrec $ ppTerm m)]]
+ppDefaultClause :: DefaultClause -> PM Doc
+ppDefaultClause (DefaultClause lr) =
+  case lr of
+   Left caseMatchFail -> ppCaseMatchFail caseMatchFail
+   Right m -> fsep ["_", indent "→" (withLowestPrec $ ppTerm m)]
+
+ppCaseMatchFail :: CaseMatchFailure -> PM Doc
+ppCaseMatchFail (CaseMatchFailure resultTy) = fsep ["abort", precParens 2 $ ppType resultTy]
 
 ppExistPack :: ExistPack -> PM Doc
 ppExistPack bnd =

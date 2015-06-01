@@ -255,15 +255,15 @@ inferTy m_ =
      k <- inferK t
      expectKType t k
      return t
-   Case m clauses optDefault -> do
+   Case m clauses defaultClause -> do
      tsum <- inferTy m
      tsumN <- whnfTy tsum KType
      alts <- case tsumN of
       TSum alts -> return alts
       _ -> throwError $ ExpectedSumType (Got tsum)
      ts <- forM clauses (checkClause alts)
-     optT <- forM optDefault inferTy
-     let touts = ts ++ (maybe [] (\t -> [t]) optT)
+     optT <- checkDefaultClause defaultClause
+     let touts = ts ++ [optT]
      case touts of
       [] -> throwError $ EmptyCaseConstruct
       (tcand:tcands) -> do
@@ -283,10 +283,6 @@ inferTy m_ =
      checkRollUnroll True t m pk
    Unroll t m pk -> do
      checkRollUnroll False t m pk
-   Abort t -> do
-     k <- inferK t
-     expectKType t k
-     return t
    Memo m -> do
      t <- inferTy m
      tN <- whnfTy t KType
@@ -399,6 +395,16 @@ checkClause fts (Clause f bnd) =
           Just ty -> return ty
           Nothing -> throwError $ SumTypeHasNoField (Expected $ TSum fts) (Got f)
     extendEnv (CVal v t) $ inferTy body
+
+checkDefaultClause :: MonadTC m => DefaultClause -> m Type
+checkDefaultClause (DefaultClause (Left failure)) = checkCaseMatchFailure failure
+checkDefaultClause (DefaultClause (Right m)) = inferTy m
+
+checkCaseMatchFailure :: MonadTC m => CaseMatchFailure -> m Type
+checkCaseMatchFailure (CaseMatchFailure resTy) = do
+  k <- inferK resTy
+  expectKType resTy k
+  return resTy
 
 -- | checks that the given field is in the given list of alternatives,
 -- and if so, checks that its type is equivalent to the type in the

@@ -124,19 +124,21 @@ instance Gamble Term where
   gamble (Case subj clauses defaultClause) = do
     subj' <- gamble subj
     clauses' <- traverse gamble clauses
-    defaultClause' <- gamble (DefaultClause defaultClause)
+    defaultClause' <- gamble defaultClause
     return $ R.Match subj' (clauses' ++ defaultClause')
-  gamble (Abort _ty) = return gambleAbort
   gamble m = error $ "Gamble.gamble " ++ show m ++ " unimplemented"
 
-newtype DefaultClause a = DefaultClause a
-
-instance Gamble (DefaultClause (Maybe Term)) where
-  type Gambled (DefaultClause (Maybe Term)) = [R.Clause]
-  gamble (DefaultClause Nothing) = return []
-  gamble (DefaultClause (Just m)) = do
-    e <- gamble m
+instance Gamble DefaultClause where
+  type Gambled DefaultClause = [R.Clause]
+  gamble (DefaultClause dc) = do
+    e <- case dc of
+          Left caseMatchFailure -> gamble caseMatchFailure
+          Right m -> gamble m
     return [R.Clause $ bind R.WildP $ simpleBody e]
+
+instance Gamble CaseMatchFailure where
+  type Gambled CaseMatchFailure = R.Expr
+  gamble (CaseMatchFailure _resultTy) = return gambleAbort
 
 instance Gamble Clause where
   type Gambled Clause = R.Clause

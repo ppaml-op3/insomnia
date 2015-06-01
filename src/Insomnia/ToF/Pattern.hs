@@ -63,22 +63,26 @@ patternTranslation :: ToF m
 patternTranslation v clauses_ resultTy =
   withFreshName (U.name2String v) $ \v' -> 
   local (valEnv %~ M.insert v (v', LocalTermVar)) $ do
-    m <- patternTranslation' v' clauses_ resultTy
+    let defaultClause = F.DefaultClause $ Left $ F.CaseMatchFailure resultTy
+    m <- patternTranslation' v' clauses_ defaultClause
     return $ U.bind v' m
 
 patternTranslation' :: ToF m
                        => F.Var
                        -> [Clause]
-                       -> F.Type
+                       -> F.DefaultClause
                        -> m F.Term
-patternTranslation' v' clauses_ resultTy =
+patternTranslation' v' clauses_ defaultClause =
   case clauses_ of
-   [] -> return $ F.Abort resultTy
+   [] -> return $ F.Case (F.V v') [] defaultClause
+   [clause] ->
+     let job = clauseToJob v' clause
+     in translateJob job (FailCont defaultClause)
    (clause:clauses') -> do
-       mfk <- patternTranslation' v' clauses' resultTy
-       let fk = FailCont mfk
-           job = clauseToJob v' clause
-       translateJob job fk
+     mfk <- patternTranslation' v' clauses' defaultClause
+     let defaultClause' = F.DefaultClause $ Right mfk
+         job = clauseToJob v' clause
+     translateJob job (FailCont defaultClause')
 
      
 data Job =
@@ -88,7 +92,7 @@ data Job =
 
 instance U.Alpha Job             
 
-newtype FailCont = FailCont F.Term
+newtype FailCont = FailCont F.DefaultClause
 
 clauseToJob :: F.Var -> Clause -> Job
 clauseToJob v' (Clause bnd) =
@@ -137,7 +141,7 @@ caseConstruct :: ToF m
                  -> F.Term
                  -> FailCont
                  -> m F.Term
-caseConstruct ysubj vc (InstantiationSynthesisCoercion _ tyargs _) fys successTm (FailCont failContTm) = 
+caseConstruct ysubj vc (InstantiationSynthesisCoercion _ tyargs _) fys successTm (FailCont defaultClause) = 
   withFreshName "z" $ \z -> do
     (dtInOut, f) <- valueConstructor vc
     (tyArgs', ks) <- liftM unzip $ mapM type' tyargs
@@ -156,7 +160,7 @@ caseConstruct ysubj vc (InstantiationSynthesisCoercion _ tyargs _) fys successTm
              in F.TLam $ U.bind (d, U.embed kD) appdD
       subject = F.App (F.PApp dtOut here) (F.V ysubj)
       clause = F.Clause f $ U.bind z (projectFields fys z successTm)
-    return $ F.Case subject [clause] (Just failContTm)
+    return $ F.Case subject [clause] defaultClause
 
 
 matchTheseAndThen :: [(F.Var, Pattern)] -> Job -> Job
