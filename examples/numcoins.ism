@@ -2,15 +2,15 @@
 -- eval: False
 
 model type POISSOND {
-  type N :: *
-  sig x :: N
+  type N : *
+  sig x : N
 }
 
 model Q = assume POISSOND
 
 model type POISSONL {
-  type N :: *
-  sig x :: N
+  type N : *
+  sig x : N
 }
 
 module PoissonL =
@@ -19,8 +19,8 @@ module PoissonL =
     module H ~ Q
   in {
     type N = H.N
-    sig x :: H.N
+    sig x : H.N
     val x = H.x
-  } :: POISSONL
+  } : POISSONL
 
 

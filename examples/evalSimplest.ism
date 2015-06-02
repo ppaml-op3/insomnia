@@ -1,8 +1,8 @@
 module Id {
-  sig id :: forall (a :: *) . a -> a
+  sig id : forall (a : *) . a -> a
   fun id x = x
 
-  sig const :: forall (a :: *) (b :: *) . a -> b -> a
+  sig const : forall (a : *) (b : *) . a -> b -> a
   fun const x y = x
 
   val x = id (id 5)
@@ -12,8 +12,8 @@ module Id {
   val z = (const id) 10 11
 }
 
-module F (module X :: {
-            sig id :: forall (a :: *) . a -> a
+module F (module X : {
+            sig id : forall (a : *) . a -> a
           }) {
   val z = X.id 2
 }

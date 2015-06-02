@@ -2,38 +2,38 @@
 -- eval: False
 
 module type DIST_PARAMS {
-  type NormalParams = { μ :: Real ; σ :: Real }
+  type NormalParams = { μ : Real ; σ : Real }
 
-  sig normal :: NormalParams -> Dist Real
+  sig normal : NormalParams -> Dist Real
 }
 
-module DistParams :: DIST_PARAMS {
-   type NormalParams = { μ :: Real ; σ :: Real }
+module DistParams : DIST_PARAMS {
+   type NormalParams = { μ : Real ; σ : Real }
 
    module Assume = assume {
-     sig normal :: NormalParams -> Dist Real
+     sig normal : NormalParams -> Dist Real
    }
    import Assume
 }
 
 model type N_SIG {
-  sig h :: Real
+  sig h : Real
 
-  sig z :: Real
+  sig z : Real
 }
 
-model N :: N_SIG {
-  sig h :: Real
+model N : N_SIG {
+  sig h : Real
   val h ~ DistParams.normal { μ = 1.0, σ = 1.0 }
 
   module Assume = assume {
-    parameter sig (.+) :: Real -> Real -> Real
+    parameter sig (.+) : Real -> Real -> Real
   }
   import Assume
 
   infixl .+ 6
 
-  -- sig z :: Real
+  -- sig z : Real
   val z = let
     p = { μ = 1.0, σ = 1.0 }
     q = p -- (just to check that let bindings scope correctly)

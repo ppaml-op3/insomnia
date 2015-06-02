@@ -2,12 +2,12 @@
 -- eval: True
 
 module __BOOT = assume {
-  sig intAdd :: Int -> Int -> Int
-  sig ifIntLt :: forall (a :: *) . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
+  sig intAdd : Int -> Int -> Int
+  sig ifIntLt : forall (a : *) . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
 
   module Distribution {
-    sig choose :: forall (a :: *) . Real -> Dist a -> Dist a -> Dist a
-    sig uniform :: Real -- lo
+    sig choose : forall (a : *) . Real -> Dist a -> Dist a -> Dist a
+    sig uniform : Real -- lo
                    -> Real -- hi
                    -> Dist Real
   }
@@ -15,7 +15,7 @@ module __BOOT = assume {
 }
 
 module Prelude {
-  sig (+) :: Int -> Int -> Int
+  sig (+) : Int -> Int -> Int
   fun (+) x y = __BOOT.intAdd x y
 
   data Bool = True | False

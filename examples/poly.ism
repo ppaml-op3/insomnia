@@ -2,20 +2,20 @@
 -- eval: False
 
 module Poly {
-  sig idC :: forall (c :: * -> *) (a :: *) . c a -> c a
+  sig idC : forall (c : * -> *) (a : *) . c a -> c a
   fun idC x = x
 
-  -- sig id2 :: forall (c :: * -> *) . c Int -> c Int
+  -- sig id2 : forall (c : * -> *) . c Int -> c Int
   -- fun id2 y = idC y
 
-  sig const :: forall (a :: *) (b :: *) . a -> b -> a
+  sig const : forall (a : *) (b : *) . a -> b -> a
   fun const x _y = x
 
   module Assume = assume {
-    sig r :: forall (a :: *) . Int -> a
+    sig r : forall (a : *) . Int -> a
   }
   import Assume
 
-  -- sig h :: Int -> Int
+  -- sig h : Int -> Int
   fun h x = const x (r 0)
 }

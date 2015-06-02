@@ -2,51 +2,51 @@
 -- eval: False
 
 module type T1 {
-  type T :: *
-  sig f :: T -> T
-  sig v :: T
+  type T : *
+  sig f : T -> T
+  sig v : T
 }
 
-module X1 :: T1 {
+module X1 : T1 {
   type T = Int
-  fun f x = (x :: Int)
+  fun f x = (x : Int)
   val v = 0
 }
 
-module type FT = (module P :: T1) -> T1
+module type FT = (module P : T1) -> T1
 
-module F (module P :: T1) = P
+module F (module P : T1) = P
 
 module X2 = F (X1)
 
-module F2 (module P :: T1) :: T1 {
+module F2 (module P : T1) : T1 {
   type T = P.T
   fun f x = P.f x
   val v = P.v
 }
 
-module F_A :: FT = F
+module F_A : FT = F
 
 module type T1_TRANSPARENT {
   type T = Int
-  sig f :: T -> T
-  sig v :: T
+  sig f : T -> T
+  sig v : T
 }
 
-module type FT_SUB = (module P :: T1_TRANSPARENT) -> T1
+module type FT_SUB = (module P : T1_TRANSPARENT) -> T1
 
-module F_B :: FT_SUB = F
+module F_B : FT_SUB = F
 
-module F3 (module P :: T1_TRANSPARENT) :: T1 {
+module F3 (module P : T1_TRANSPARENT) : T1 {
   type T = Int
-  sig f :: T -> T
+  sig f : T -> T
   fun f x = 0
   val v = 0
 }
 
-module F_C :: FT_SUB = F3
+module F_C : FT_SUB = F3
 
 -- next one is an error because functors are contravariant in their
 -- arguments.
 
--- module F_C :: FT_SUB = F3
+-- module F_C : FT_SUB = F3

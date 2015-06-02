@@ -2,26 +2,26 @@
 -- eval: False
 
 module type S_SIG {
-  type T :: *
+  type T : *
 }
 
 module type PRELUDE {
   data Bool = True | False
-  -- type Bool :: *
+  -- type Bool : *
   type Bool2 = Bool
 
-  module S :: {
-     module S2 :: S_SIG
+  module S : {
+     module S2 : S_SIG
   }
 
-  parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
+  parameter sig cond : forall (c : *) . Bool -> c -> c -> c
 
-  data Proxy (a :: *) = Proxy
-  parameter sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
-  parameter sig flip :: Real -> Dist Bool
+  data Proxy (a : *) = Proxy
+  parameter sig uniform : ∀ (p : ⋆ → ⋆) (a : ⋆) . p a -> Dist a
+  parameter sig flip : Real -> Dist Bool
 }
 
-module Prelude :: PRELUDE {
+module Prelude : PRELUDE {
 
    module S {
       module S2 {
@@ -34,47 +34,47 @@ module Prelude :: PRELUDE {
 
    type Bool2 = Bool
 
-   parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
+   parameter sig cond : forall (c : *) . Bool -> c -> c -> c
    fun cond b t f =
        case b of
          True -> t
          False -> f
 
-   data Proxy (a :: *) = Proxy
+   data Proxy (a : *) = Proxy
 
    module AssumeDists = assume {
-     parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
-     parameter sig flip :: Real -> Dist Bool
+     parameter sig uniform : forall (p : * -> *) (a : *). p a -> Dist a
+     parameter sig flip : Real -> Dist Bool
    }
    import AssumeDists
 
-   parameter sig foo :: S.W -> S.S2.T
+   parameter sig foo : S.W -> S.S2.T
    fun foo x = x
 }
 
 module Raining {
 
   module AssumeDouble = assume {
-    parameter sig double :: Real -> Real
+    parameter sig double : Real -> Real
   }
   import AssumeDouble
 
   model Test {
-    sig x :: Real
+    sig x : Real
     val x ~ Prelude.uniform Prelude.Proxy
 
-    sig y :: Real
+    sig y : Real
     val y = double x 
   }
 
   enum T 10
 
   model RainBelief  {
-    sig raining :: Prelude.Bool2
+    sig raining : Prelude.Bool2
     val raining ~ (Prelude.uniform Prelude.Proxy)
 
-    sig thinksRain :: T -> Prelude.Bool
-    forall (x :: T) in
+    sig thinksRain : T -> Prelude.Bool
+    forall (x : T) in
       thinksRain x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
   }
 

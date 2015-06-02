@@ -2,37 +2,37 @@
 -- eval: False
 
 module type S_SIG {
-  type T :: *
+  type T : *
 }
 
 module type PRELUDE {
   data Bool = True | False
-  -- type Bool :: *
+  -- type Bool : *
   type Bool2 = Bool
 
-  data List (a ∷ ⋆) = Nil | Cons a (List a)
+  data List (a : ⋆) = Nil | Cons a (List a)
 
-  parameter sig (:) :: ∀ (a ∷ ⋆) . a -> List a -> List a
+  parameter sig (::) : ∀ (a : ⋆) . a -> List a -> List a
   
 
-  module S :: {
-     module S2 :: S_SIG
+  module S : {
+     module S2 : S_SIG
      type W = S2.T
   }
 
-  parameter sig cond :: forall (d :: *) . Bool -> d -> d -> d
+  parameter sig cond : forall (d : *) . Bool -> d -> d -> d
 
-  data Proxy (a :: *) = Proxy
+  data Proxy (a : *) = Proxy
 
-  parameter sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
-  parameter sig flip :: Real -> Dist Bool
+  parameter sig uniform : ∀ (p : ⋆ → ⋆) (a : ⋆) . p a -> Dist a
+  parameter sig flip : Real -> Dist Bool
 
   type H = S.W -> Int
 
-  parameter sig foo :: S.W -> S.S2.T
+  parameter sig foo : S.W -> S.S2.T
 }
 
-module Prelude :: PRELUDE {
+module Prelude : PRELUDE {
 
    module S {
       module S2 {
@@ -45,7 +45,7 @@ module Prelude :: PRELUDE {
 
    type Bool2 = Bool
 
-   parameter sig (&&) :: Bool -> Bool -> Bool
+   parameter sig (&&) : Bool -> Bool -> Bool
    fun (&&) b1 b2 =
      case b1 of
        { True -> b2
@@ -54,24 +54,24 @@ module Prelude :: PRELUDE {
 
    infixl && 4
 
-   data List (a ∷ ⋆) = Nil | Cons a (List a)
+   data List (a : ⋆) = Nil | Cons a (List a)
 
-   parameter sig (:) :: ∀ (a ∷ ⋆) . a -> List a -> List a
-   fun (:) x xs = Cons x xs
+   parameter sig (::) : ∀ (a : ⋆) . a -> List a -> List a
+   fun (::) x xs = Cons x xs
 
-   infixr : 6
+   infixr :: 6
 
-   sig l1 :: List Int
-   val l1 = (3 : 4 : Nil)
+   sig l1 : List Int
+   val l1 = (3 :: 4 :: Nil)
 
-   parameter sig map :: ∀ (a :: *) (b :: *) . (a -> b) -> List a -> List b
+   parameter sig map : ∀ (a : *) (b : *) . (a -> b) -> List a -> List b
    fun map f xs =
      case xs of
      { Nil -> Nil
-     ; (Cons y ys) -> f y : map f ys
+     ; (Cons y ys) -> f y :: map f ys
      }
 
-   parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
+   parameter sig cond : forall (c : *) . Bool -> c -> c -> c
    fun cond b t f =
        case b of
        {
@@ -79,17 +79,17 @@ module Prelude :: PRELUDE {
        ; False -> f
        }
 
-   data Proxy (a :: *) = Proxy
+   data Proxy (a : *) = Proxy
 
    module AssumeDist = assume {
-     parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
-     parameter sig flip :: Real -> Dist Bool
+     parameter sig uniform : forall (p : * -> *) (a : *). p a -> Dist a
+     parameter sig flip : Real -> Dist Bool
    }
    import AssumeDist
 
    type H = S.W -> S.S2.T
 
-   parameter sig foo :: S.W -> S.S2.T
+   parameter sig foo : S.W -> S.S2.T
    fun foo x = x
 }
 
@@ -97,18 +97,18 @@ model Q = Prelude.S
 
 model Raining {
 
-sig raining :: Prelude.Bool2
+sig raining : Prelude.Bool2
 val raining ~ (Prelude.uniform Prelude.Proxy)
 
-parameter sig bar :: Prelude.S.S2.T -> Prelude.S.W
+parameter sig bar : Prelude.S.S2.T -> Prelude.S.W
 fun bar x = Prelude.foo x
 
 enum T 10
 
-sig thinksRain :: T -> Prelude.Bool
+sig thinksRain : T -> Prelude.Bool
 
 -- fun thinksRain t = let {
---    forall (x :: T) in
+--    forall (x : T) in
 --      g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
 --    } in g t
 
@@ -116,7 +116,7 @@ sig thinksRain :: T -> Prelude.Bool
 -- that 'thinksRain' is called.  Instead what we want is to create the
 -- table once.
 val thinksRain = let {
-  forall (x :: T) in
+  forall (x : T) in
     g x ~ Prelude.cond raining (Prelude.flip 0.9) (Prelude.flip 0.1)
   } in g
 

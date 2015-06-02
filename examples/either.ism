@@ -4,16 +4,16 @@
 module Example {
 -- Example tprob file.
 
-data Either (p :: ⋆) (q :: ⋆) = Left p | Right q
+data Either (p : ⋆) (q : ⋆) = Left p | Right q
 
-sig withEither :: forall (p :: ⋆) (q :: ⋆) (r ∷ ⋆)
+sig withEither : forall (p : ⋆) (q : ⋆) (r : ⋆)
                   . (p -> r) -> (q -> r) -> Either p q -> r
 fun withEither l r t = case t of
   { (Left x) -> l x
   ; (Right y) -> r y
   }
 
-sig h :: forall (a :: *) (b :: *) . { one :: (Either (a -> a) b) ; two :: Either a b } -> a
+sig h : forall (a : *) (b : *) . { one : (Either (a -> a) b) ; two : Either a b } -> a
 fun h x =
   case x of
   { { one = (Left p) , two = (Left y) } -> p y

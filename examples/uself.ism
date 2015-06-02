@@ -1,18 +1,18 @@
 -- insomnia test flags:
 -- eval: False
 module type T {
-  type T :: *
-  sig x :: T
-  parameter sig f :: T -> Real
+  type T : *
+  sig x : T
+  parameter sig f : T -> Real
 }
 
-module M1 :: T {
+module M1 : T {
   data T = T
 
-  sig x :: T
+  sig x : T
   val x = T
 
-  parameter sig f :: T -> Real
+  parameter sig f : T -> Real
   fun f t =
     case t of
     { T -> 1.0
@@ -22,6 +22,6 @@ module M1 :: T {
 model M2 = M1
 
 model H {
-  sig r :: Real
+  sig r : Real
   val r = M2.f M1.x
 }  

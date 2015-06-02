@@ -7,19 +7,19 @@ module Prelude {
 }
 
 module type EQ {
-  type T :: *
-  sig eq :: T -> T -> Prelude.Bool
+  type T : *
+  sig eq : T -> T -> Prelude.Bool
 }
 
 module type ORD {
-  type T :: *
-  module Eq :: EQ where type T = T
-  sig compare :: T -> T -> Prelude.Order
+  type T : *
+  module Eq : EQ where type T = T
+  sig compare : T -> T -> Prelude.Order
 }
 
 module IntOrd = assume (ORD where type T = Int)
 
-module BoolOrd :: (ORD where type T = Prelude.Bool) {
+module BoolOrd : (ORD where type T = Prelude.Bool) {
   type T = Prelude.Bool
   module Eq {
     type T = T
@@ -38,22 +38,22 @@ module BoolOrd :: (ORD where type T = Prelude.Bool) {
 }
 
 module X {
-  sig f :: Int -> Int -> Prelude.Bool
+  sig f : Int -> Int -> Prelude.Bool
   fun f x y = IntOrd.Eq.eq x y
 }
 
 module type POINT {
-  type T :: *
-  sig x :: T
+  type T : *
+  sig x : T
 }
 
-module F (module M :: POINT
-          module Z :: EQ where type T = M.T ) {
+module F (module M : POINT
+          module Z : EQ where type T = M.T ) {
   type T = M.T
   val p = Z.eq M.x
 }
 
-module IntPoint :: (POINT where type T = Int) {
+module IntPoint : (POINT where type T = Int) {
   type T = Int
   val x = 0
 }

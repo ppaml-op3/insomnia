@@ -1,26 +1,26 @@
 -- insomnia test flags:
 -- eval: False
 module type S_SIG {
-  type T :: *
+  type T : *
 }
 
 module type PRELUDE {
   data Bool = True | False
-  -- type Bool :: *
+  -- type Bool : *
   type Bool2 = Bool
 
-  module S :: {
-     module S2 :: S_SIG
+  module S : {
+     module S2 : S_SIG
   }
 
-  parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
+  parameter sig cond : forall (c : *) . Bool -> c -> c -> c
 
-  data Proxy (a :: *) = Proxy
-  parameter sig uniform :: ∀ (p :: ⋆ → ⋆) (a :: ⋆) . p a -> Dist a
-  parameter sig flip :: Real -> Dist Bool
+  data Proxy (a : *) = Proxy
+  parameter sig uniform : ∀ (p : ⋆ → ⋆) (a : ⋆) . p a -> Dist a
+  parameter sig flip : Real -> Dist Bool
 }
 
-module Prelude :: PRELUDE {
+module Prelude : PRELUDE {
 
    module S {
       module S2 {
@@ -33,52 +33,52 @@ module Prelude :: PRELUDE {
 
    type Bool2 = Bool
 
-   parameter sig cond :: forall (c :: *) . Bool -> c -> c -> c
+   parameter sig cond : forall (c : *) . Bool -> c -> c -> c
    fun cond b t f =
        case b of
          True -> t
          False -> f
 
-   data Proxy (a :: *) = Proxy
+   data Proxy (a : *) = Proxy
 
    module AssumeDists = assume {
-     parameter sig uniform :: forall (p :: * -> *) (a :: *). p a -> Dist a
-     parameter sig flip :: Real -> Dist Bool
+     parameter sig uniform : forall (p : * -> *) (a : *). p a -> Dist a
+     parameter sig flip : Real -> Dist Bool
    }
    import AssumeDists
 
-   parameter sig foo :: S.W -> S.S2.T
+   parameter sig foo : S.W -> S.S2.T
    fun foo x = x
 }
 
 module Raining {
 
   module AssumeDouble  = assume {
-    parameter sig double :: Real -> Real
+    parameter sig double : Real -> Real
   }
   import AssumeDouble
   
   enum T 10
 
-  parameter sig pointOne :: Real
+  parameter sig pointOne : Real
   parameter pointOne = 0.1
 
-  parameter sig pointNine :: Real
+  parameter sig pointNine : Real
   parameter pointNine = 0.9
 
   model ModelTest  {
-    sig raining :: Prelude.Bool2
+    sig raining : Prelude.Bool2
     val raining ~ (Prelude.uniform Prelude.Proxy)
 
-    sig x :: Real
+    sig x : Real
     val x ~ Prelude.uniform Prelude.Proxy
 
-    sig y :: Real
+    sig y : Real
     val y = double x 
 
-    sig thinksRain :: T -> Prelude.Bool
+    sig thinksRain : T -> Prelude.Bool
 
-    forall (x :: T) in
+    forall (x : T) in
       thinksRain x ~ Prelude.cond raining (Prelude.flip pointNine) (Prelude.flip pointOne)
   }
 
