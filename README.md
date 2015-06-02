@@ -29,14 +29,15 @@ Building from source - installation instructions
 
 4. Run the usual cabal build
 
-        $ cabal install --only-dependencies
-        $ cabal configure
+        $ cabal install --enable-tests --only-dependencies
+        $ cabal configure --enable-tests
         $ cabal build
+        $ cabal test
 
     Note that installing the upstream dependencies may take a significant
     amount of time.
 
-5. Try an example
+5. Try an example in the interpreter
 
         $ dist/build/insomnia/insomnia examples/query.ism
 
@@ -49,7 +50,7 @@ Building from source - installation instructions
         --------------------✂✄--------------------
         Typechecking FΩ
         FOmega type is: 
-        {M ∷ Dist {x ∷ {val ∷ Int}}}
+        {M : Dist {x : {val : Int}}}
         
         
         --------------------✂✄--------------------
