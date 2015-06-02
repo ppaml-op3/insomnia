@@ -64,12 +64,12 @@ checking = Stage {
   bannerStage = "Typechecking"
   , performStage = \ast -> do
     let tc = TC.runTC $ TC.checkToplevel ast
-    (elab, m) <- case tc of
+    (elab, unifState) <- case tc of
       Left err -> showErrorAndDie "typechecking" err
-      Right ans -> return ans
+      Right ((elab, _tsum), unifState) -> return (elab, unifState)
     putDebugStrLn "Typechecked OK."
     putDebugStrLn "Unification state:"
-    putDebugDoc (F.format (ppDefault m)
+    putDebugDoc (F.format (ppDefault unifState)
                  <> F.newline)
     return elab
   , formatStage = F.format . ppDefault
@@ -79,7 +79,7 @@ toFOmega :: Stage Toplevel FOmega.Command
 toFOmega = Stage {
   bannerStage = "Convert to FΩ"
   , performStage = \pgm ->
-    let tm = ToF.runToFM $ ToF.toplevel pgm
+    let (_sigSummary, tm) = ToF.runToFM $ ToF.toplevel pgm
     in return tm
   , formatStage = F.format . ppDefault
 }

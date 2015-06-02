@@ -18,20 +18,20 @@ import qualified FOmega.SemanticSig as F
 
 import Insomnia.ToF.Env
 import Insomnia.ToF.Summary
-import Insomnia.ToF.ModuleType (moduleType)
+import Insomnia.ToF.ModuleType (moduleType, mkAbstractModuleSig)
 import Insomnia.ToF.Module (moduleExpr)
 import Insomnia.ToF.Query (queryExpr)
 
 type TopSummary = ModSummary' F.Command
 
-toplevel :: ToF m => Toplevel -> m F.Command
+toplevel :: ToF m => Toplevel -> m (F.AbstractSig, F.Command)
 toplevel (Toplevel its) =
   toplevelItems its $ \(summary@(tvks,sig), fields, cmdHole) -> do
     let semSig = F.ModSem sig
     ty <- F.embedSemanticSig semSig
     let r = F.Record fields
         m = F.ReturnC $ F.packs (map (F.TV . fst) tvks) r (tvks, ty)
-    return ({-mkAbstractModuleSig summary,-} appEndo cmdHole m)
+    return (mkAbstractModuleSig summary, appEndo cmdHole m)
 
 toplevelItems :: ToF m => [ToplevelItem] -> (TopSummary -> m ans) -> m ans
 toplevelItems [] kont = kont mempty
@@ -41,6 +41,25 @@ toplevelItems (it:its) kont = let
       ToplevelModule ident me -> toplevelModule ident me kont1
       ToplevelModuleType sigIdent modTy -> toplevelModuleType sigIdent modTy kont1
       ToplevelQuery qe -> toplevelQuery qe kont1
+      ToplevelImported _fp topref subTop ->
+        toplevelImported topref subTop kont1
+
+toplevelImported :: ToF m => TopRef -> Toplevel -> (TopSummary -> m ans) -> m ans
+toplevelImported topref subTop kont1 = do
+  (F.AbstractSig bnd, ctop) <- toplevel subTop
+  U.lunbind bnd $ \(tvks, topsig) -> do
+    let nm = U.name2String topref
+    xc <- U.lfresh (U.s2n nm)
+    U.avoid [U.AnyName xc] $ do
+      xc1 <- U.lfresh (U.s2n nm)
+      U.avoid [U.AnyName xc1] $ local (toplevelEnv %~ M.insert topref (topsig, xc)) $ do
+        let tvs = map fst tvks
+        (munp, avd) <- F.unpacksCM tvs xc
+        let c = Endo (F.BindC . U.bind (xc1, U.embed ctop) . munp (F.V xc1))
+            thisOne = ((tvks, [(F.FUser nm, topsig)]),
+                       [(F.FUser nm, F.V xc)],
+                       c)
+        U.avoid avd $ kont1 thisOne
 
 toplevelModule :: ToF m => Identifier -> ModuleExpr -> (TopSummary -> m ans) -> m ans
 toplevelModule ident me kont = do

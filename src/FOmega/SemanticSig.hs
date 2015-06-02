@@ -17,8 +17,8 @@ data SemanticSig =
   ValSem !Type
   -- [= τ:κ]
   | TypeSem !Type !Kind
-  -- [= Ξ] -- We don't (yet) have nested signature definitions in
-  -- Insomnia, so this is not entirely necessary.
+  -- [= Ξ] -- We don't have nested signature definitions in
+  -- Insomnia inside modules, but we have them inside toplevels.
   | SigSem !AbstractSig
   -- [= δ = {f1:τ1 | … | fN:τN} : κ]
   | DataSem !TyVar !DataTypeSem !Kind

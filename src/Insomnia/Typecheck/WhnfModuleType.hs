@@ -37,6 +37,8 @@ pathToDig = go Here
   where go d (IdP _dontCare) = d
         go d (ProjP p fldLast) =
           go (There fldLast d) p
+        go d (TopRefP _) =
+          error "WhnfModuleType.pathToDig: impossible TopRef at head of 'where type' path"
   
 typePathToDig :: TypePath -> DigType
 typePathToDig (TypePath p tyFld) = DigType (pathToDig p) tyFld

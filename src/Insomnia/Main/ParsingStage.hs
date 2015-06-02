@@ -12,7 +12,7 @@ import qualified Insomnia.SurfaceSyntax.Syntax as Surface
 import qualified Insomnia.SurfaceSyntax.Parse as P
 import qualified Insomnia.SurfaceSyntax.ToAST as ToAST
 
-import Insomnia.Toplevel (Toplevel, ToplevelItem)
+import Insomnia.Toplevel (Toplevel)
 import Insomnia.Pretty
 
 parsingStage :: Stage FilePath Toplevel
@@ -23,15 +23,21 @@ parsingStage = Stage {
   }
 
 parseAndToast :: FilePath -> InsomniaMain Toplevel
-parseAndToast fp = do
-  result <- lift $ P.parseFile fp
-  case result of
-   Left err -> showErrorAndDie "parsing" err
-   Right surfaceAst ->
-     ToAST.toAST surfaceAst importHandler
+parseAndToast fp =
+  -- TODO: wrap this whole computation so that we:
+  -- 1. record that we're currently parsing the given file;
+  -- 2. error out if imports recursively visit this same file again
+  -- 2. mention the trail of imports if there's an error;
+  -- 3. memoize the parsing result for this file and return it if needed again.
+  do
+    result <- lift $ P.parseFile fp
+    case result of
+     Left err -> showErrorAndDie "parsing" err
+     Right surfaceAst ->
+       ToAST.toAST surfaceAst importHandler
 
-importHandler :: Surface.ImportFileSpec -> InsomniaMain (Either ToAST.ImportFileError ToplevelItem)
+importHandler :: Surface.ImportFileSpec -> InsomniaMain (Either ToAST.ImportFileError Toplevel)
 importHandler s = do
   let fp = Surface.importFileSpecPath s
   tl <- parseAndToast fp
-  return $ Left $ ToAST.ImportFileError $ "successfully read " ++ (show fp) ++ " but aborting anyway because this is a test"
+  return (Right tl)

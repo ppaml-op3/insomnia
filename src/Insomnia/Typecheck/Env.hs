@@ -30,7 +30,7 @@ import Insomnia.TypeDefn (TypeAlias(..),
                           InferredValConPath(..),
                           ValueConstructor(..))
 import Insomnia.Expr (Var, QVar)
-import Insomnia.ModuleType (ModuleTypeNF(..))
+import Insomnia.ModuleType (ToplevelSummary, ModuleTypeNF(..))
 
 import Insomnia.Unify (MonadUnificationExcept(..),
                        UVar,
@@ -100,8 +100,10 @@ data ValueConstructorIdx =
 
 -- | Typechecking environment
 data Env = Env {
+  -- | toplevel references
+  _envTopSums :: M.Map TopRef ToplevelSummary
   -- | signatures
-  _envSigs :: M.Map SigIdentifier ModuleTypeNF
+  , _envSigs :: M.Map SigIdentifier ModuleTypeNF
     -- | modules' unselfified signatures (invariant: their selfified
     -- contents have been added to DCons and Globals iff their are a SigMTNF (SigV _ ModuleK)
   , _envModuleSigs :: M.Map Identifier ModuleTypeNF
@@ -158,7 +160,8 @@ instance Pretty TypeAliasClosure where
 
 
 instance Pretty Env where
-  pp env = vcat [ "sigs", pp (env^.envSigs)
+  pp env = vcat [ "toplevels", pp (env^.envTopSums)
+                , "sigs", pp (env^.envSigs)
                 , "modules", pp (env^.envModuleSigs)
                 , "dcons", pp (env^.envDCons)
                 , "ccons", pp (env^.envCCons)
@@ -173,7 +176,7 @@ typeAliasInfoKind (TypeAliasInfo kdoms kcod) = kArrs kdoms kcod
 
 -- | The empty typechecking environment
 emptyEnv :: Env
-emptyEnv = Env mempty mempty mempty mempty mempty mempty mempty mempty mempty
+emptyEnv = Env mempty mempty mempty mempty mempty mempty mempty mempty mempty mempty
 
 -- | Base environment with builtin types.
 baseEnv :: Env
@@ -274,6 +277,13 @@ mkConstructorType constr =
   -- ∀ αs . …
   return $ tForalls tvks ty
 
+-- | Lookup info about a toplevel reference
+lookupToplevelSummary :: TopRef -> TC ToplevelSummary
+lookupToplevelSummary tr = do
+  m <- view (envTopSums . at tr)
+  case m of
+   Just tsum -> return tsum
+   Nothing -> typeError $ "no toplevel reference " <> formatErr tr
 
 -- | Lookup info about a (toplevel) module.
 lookupModuleSig :: Identifier -> TC ModuleTypeNF
@@ -338,6 +348,10 @@ lookupModuleType ident = do
     Just sigv -> return sigv
     Nothing -> typeError ("no model type " <> formatErr ident
                           <> " in scope")
+
+extendToplevelSummaryCtx :: MonadReader Env m
+                            => TopRef -> ToplevelSummary -> m a -> m a
+extendToplevelSummaryCtx tr tsum = local (envTopSums . at tr ?~ tsum)
 
 -- | Extend the toplevel modules environment by adding the given
 -- module.  Invariant - the selfified types, constructors and terms

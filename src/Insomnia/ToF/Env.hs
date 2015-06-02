@@ -9,6 +9,7 @@ module Insomnia.ToF.Env (
   , tyConEnv
   , sigEnv
   , modEnv
+  , toplevelEnv
   , tyVarEnv
   , valConEnv
   , valEnv
@@ -51,6 +52,7 @@ data TermVarProvenance = LocalTermVar
 data Env = Env { _tyConEnv :: M.Map TyConName F.SemanticSig
                , _sigEnv   :: M.Map SigIdentifier F.AbstractSig
                , _modEnv   :: M.Map Identifier (F.SemanticSig, F.Var)
+               , _toplevelEnv :: M.Map TopRef (F.SemanticSig, F.Var)
                , _tyVarEnv :: M.Map TyVar (F.TyVar, F.Kind)
                , _valConEnv :: M.Map ValConName (F.Var, F.Field)
                , _valEnv    :: M.Map Var (F.Var, TermVarProvenance)
@@ -59,7 +61,7 @@ data Env = Env { _tyConEnv :: M.Map TyConName F.SemanticSig
 $(makeLenses ''Env)
 
 emptyToFEnv :: Env
-emptyToFEnv = Env initialTyConEnv mempty mempty mempty mempty mempty
+emptyToFEnv = Env initialTyConEnv mempty mempty mempty mempty mempty mempty
 
 initialTyConEnv :: M.Map TyConName F.SemanticSig
 initialTyConEnv = M.fromList [(U.s2n "->",
@@ -88,7 +90,7 @@ runToFM m =
    Left s -> error $ "unexpected failure in ToF.runToFM: “" ++ s ++ "”"
    Right a -> a
 
-followUserPathAnything :: (MonadError String m) =>
+followUserPathAnything :: (MonadError String m, MonadReader Env m) =>
                           (Identifier -> m (F.SemanticSig, F.Term))
                           -> Path -> m (F.SemanticSig, F.Term)
 followUserPathAnything rootLookup (IdP ident) = rootLookup ident
@@ -103,3 +105,9 @@ followUserPathAnything rootLookup (ProjP path f) = do
       Nothing -> throwError ("unexpected failure in followUserPathAnything: field "
                              ++ show f ++ " not found in " ++ show path)
    _ -> throwError "unexpected failure in followUserPathAnything: not a module record"
+followUserPathAnything rootLookup (TopRefP topref) = do
+  m <- view (toplevelEnv . at topref)
+  case m of
+   Just (sig, x) -> return (sig, F.V x)
+   Nothing -> throwError ("unexpected failure in followUserPathAnything: toplevel "
+                          ++ show topref ++ " not in environment")

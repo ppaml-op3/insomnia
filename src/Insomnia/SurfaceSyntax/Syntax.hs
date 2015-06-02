@@ -44,7 +44,7 @@ newtype ImportFileSpec = ImportFileSpec { importFileSpecPath :: FilePath }
                        deriving (Show)
 
 data ImportSpecItem =
-  ImportModuleSpecItem !Ident !QualifiedIdent
+  ImportModuleSpecItem !Ident !Ident
   | ImportModuleTypeSpecItem !Ident 
   deriving (Show)
 

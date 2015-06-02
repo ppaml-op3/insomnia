@@ -44,6 +44,7 @@ toplevel (Toplevel items) = Toplevel $ map toplevelItem items
 toplevelItem :: ToplevelItem -> ToplevelItem
 toplevelItem t@(ToplevelModuleType {}) = t
 toplevelItem (ToplevelModule ident me) = ToplevelModule ident (moduleExpr me)
+toplevelItem (ToplevelImported fp it tl) = ToplevelImported fp it (toplevel tl)
 toplevelItem t@(ToplevelQuery {}) = t
 
 moduleExpr :: ModuleExpr -> ModuleExpr

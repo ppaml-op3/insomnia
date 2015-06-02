@@ -1,17 +1,20 @@
-{-# LANGUAGE FlexibleContexts, OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts, ViewPatterns, OverloadedStrings #-}
 module Insomnia.Typecheck.ExtendModuleCtx (
   extendTypeSigDeclCtx
   , extendModuleCtxNF
   , extendModuleCtx
+  , extendToplevelDeclCtx
   ) where
 
 import Control.Lens
 import Control.Monad.Reader.Class (MonadReader(..))
 
+import qualified Unbound.Generics.LocallyNameless as U
+
 import Insomnia.Identifier
 import Insomnia.Types (TypeConstructor(..))
 import Insomnia.Common.ModuleKind
-import Insomnia.ModuleType (TypeSigDecl(..), ModuleTypeNF(..), SigV(..))
+import Insomnia.ModuleType (ToplevelSummary(..), TypeSigDecl(..), ModuleTypeNF(..), SigV(..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.SelfSig (SelfSig(..))
@@ -40,7 +43,20 @@ extendModuleCtxNF pmod mtnf =
       FunMTNF {} -> id
   in
    extendModuleSig . extendSelf
-   
+
+-- | Add the datatypes of the given toplevel to the context with their
+-- names selfified with respect to the given topref.
+extendToplevelDeclCtx :: TopRef -> ToplevelSummary -> TC a -> TC a
+extendToplevelDeclCtx tr UnitTS kont = kont
+extendToplevelDeclCtx tr (ModuleTS fld bnd) kont =
+  U.lunbind bnd $ \((modIdent, U.unembed -> mtnf), rest) ->
+  extendModuleCtxNF (ProjP (TopRefP tr) fld) mtnf
+  . extendToplevelDeclCtx tr rest
+  $ kont
+extendToplevelDeclCtx tr (SignatureTS fld bnd) kont =
+  U.lunbind bnd $ \(_sig, rest) ->
+  extendToplevelDeclCtx tr rest kont
+
 -- | Given a (selfified) signature, add all of its fields to the context
 -- by prefixing them with the given path - presumably the path of this
 -- very module.

@@ -292,11 +292,11 @@ importFileSpec = ImportFileSpec <$> quotedLiteralString
 importSpecItem :: Parser ImportSpecItem
 importSpecItem =
   (try (ImportModuleTypeSpecItem <$ reserved "module" <* reserved "type") <*> moduleTypeIdentifier)
-  <|> (importModuleSpecItem <$ reserved "module") <*> modelIdentifier <*> optional (reserved "using" *> modelId)
+  <|> (importModuleSpecItem <$ reserved "module") <*> modelIdentifier <*> optional (reserved "using" *> modelIdentifier)
   where
     importModuleSpecItem x Nothing =
-      ImportModuleSpecItem x (QId [] x)
-    importModuleSpecItem x (Just qid) = ImportModuleSpecItem x qid
+      ImportModuleSpecItem x x
+    importModuleSpecItem x (Just y) = ImportModuleSpecItem x y
       
 queryExpr :: Parser QueryExpr
 queryExpr =

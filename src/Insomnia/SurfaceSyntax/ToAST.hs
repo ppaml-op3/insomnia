@@ -50,7 +50,7 @@ type TA = ReaderT Ctx YTA
 -- this is a coroutine monad.
 data YTA a = 
   DoneTA a
-  | YieldTA Ctx ImportFileSpec (Either ImportFileError I.ToplevelItem -> TA a)
+  | YieldTA Ctx ImportFileSpec (Either ImportFileError I.Toplevel -> TA a)
 
 newtype ImportFileError = ImportFileError { importFileErrorMsg :: String }
 
@@ -94,7 +94,7 @@ instance MonadState Ctx CTA where
 -- | given a To AST computation and a monadic handler for import requests and an initial context,
 -- repeatedly call the handler whenever the To AST computation yields with a request until it returns a final answer.
 -- Return that final answer.
-feedTA :: Monad m => TA a -> (ImportFileSpec -> m (Either ImportFileError I.ToplevelItem)) -> Ctx -> m a
+feedTA :: Monad m => TA a -> (ImportFileSpec -> m (Either ImportFileError I.Toplevel)) -> Ctx -> m a
 feedTA comp onImport =
   let go ctx c = case runReaderT c ctx of
                   DoneTA ans -> return ans
@@ -104,7 +104,7 @@ feedTA comp onImport =
   in \ctx -> go ctx comp
 
 -- main function
-toAST :: Monad m => Toplevel -> (ImportFileSpec -> m (Either ImportFileError I.ToplevelItem)) -> m I.Toplevel
+toAST :: Monad m => Toplevel -> (ImportFileSpec -> m (Either ImportFileError I.Toplevel)) -> m I.Toplevel
 toAST tl onImport =
   feedTA (toplevel tl) onImport toASTbaseCtx
 
@@ -120,7 +120,7 @@ toASTbaseCtx = Ctx (M.fromList
 runToAST :: Ctx -> TA a -> YTA a
 runToAST ctx comp = runReaderT comp ctx
 
-await :: ImportFileSpec -> TA I.ToplevelItem
+await :: ImportFileSpec -> TA I.Toplevel
 await want = do
   ctx <- ask
   lift (YieldTA ctx want $ \got ->
@@ -169,29 +169,63 @@ contextualStochasticity Nothing =
   views currentModuleKind stochasticityForModule
 
 toplevel :: Toplevel -> TA I.Toplevel
-toplevel (Toplevel items) = I.Toplevel <$> mapM toplevelItem items
+toplevel (Toplevel items) =
+  (I.Toplevel . concat) <$> mapM toplevelItem items
 
-toplevelItem :: ToplevelItem -> TA I.ToplevelItem
+singleton :: a -> [a]
+singleton x = [x]
+
+toplevelItem :: ToplevelItem -> TA [I.ToplevelItem]
 toplevelItem (ToplevelModule modK ident mmt me) = do
   ident' <- modIdentifier ident
   me' <- local (currentModuleKind .~ modK) (moduleExpr me)
   case mmt of
    Just mt -> do
      mt' <- moduleType mt
-     return $ I.ToplevelModule ident' (I.ModuleSeal me' mt')
-   Nothing -> return $ I.ToplevelModule ident' me'
+     return [I.ToplevelModule ident' (I.ModuleSeal me' mt')]
+   Nothing -> return [I.ToplevelModule ident' me']
 toplevelItem (ToplevelModuleType modK ident mt) =
-  I.ToplevelModuleType
-  <$> sigIdentifier ident
-  <*> local (currentModuleKind .~ modK) (moduleType mt)
+  singleton <$> (I.ToplevelModuleType
+                 <$> sigIdentifier ident
+                 <*> local (currentModuleKind .~ modK) (moduleType mt))
 toplevelItem (ToplevelQuery qe) =
-  I.ToplevelQuery <$> queryExpr qe
+  singleton <$> (I.ToplevelQuery <$> queryExpr qe)
 toplevelItem (ToplevelImport filespec impspec) =
   toplevelImport filespec impspec
 
-toplevelImport :: ImportFileSpec -> [ImportSpecItem] -> TA I.ToplevelItem
-toplevelImport filespec _importsSpec =
-  await filespec
+-- an import
+--   import "foo.ism" (module type T
+--                     module M using N)
+-- is translated into
+--   toplevel ^foo "foo.ism"
+--   module type T = ^foo:T
+--   module M = ^foo:N
+toplevelImport :: ImportFileSpec -> [ImportSpecItem] -> TA [I.ToplevelItem]
+toplevelImport filespec importSpecs = do
+  tl <- await filespec
+  let fp = importFileSpecPath filespec
+      a =U.s2n $ "^" ++ fp
+      it = I.ToplevelImported fp a tl
+  its <- mapM (toplevelImportSpec a) importSpecs
+  return (it:its)
+
+toplevelImportSpec :: I.TopRef -> ImportSpecItem -> TA I.ToplevelItem
+toplevelImportSpec it (ImportModuleSpecItem modId fld) = do
+  ident' <- modIdentifier modId
+  let p = I.ProjP (I.TopRefP it) fld
+      -- import spec "module P using POther"
+      -- becomes
+      --   module P = module { import ^topref:POther }
+      -- the reason that we do this, rather than
+      --   module P = ^topref:POther
+      -- is because we want to copy all the datatypes from POther into P, rather than
+      -- merely alias them.
+      reimportingModule =
+        I.ModuleStruct $ I.Module [I.ImportDecl p]
+  return $ I.ToplevelModule ident' reimportingModule
+toplevelImportSpec it (ImportModuleTypeSpecItem sigId) = do
+  sigId' <- sigIdentifier sigId
+  return $ I.ToplevelModuleType sigId' (I.TopRefMT it sigId)
 
 modIdentifier :: Ident -> TA I.Identifier
 modIdentifier s = return $ U.s2n s
@@ -234,7 +268,7 @@ whereClausePath :: QualifiedIdent -> TA (U.Bind I.Identifier I.TypePath)
 whereClausePath (QId pfx fld) =
   let
     modId =  U.s2n "<mod>"
-    path = I.headSkelFormToPath (modId, pfx)
+    path = I.headSkelFormToPath (Right modId, pfx)
   in return $ U.bind modId $ I.TypePath path fld
 
 functorArguments :: [(ModuleKind, Ident, ModuleType)]
@@ -369,7 +403,7 @@ typeAlias :: TypeAlias -> TA I.TypeAlias
 typeAlias (TypeAlias tvks ty) = do
   tvks' <- forM tvks $ \(tv, k) -> (,) <$> tyvar tv <*> kind k 
   ty' <- type' ty
-  return $ I.TypeAlias $ U.bind tvks' ty'
+  return $ I.TypeAlias (U.bind tvks' ty') Nothing
 
 typeDefn :: TypeDefn -> TA (I.TypeDefn, [Ident])
 typeDefn (DataTD dD) = do
@@ -418,7 +452,7 @@ typeConstructor :: Con -> TA I.TypeConstructor
 typeConstructor (Con (QId [] f)) = return $ I.TCLocal $ U.s2n f
 typeConstructor (Con (QId (h:ps) f)) = return $ I.TCGlobal (I.TypePath path f)
   where
-    path = I.headSkelFormToPath (U.s2n h,ps)
+    path = I.headSkelFormToPath (Right (U.s2n h),ps)
 
 typeAtom :: TypeAtom -> TA I.Type
 typeAtom (TC (PrefixN c)) = I.TC <$> typeConstructor c

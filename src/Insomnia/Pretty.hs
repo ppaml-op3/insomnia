@@ -215,8 +215,14 @@ instance Pretty (U.Name a) where
 
 instance Pretty Path where
   pp (IdP identifier) = pp identifier
+  pp (ProjP (IdP identifier) field) =
+    pp identifier <> "." <> pp field
+  pp (ProjP (TopRefP tr) field) =
+    pp tr <> ":" <> pp field
   pp (ProjP path field) =
     pp path <> "." <> pp field
+  pp (TopRefP tr) =
+    pp tr
 
 instance Pretty ValConPath where
   pp (ValConPath modPath vc) = pp modPath <> "." <> pp vc
@@ -242,6 +248,7 @@ ppTypePathNoRoot (TypePath pmod f) =
 
 ppPathNoRoot :: Path -> PM Doc
 ppPathNoRoot (IdP _) = mempty
+ppPathNoRoot (TopRefP _) = mempty
 ppPathNoRoot (ProjP (IdP _) f) = pp f
 ppPathNoRoot (ProjP p f) = ppPathNoRoot p <> "." <> pp f
 
@@ -435,6 +442,8 @@ instance Pretty ToplevelItem where
   pp (ToplevelModule identifier mdl) = ppModule (pp identifier) mdl
   pp (ToplevelModuleType identifier moduleType) =
     fsep ["module", "type", pp identifier, pp moduleType]
+  pp (ToplevelImported filePath topref subordinateToplevel) =
+    fsep ["import", pp topref, pp (show filePath), "{", nesting $ pp subordinateToplevel, "}"]
   pp (ToplevelQuery qe) =
     fsep ["query", pp qe]
 
@@ -467,6 +476,17 @@ instance Pretty ModelExpr where
           "in",
           nesting (fsep [pp body, indent classify (pp ty)])]
 
+instance Pretty ToplevelSummary where
+  pp UnitTS = mempty
+  pp (ModuleTS fld bnd) =
+    let ((ident, U.unembed -> modTy), rest) = UU.unsafeUnbind bnd
+    in fsep ["module", pp fld, classify , pp modTy]
+       $$ pp rest
+  pp (SignatureTS fld bnd) =
+    let ((ident, U.unembed -> modTy), rest) = UU.unsafeUnbind bnd
+    in fsep ["module", "type", pp fld, "=", pp modTy]
+       $$ pp rest
+
 instance Pretty ModuleType where
   pp (SigMT sigv) = pp sigv
   pp (FunMT bnd) =
@@ -475,6 +495,8 @@ instance Pretty ModuleType where
   pp (IdentMT ident) = pp ident
   pp (WhereMT mt wh) =
     fsep [pp mt, indent "where" (pp wh)]
+  pp (TopRefMT t fld) =
+    pp t <> ":" <> pp fld
 
 instance Pretty WhereClause where
   pp (WhereTypeCls bnd rhs) =

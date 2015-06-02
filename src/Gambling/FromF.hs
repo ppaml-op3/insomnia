@@ -266,6 +266,10 @@ instance Gamble Command where
     x' <- associate x
     e1 <- gamble (unembed c1)
     R.Let . bind [R.Binding x' $ embed e1] . simpleBody <$> gamble c2
+  gamble (UnpackC bnd) = lunbind bnd $ \((_tv, x, m), c) -> do
+    x' <- associate x
+    e <- gamble (unembed m)
+    R.Let . bind [R.Binding x' $ embed e] . simpleBody <$> gamble c
     
   
 sniffFields :: [(Field, Term)] -> Recordsy Term

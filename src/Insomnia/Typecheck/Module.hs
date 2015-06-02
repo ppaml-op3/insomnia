@@ -16,7 +16,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
-import Insomnia.Identifier (Path(..), Field)
+import Insomnia.Identifier (TopRef, Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
                        TyVar, Type(..),
                        freshUVarT,
@@ -97,7 +97,7 @@ inferModuleExpr pmod (ModuleFun bnd) kont =
     (inferModuleExpr (IdP bodyName) body $ \body' bodyNF ->
       kont (ModuleFun $ U.bind teleArgs' body') (FunMTNF $ U.bind teleArgsNF bodyNF))
       <??@ ("while checking the body of functor " <> formatErr pmod)
-
+  
 checkModelExpr :: Path -> ModelExpr -> TC (ModelExpr, Signature)
 checkModelExpr pmod mexpr =
   case mexpr of

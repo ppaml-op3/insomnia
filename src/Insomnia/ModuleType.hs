@@ -22,9 +22,20 @@ import Insomnia.TypeDefn
 import Insomnia.Common.ModuleKind
 import Insomnia.Common.Telescope
 
+-- After typechecking a toplevel, we get a summary that specifies the
+-- (normalized) types of its modules and its (normalized) module
+-- types.  It's kind of like a module signature except it doesn't have
+-- value or type components, but does have signature components.
+data ToplevelSummary =
+  UnitTS
+  | ModuleTS !Field (Bind (Identifier, Embed ModuleTypeNF) ToplevelSummary)
+  | SignatureTS !Field (Bind (SigIdentifier, Embed ModuleTypeNF) ToplevelSummary)
+  deriving (Show, Typeable, Generic)
+
 data ModuleType =
   SigMT !(SigV Signature) -- "module/model { decls ... }"
   | IdentMT !SigIdentifier -- "X_SIG"
+  | TopRefMT !TopRef !Field -- "^foo:F" sig from an imported toplevel
   | FunMT !(Bind (Telescope (FunctorArgument ModuleType)) ModuleType)
   | WhereMT !ModuleType !WhereClause
   deriving (Show, Typeable, Generic)
@@ -97,6 +108,7 @@ instance Foldable SigV where
 instance Functor SigV where
   fmap = fmapDefault
 
+instance Alpha ToplevelSummary
 instance Alpha ModuleType
 instance Alpha Signature
 instance Alpha a => Alpha (FunctorArgument a)
@@ -105,6 +117,7 @@ instance Alpha TypeSigDecl
 instance Alpha WhereClause
 instance Alpha ModuleTypeNF
 
+instance Subst Path ToplevelSummary
 instance Subst Path Signature
 instance Subst Path TypeSigDecl
 instance Subst Path ModuleType
