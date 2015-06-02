@@ -36,8 +36,17 @@ data Toplevel = Toplevel ![ToplevelItem]
 data ToplevelItem =
   ToplevelModule !ModuleKind !Ident !(Maybe ModuleType) !ModuleExpr
   | ToplevelModuleType !ModuleKind !Ident !ModuleType
+  | ToplevelImport !ImportFileSpec ![ImportSpecItem]
   | ToplevelQuery !QueryExpr
     deriving (Show)
+
+newtype ImportFileSpec = ImportFileSpec { importFileSpecPath :: FilePath }
+                       deriving (Show)
+
+data ImportSpecItem =
+  ImportModuleSpecItem !Ident !QualifiedIdent
+  | ImportModuleTypeSpecItem !Ident 
+  deriving (Show)
 
 data QueryExpr =
   GenSamplesQE !QualifiedIdent !SampleParameters

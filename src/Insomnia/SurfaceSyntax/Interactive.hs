@@ -33,9 +33,13 @@ moduleType txt = do
   syn <- case okOrErr of
    Left err -> fail (docToString $ format err)
    Right ok -> return ok
-  let modTy = ToAST.runToAST ToAST.toASTbaseCtx (ToAST.moduleType syn)
-      abstr = ToF.runToFM $ ToF.moduleType modTy
+  modTy <- ToAST.feedTA (ToAST.moduleType syn) interactiveImportHandler ToAST.toASTbaseCtx
+  let abstr = ToF.runToFM $ ToF.moduleType modTy
   return abstr
+
+interactiveImportHandler :: a -> IO b
+interactiveImportHandler _ =
+  fail "did not expect the import handler to be called"
 
 -- | >>> moduleExpr "{ module X :: {\n type T :: *\n sig t :: T -> T\n } {\n type T = Int\n sig t :: T -> T\n fun t x = x } }"
 moduleExpr :: T.Text -> IO (F.AbstractSig, F.Term)
@@ -44,8 +48,8 @@ moduleExpr txt = do
   syn <- case okOrErr of
     Left err -> fail (docToString $ format err)
     Right ok -> return ok
-  let modExpr = ToAST.runToAST ToAST.toASTbaseCtx (ToAST.moduleExpr syn)
-      tc = TC.runTC $ TC.inferModuleExpr (IdP $ U.s2n "M") modExpr (\modExpr' _ -> return modExpr')
+  modExpr <- ToAST.feedTA (ToAST.moduleExpr syn) interactiveImportHandler ToAST.toASTbaseCtx
+  let tc = TC.runTC $ TC.inferModuleExpr (IdP $ U.s2n "M") modExpr (\modExpr' _ -> return modExpr')
   modExpr' <- case tc of
     Left err -> fail (docToString $ format err)
     Right (ok, _) -> return ok

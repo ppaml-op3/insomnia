@@ -12,8 +12,8 @@ import Data.Text (Text)
 import qualified Data.Text.IO as T
 import Data.Ratio ((%))
 
-import Text.Parsec.Char (char, letter, alphaNum, oneOf)
-import Text.Parsec.Combinator (eof, sepBy1, between)
+import Text.Parsec.Char (char, letter, alphaNum, oneOf, noneOf)
+import Text.Parsec.Combinator (eof, sepBy1, between, manyTill)
 import Text.Parsec.Error (ParseError)
 import qualified Text.Parsec.Token as Tok hiding (makeTokenParser)
 import qualified Text.Parsec.Indentation.Token as Tok
@@ -59,7 +59,8 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   , identLetter = alphaNum <|> char '_'
   , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
-  , reservedNames = ["model", "module", "local", "import",
+  , reservedNames = ["model", "module", "local",
+                     "import", "using",
                      "query",
                      "where",
                      "forall", "∀",
@@ -97,6 +98,14 @@ braces = between (localIndentation Any $ symbol "{") (localIndentation Any $ sym
 
 exactly :: (Show a, Eq a) => Parser a -> a -> Parser ()
 exactly p x = (p >>= \x' -> guard (x == x')) <?> show x
+
+quotedLiteralString :: Parser String
+quotedLiteralString =
+  let quo = char '"'
+      stringChar = noneOf "\"\t\n\r" <?> "string characters"
+  in lexeme (do
+                _ <- quo
+                manyTill stringChar (try quo)) <?> "double quoted string"
 
 ----------------------------------------
 
@@ -219,6 +228,7 @@ toplevelItem =
   (toplevelModule <?> "toplevel module or model definition")
   <|> (toplevelModuleType <?> "toplevel module or model type definition")
   <|> (toplevelQuery <?> "toplevel query expression")
+  <|> (toplevelImport <?> "toplevel import declaration")
 
 toplevelModule :: Parser ToplevelItem
 toplevelModule =
@@ -270,6 +280,24 @@ toplevelQuery :: Parser ToplevelItem
 toplevelQuery =
   ToplevelQuery <$ reserved "query" <*> queryExpr
 
+toplevelImport :: Parser ToplevelItem
+toplevelImport =
+  ToplevelImport <$ reserved "import"
+  <*> importFileSpec
+  <*> parens (localIndentation Any $ many $ absoluteIndentation importSpecItem)
+
+importFileSpec :: Parser ImportFileSpec
+importFileSpec = ImportFileSpec <$> quotedLiteralString
+
+importSpecItem :: Parser ImportSpecItem
+importSpecItem =
+  (try (ImportModuleTypeSpecItem <$ reserved "module" <* reserved "type") <*> moduleTypeIdentifier)
+  <|> (importModuleSpecItem <$ reserved "module") <*> modelIdentifier <*> optional (reserved "using" *> modelId)
+  where
+    importModuleSpecItem x Nothing =
+      ImportModuleSpecItem x (QId [] x)
+    importModuleSpecItem x (Just qid) = ImportModuleSpecItem x qid
+      
 queryExpr :: Parser QueryExpr
 queryExpr =
   mkGenSamplesQE <$ sampleKW <*> modelId <*> natural

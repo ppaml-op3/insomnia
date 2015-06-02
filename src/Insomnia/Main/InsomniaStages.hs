@@ -10,8 +10,6 @@ import Insomnia.Main.Config
 import Insomnia.Main.Monad
 import Insomnia.Main.Stage
 
-import qualified Insomnia.SurfaceSyntax.Parse as P
-import qualified Insomnia.SurfaceSyntax.ToAST as ToAST
 import Insomnia.Toplevel (Toplevel)
 import Insomnia.Typecheck as TC 
 import Insomnia.Pretty
@@ -25,11 +23,12 @@ import qualified Gambling.FromF as ToGamble
 import qualified Gambling.Emit as EmitGamble
 import qualified Gambling.Racket
 
+import Insomnia.Main.ParsingStage (parsingStage)
 import Insomnia.Main.SaveFinalProductStage (saveFinalProductStage)
 
 parseAndCheck' :: Stage FilePath FOmega.Command
 parseAndCheck' =
-  parsing
+  parsingStage
   ->->- desugaring
   ->->- checking
   ->->- toFOmega
@@ -50,17 +49,6 @@ parseAndCheckAndGamble fp =
   ->->- prettyPrintGamble
   ->->- (saveFinalProductStage "Gamble code")
   ->->- compilerDone
-
-parsing :: Stage FilePath Toplevel
-parsing = Stage {
-  bannerStage = "Parsing"
-  , performStage = \fp -> do
-     result <- lift $ P.parseFile fp
-     case result of
-       Left err -> showErrorAndDie "parsing" err
-       Right surfaceAst -> return (ToAST.toAST surfaceAst)
-  , formatStage = F.format . ppDefault 
-  }
 
 desugaring :: Stage Toplevel Toplevel
 desugaring = Stage {

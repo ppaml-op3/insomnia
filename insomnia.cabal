@@ -42,6 +42,7 @@ library
                        Insomnia.Main.Command
                        Insomnia.Main.Stage
                        Insomnia.Main.InsomniaStages
+                       Insomnia.Main.ParsingStage
                        Insomnia.Main.SaveFinalProductStage
                        --
                        Insomnia.SurfaceSyntax.Syntax

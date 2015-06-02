@@ -6,7 +6,7 @@ import Control.Applicative (Applicative (..), (<$>))
 import Control.Lens
 import Control.Monad (forM)
 import Control.Monad.Trans.Class (MonadTrans(..))
-import Control.Monad.Reader (runReader, Reader)
+import Control.Monad.Reader (runReader, Reader, runReaderT, ReaderT)
 import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState (..))
 
@@ -42,8 +42,32 @@ data Ctx = Ctx {_declaredFixity :: M.Map QualifiedIdent Fixity
 
 $(makeLenses ''Ctx)
 
--- "To AST" monad
-type TA = Reader Ctx
+-- "To AST" monad is just a reader of some contextual info...
+type TA = ReaderT Ctx YTA
+
+-- ... except that we can yield mid-computation and ask for an imported file.
+--
+-- this is a coroutine monad.
+data YTA a = 
+  DoneTA a
+  | YieldTA Ctx ImportFileSpec (Either ImportFileError I.ToplevelItem -> TA a)
+
+newtype ImportFileError = ImportFileError { importFileErrorMsg :: String }
+
+instance Functor YTA where
+  fmap f (DoneTA x) = DoneTA (f x)
+  fmap f (YieldTA ctx want k) = YieldTA ctx want (fmap f . k)
+
+instance Applicative YTA where
+  pure = DoneTA 
+  (DoneTA f) <*> (DoneTA x) = DoneTA (f x)
+  (DoneTA f) <*> (YieldTA ctx want k) = YieldTA ctx want (fmap f . k)
+  (YieldTA ctx want f) <*> m = YieldTA ctx want (\i -> f i <*> lift m)
+
+instance Monad YTA where
+   return = pure
+   DoneTA x >>= k = k x
+   YieldTA want ctx k >>= k' = YieldTA want ctx (\i -> k i >>= (lift . k'))
 
 -- the CPS version of TA
 newtype CTA a = CTA { runCTA :: forall r . (a -> TA r) -> TA r }
@@ -67,9 +91,22 @@ instance MonadState Ctx CTA where
     let (x, ctx') = xform ctx
     local (const ctx') $ k x
 
+-- | given a To AST computation and a monadic handler for import requests and an initial context,
+-- repeatedly call the handler whenever the To AST computation yields with a request until it returns a final answer.
+-- Return that final answer.
+feedTA :: Monad m => TA a -> (ImportFileSpec -> m (Either ImportFileError I.ToplevelItem)) -> Ctx -> m a
+feedTA comp onImport =
+  let go ctx c = case runReaderT c ctx of
+                  DoneTA ans -> return ans
+                  YieldTA ctx' wanted resume -> do
+                    reply <- onImport wanted
+                    go ctx' (resume reply)
+  in \ctx -> go ctx comp
+
 -- main function
-toAST :: Toplevel -> I.Toplevel
-toAST = runToAST toASTbaseCtx . toplevel
+toAST :: Monad m => Toplevel -> (ImportFileSpec -> m (Either ImportFileError I.ToplevelItem)) -> m I.Toplevel
+toAST tl onImport =
+  feedTA (toplevel tl) onImport toASTbaseCtx
 
 -- TODO: these really ought to be imported from somewhere, not built in.
 toASTbaseCtx :: Ctx
@@ -80,8 +117,16 @@ toASTbaseCtx = Ctx (M.fromList
                ModuleMK
 
 
-runToAST :: Ctx -> TA a -> a
-runToAST ctx comp = runReader comp ctx
+runToAST :: Ctx -> TA a -> YTA a
+runToAST ctx comp = runReaderT comp ctx
+
+await :: ImportFileSpec -> TA I.ToplevelItem
+await want = do
+  ctx <- ask
+  lift (YieldTA ctx want $ \got ->
+         case got of
+          Left err -> fail (importFileErrorMsg err)
+          Right it -> return it)
 
 liftCTA :: TA a -> CTA a
 liftCTA comp = CTA $ \k -> comp >>= k
@@ -141,6 +186,12 @@ toplevelItem (ToplevelModuleType modK ident mt) =
   <*> local (currentModuleKind .~ modK) (moduleType mt)
 toplevelItem (ToplevelQuery qe) =
   I.ToplevelQuery <$> queryExpr qe
+toplevelItem (ToplevelImport filespec impspec) =
+  toplevelImport filespec impspec
+
+toplevelImport :: ImportFileSpec -> [ImportSpecItem] -> TA I.ToplevelItem
+toplevelImport filespec _importsSpec =
+  await filespec
 
 modIdentifier :: Ident -> TA I.Identifier
 modIdentifier s = return $ U.s2n s
@@ -681,7 +732,7 @@ disfix atms precs = do
 -- TODO: make infix resolution tests executable again.
 
 example1 :: () -> I.Type
-example1 () = runReader (type' y) c
+example1 () = runIdentity $ feedTA (type' y) handler c
   where
     a = TV (TyVar "a")
     arrow = TC (InfixN $ Con $ QId [] "->")
@@ -698,6 +749,8 @@ example1 () = runReader (type' y) c
          ]
         )
         ModuleMK
+    handler _ = return $ Left $ ImportFileError "did not expect an import"
+    
 example1_expected :: I.Type
 example1_expected =
   forall a (v a `prod` v a `prod` v a
@@ -713,7 +766,7 @@ example1_expected =
     infixl 6 `prod`
 
 example2 :: () -> I.Expr
-example2 () = runReader (expr e) ctx
+example2 () = runIdentity $ feedTA (expr e) handler ctx
   where
     c = C (InfixN $ Con $ QId [] "Cons")
     n = C (PrefixN $ Con $ QId [] "N")
@@ -730,6 +783,8 @@ example2 () = runReader (expr e) ctx
            ]
           )
           ModuleMK
+    handler _ = return $ Left $ ImportFileError "did not expect an import"
+    
 example2_expected :: I.Expr
 example2_expected =
   v x .+. v y .+. v x `cons` v y .+. v x `cons` n
@@ -744,7 +799,7 @@ example2_expected =
     infixl 7 .+.
 
 example3 :: () -> I.Clause
-example3 () = runReader (clause cls) ctx
+example3 () = runIdentity $ feedTA (clause cls) handler ctx
   where
     (cp, c) = let q = (InfixN $ Con $ QId [] "Cons")
               in (ConP q, C q)
@@ -763,6 +818,8 @@ example3 () = runReader (clause cls) ctx
              (QId [] "Cons", Fixity AssocRight 3)
            ])
           ModuleMK
+    handler _ = return $ Left $ ImportFileError "did not expect an import"
+    
 example3_expected :: I.Clause
 example3_expected =
   I.Clause $ U.bind p e
@@ -783,7 +840,7 @@ example3_expected =
     v = I.V
 
 example4 :: () -> I.Clause
-example4 () = runReader (clause cls) ctx
+example4 () = runIdentity $ feedTA (clause cls) handler ctx
   where
     cls = Clause p e
     p = PhraseP [xp]
@@ -794,6 +851,8 @@ example4 () = runReader (clause cls) ctx
     ctx = Ctx
           M.empty
           ModuleMK
+    handler _ = return $ Left $ ImportFileError "did not expect an import"
+    
 example4_expected :: I.Clause
 example4_expected =
   I.Clause $ U.bind p e
