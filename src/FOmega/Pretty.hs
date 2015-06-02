@@ -46,26 +46,26 @@ ppType t_ =
    TLam bnd ->
      let ((tv, U.unembed -> k), body) = UU.unsafeUnbind bnd
      in precParens 1
-        $ fsep [lambda, pp tv, coloncolon, ppKind k,
+        $ fsep [lambda, pp tv, classify, ppKind k,
                 indent "." (withPrec 0 AssocNone $ Left $ ppType body)]
    TFix bnd ->
      let ((tv, U.unembed -> k), body) = UU.unsafeUnbind bnd
      in precParens 1
-        $ fsep [onUnicode "μ" "fix", pp tv, coloncolon, ppKind k,
+        $ fsep [onUnicode "μ" "fix", pp tv, classify, ppKind k,
                 indent "." (withPrec 0 AssocNone $ Left $ ppType body)]
    TForall bnd ->
      let ((tv, U.unembed -> k), body) = UU.unsafeUnbind bnd
      in precParens 1
-        $ fsep [onUnicode "∀" "forall", pp tv, coloncolon, ppKind k,
+        $ fsep [onUnicode "∀" "forall", pp tv, classify, ppKind k,
                 indent "." (withPrec 0 AssocNone $ Left $ ppType body)]
    TExist bnd -> ppExists bnd
    TRecord fts ->
      let
-       ppF (f, t) = fsep [ppField f, indent coloncolon (ppType t)]
+       ppF (f, t) = fsep [ppField f, indent classify (ppType t)]
      in braces $ fsep $ punctuate "," $ map ppF fts
    TSum fts ->
      let
-       ppF (f, t) = fsep [ppField f, indent coloncolon (ppType t)]
+       ppF (f, t) = fsep [ppField f, indent classify (ppType t)]
      in
       braces $ fsep $ prePunctuate "|" $ map ppF fts
    TDist t ->
@@ -85,7 +85,7 @@ ppExists bnd =
     ppExists' bnd =
       let ((tv, U.unembed -> k), body) = UU.unsafeUnbind bnd
           (vks, pbody) = ppExists'' body
-          pv = fsep [pp tv, indent coloncolon (pp k)]
+          pv = fsep [pp tv, indent classify (pp k)]
       in (pv:vks, pbody)
     ppExists'' t_ =
       case t_ of
@@ -100,14 +100,14 @@ ppTerm m_ =
    Lam bnd ->
      let ((v, U.unembed -> t), body) = UU.unsafeUnbind bnd
      in precParens 1
-        $ fsep [onUnicode "λ" "\\", parens $ fsep [pp v, coloncolon, ppType t],
+        $ fsep [onUnicode "λ" "\\", parens $ fsep [pp v, classify, ppType t],
               indent "." (withLowestPrec $ ppTerm body)]
    App m1 m2 ->
      infixOp 2 mempty AssocLeft (ppTerm m1) (ppTerm m2)
    PLam bnd -> 
      let ((v, U.unembed -> k), body) = UU.unsafeUnbind bnd
      in precParens 1
-        $ fsep [onUnicode "λ" "\\", brackets $ fsep [pp v, coloncolon, ppKind k],
+        $ fsep [onUnicode "λ" "\\", brackets $ fsep [pp v, classify, ppKind k],
               indent "." (withLowestPrec $ ppTerm body)]
    PApp m t ->
      fsep [withPrec 2 AssocRight $ Left $ ppTerm m, brackets $ ppType t]
@@ -215,7 +215,7 @@ nestedLetBinding m_ =
 
 ppRec :: (Var, U.Embed Type, U.Embed Term) -> PM Doc
 ppRec (f, U.unembed -> ty, U.unembed -> m) =
-  fsep ["rec", pp f, indent coloncolon (withLowestPrec $ ppType ty),
+  fsep ["rec", pp f, indent classify (withLowestPrec $ ppType ty),
         indent "=" (withLowestPrec $ ppTerm m)]
 
 ppCtx :: (U.Bind TyVar Type) -> PM Doc
@@ -241,7 +241,7 @@ ppCaseMatchFail (CaseMatchFailure resultTy) = fsep ["abort", precParens 2 $ ppTy
 ppExistPack :: ExistPack -> PM Doc
 ppExistPack bnd =
   let ((tv, U.unembed -> k), t) = UU.unsafeUnbind bnd
-  in fsep [ pp tv, coloncolon, ppKind k,
+  in fsep [ pp tv, classify, ppKind k,
             indent "." (ppType t) ]
 
 ppPrimitiveCommand :: PrimitiveCommand -> Term -> PM Doc

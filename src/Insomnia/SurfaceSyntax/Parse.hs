@@ -73,7 +73,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
                      "return",
                      "λ", "_"
                      ]
-  , reservedOpNames = ["\\", "::", ".", "~", "=", "*", "|"]
+  , reservedOpNames = ["\\", ":", ".", "~", "=", "*", "|"]
   , caseSensitive = True
   }
 
@@ -101,7 +101,7 @@ exactly p x = (p >>= \x' -> guard (x == x')) <?> show x
 ----------------------------------------
 
 classify :: Parser ()
-classify = reservedOp "::" <|> reserved "∷"
+classify = reservedOp ":" -- reservedOp "::" <|> reserved "∷"
 
 variableIdentifier :: Parser Ident
 variableIdentifier = try $ do

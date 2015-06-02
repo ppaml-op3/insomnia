@@ -57,8 +57,8 @@ newtype PrettyShort a = PrettyShort {unPrettyShort :: a }
 ppDefault :: Pretty a => a -> Doc
 ppDefault x = pp x (PrettyCtx True 0)
 
-coloncolon :: PM Doc
-coloncolon = onUnicode "∷" "::"
+classify :: PM Doc
+classify = ":" -- onUnicode "∷" "::"
 
 elipsis :: PM Doc
 elipsis = onUnicode "…" "..."
@@ -165,7 +165,7 @@ instance Pretty Expr where
     in precParens 1
        $ withPrec 0 AssocNone
        $ Left $ ppCollapseLam lambda (Endo (av:)) "." e
-  pp (Ann e t) = parens $ withPrec 1 AssocNone (Left $ pp e <+> indent coloncolon (pp t))
+  pp (Ann e t) = parens $ withPrec 1 AssocNone (Left $ pp e <+> indent classify (pp t))
   pp (Record les) = braces $ fsep $ punctuate "," (map ppLabeledAssign les)
   pp (Case e clauses _ann) =
     precParens 1
@@ -199,7 +199,7 @@ ppAnnVar :: AnnVar -> PM Doc
 ppAnnVar (v, U.unembed -> (Annot mt)) =
   case mt of
     Nothing -> pp v
-    Just t -> parens (pp v <+> indent coloncolon (pp t))
+    Just t -> parens (pp v <+> indent classify (pp t))
 
 ppLabeledAssign :: Pretty a => (Label, a) -> PM Doc
 ppLabeledAssign (lbl, x) = pp lbl <+> indent "=" (pp x)
@@ -261,7 +261,7 @@ instance Pretty Type where
     infixOp 1 rightArrow AssocRight (pp t1) (pp t2)
   pp (TApp t1 t2) = infixOp 2 mempty AssocLeft (pp t1) (pp t2)
   pp (TC c) = pp c
-  pp (TAnn t k) = parens $ fsep [pp t, nesting $ coloncolon <+> pp k]
+  pp (TAnn t k) = parens $ fsep [pp t, nesting $ classify <+> pp k]
   pp (TForall bnd) =
     -- todo: do this safely; collapse consecutive foralls
     let (vk, t) = UU.unsafeUnbind bnd
@@ -275,7 +275,7 @@ instance Pretty Label where
   pp (Label n) = pp n
 
 ppLabeledType :: (Label, Type) -> PM Doc
-ppLabeledType (label, ty) = fsep [pp label, indent coloncolon (pp ty)]
+ppLabeledType (label, ty) = fsep [pp label, indent classify (pp ty)]
 
 ppCollapseForalls :: Endo [(TyVar, Kind)] -> Type -> PM Doc
 ppCollapseForalls front t =
@@ -290,7 +290,7 @@ ppCollapseForalls front t =
             ++ [nesting ("." <+> withPrec 0 AssocNone (Left $ pp t))])
   where
     ppVarBind (v,k) =
-      parens $ withPrec 2 AssocNone (Left $ fsep [pp v, coloncolon, pp k])
+      parens $ withPrec 2 AssocNone (Left $ fsep [pp v, classify, pp k])
 
 ppCollapseLam :: PM Doc -> Endo [AnnVar] -> PM Doc -> Expr -> PM Doc
 ppCollapseLam lam mavs dot e_ =
@@ -322,7 +322,7 @@ ppDataDefn d bnd =
 ppTyVarBindings :: [(TyVar, Kind)] -> PM Doc
 ppTyVarBindings = fsep . map ppTyVarBinding
   where
-    ppTyVarBinding (v,k) = parens (pp v <+> indent coloncolon (pp k))
+    ppTyVarBinding (v,k) = parens (pp v <+> indent classify (pp k))
 
 
 instance Pretty Decl where
@@ -373,7 +373,7 @@ ppTypeAlias c (TypeAlias bnd) =
 
 
 ppValueDecl :: Field -> ValueDecl -> PM Doc
-ppValueDecl v (SigDecl s t) = pp s <+> "sig" <+> pp v <+> indent coloncolon (pp t)
+ppValueDecl v (SigDecl s t) = pp s <+> "sig" <+> pp v <+> indent classify (pp t)
 ppValueDecl v (FunDecl f) = ppFunDecl v f 
 ppValueDecl v (ParameterDecl e) = "parameter" <+> pp v <+> "=" <+> pp e
 ppValueDecl v (ValDecl e) = ppValSampleDecl "=" v e
@@ -381,7 +381,7 @@ ppValueDecl v (SampleDecl e) = ppValSampleDecl "~" v e
 ppValueDecl v (TabulatedSampleDecl tabfun) = ppTabFun (pp v) tabfun
 
 ppShortValueDecl :: Field -> ValueDecl -> PM Doc
-ppShortValueDecl v (SigDecl stoch t) = pp stoch <+> "sig" <+> pp v <+> indent coloncolon (pp t)
+ppShortValueDecl v (SigDecl stoch t) = pp stoch <+> "sig" <+> pp v <+> indent classify (pp t)
 ppShortValueDecl f (FunDecl _e) = "fun" <+> pp f <+> elipsis <+> "=" <+> elipsis
 ppShortValueDecl f (ParameterDecl _e) = "parameter" <+> pp f <+> "=" <+> elipsis
 ppShortValueDecl f (ValDecl _e) = "val" <+> pp f <+> "=" <+> elipsis
@@ -423,7 +423,7 @@ ppModule ppName moduleExpr =
   case moduleExpr of
     ModuleSeal moduleExpr'@(ModuleStruct {}) moduleSig ->
       fsep ["module", ppName
-           , indent coloncolon (pp moduleSig)
+           , indent classify (pp moduleSig)
            , nesting (pp moduleExpr')
            ]
     ModuleFun bnd ->
@@ -442,7 +442,7 @@ instance Pretty ModuleExpr where
   pp (ModuleStruct mdl) = "module" <+> pp mdl
   pp (ModuleModel mdl) = "model" <+> pp mdl
   pp (ModuleSeal mdl moduleSig) =
-    parens (fsep [pp mdl, indent coloncolon (pp moduleSig)])
+    parens (fsep [pp mdl, indent classify (pp moduleSig)])
   pp (ModuleAssume mtype) = fsep ["assume", nesting (pp mtype)]
   pp (ModuleId modPath) = pp modPath
   pp (ModuleFun bnd) = ppFunctor rightArrow bnd
@@ -465,7 +465,7 @@ instance Pretty ModelExpr where
     fsep ["local",
           nesting (fsep $ map pp hid),
           "in",
-          nesting (fsep [pp body, indent coloncolon (pp ty)])]
+          nesting (fsep [pp body, indent classify (pp ty)])]
 
 instance Pretty ModuleType where
   pp (SigMT sigv) = pp sigv
@@ -489,7 +489,7 @@ instance Pretty ModuleTypeNF where
 
 instance Pretty a => Pretty (FunctorArgument a) where
   pp (FunctorArgument ident (U.unembed -> modK) (U.unembed -> t)) =
-    fsep [pp modK, pp ident, indent coloncolon (pp t)]
+    fsep [pp modK, pp ident, indent classify (pp t)]
 
 instance Pretty a => Pretty (SigV a) where
   pp (SigV x modK) = fsep [pp modK, "{", pp x, "}" ]
@@ -497,20 +497,20 @@ instance Pretty a => Pretty (SigV a) where
 instance Pretty Signature where
   pp UnitSig = mempty
   pp (ValueSig fld ty sig) =
-    fsep ["val", text fld, indent coloncolon (pp ty)]
+    fsep ["val", text fld, indent classify (pp ty)]
     $$ pp sig
   pp (TypeSig fld bnd) =
     let ((tv, U.unembed -> tsd), sig) = UU.unsafeUnbind bnd
     in (case tsd of
            ManifestTypeSigDecl defn -> ppTypeDefn fld defn
            AbstractTypeSigDecl k ->
-             fsep ["type", pp tv, indent coloncolon (pp k)]
+             fsep ["type", pp tv, indent classify (pp k)]
            AliasTypeSigDecl a ->
              ppTypeAlias fld a)
        $$ pp sig
   pp (SubmoduleSig _fld bnd) =
     let ((mId, U.unembed -> mTy), sig) = UU.unsafeUnbind bnd
-    in fsep ["module", pp mId, indent coloncolon (pp mTy)]
+    in fsep ["module", pp mId, indent classify (pp mTy)]
        $$ pp sig
 
 instance Pretty QueryExpr where
