@@ -13,4 +13,18 @@ fun withEither l r t = case t of
   ; (Right y) -> r y
   }
 
+sig h :: forall (a :: *) (b :: *) . { one :: (Either (a -> a) b) ; two :: Either a b } -> a
+fun h x =
+  case x of
+  { { one = (Left p) , two = (Left y) } -> p y
+  ; { one = _ , two = (Left y) } -> y
+  ; { one = (Right p) , two = (Right y) }  -> h { one = Right p ,  two = Right y }
+  }
+
+fun q f p =
+  case p of
+    (Left (Left x)) -> x
+    (Left (Right x)) -> f x
+    (Right y) -> y
+
 }

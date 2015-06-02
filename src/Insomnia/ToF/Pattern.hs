@@ -64,9 +64,14 @@ patternTranslation v clauses_ resultTy =
   local (valEnv %~ M.insert v (v', LocalTermVar)) $ do
     let defaultClause = F.DefaultClause $ Left $ F.CaseMatchFailure resultTy
     j <- patternTranslation' v' clauses_ defaultClause
-    m <- translateJob j
+    m <- translateJob (optimizeJob j)
     return $ U.bind v' m
 
+-- naive translation - each source language clause becomes its own
+-- split task that interrogates one constructor and we try each task
+-- in turn.  that means naively we'd end up with a lot of nested cases
+-- of the same subject.  it's not efficient but it's hard to get
+-- wrong.
 patternTranslation' :: ToF m
                        => F.Var
                        -> [Clause]
@@ -83,6 +88,42 @@ patternTranslation' v' clauses_ defaultClause =
      task <- clauseToTask v' clause
      return $ TryTaskJ task js
      
+-- optimize a job to combine split tasks
+optimizeJob :: Job -> Job
+optimizeJob j =
+  case j of
+   FailJ {} -> j
+   TryTaskJ (SplitTk v1 co1 io1 tasks1) (TryTaskJ (SplitTk v2 co2 io2 tasks2) jrest)
+     | v1 `U.aeq` v2, io1 `U.aeq` io2, Just jointTask <- meshSplitTasks v1 co1 io1 (tasks1 ++ tasks2) ->
+         optimizeJob (TryTaskJ jointTask jrest)
+   TryTaskJ j1 jrest -> TryTaskJ j1 (optimizeJob jrest)
+
+meshSplitTasks :: F.Var
+               -> InstantiationCoercion
+               -> DtInOut
+               -> [SplitTaskInfo]
+               -> Maybe Task
+meshSplitTasks v co io tasks_ =
+  let go tasks =
+        case tasks of
+         (SplitTaskInfo fld1 _bnd1):(SplitTaskInfo fld2 _bnd2):_rest
+           | fld1 == fld2 ->
+             -- we have something like
+             --   case subj of
+             --     ConA (Con1 p1) -> e1
+             --     ConA (Con2 p2) -> e2
+             --     restClauses
+             -- eventually we should make something like
+             --   case subj of
+             --     ConA y -> case y of { Con1 p1 -> e1 ; Con2 p2 -> e2 ; restClauses }
+             --     restClauses
+             --
+             -- but not quite yet.  For now just bail.
+             Nothing
+         split1:rest -> fmap (split1:) (go rest)
+         [] -> Just []
+  in fmap (SplitTk v co io) (go tasks_)
+
 data Task =
   SuccessTk !Expr
   | LetTk !F.Var (U.Bind Var Task)
