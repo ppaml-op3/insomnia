@@ -210,6 +210,7 @@ caseConstruct :: ToF m
 caseConstruct ysubj (DtInOut dtInOut)
   (InstantiationSynthesisCoercion _ tyargs _) clauses (FailCont defaultClause) = do
   (tyArgs', ks) <- liftM unzip $ mapM type' tyargs
+  d <- U.lfresh (U.s2n "δ")
   let
     dtOut = dtInOut `F.Proj` F.FDataOut
     -- For  polymorphic types constructors we need to build a higher-order context.
@@ -219,8 +220,7 @@ caseConstruct ysubj (DtInOut dtInOut)
     -- That is, we have to know that the polymorphic type Δ was instantiated with τs
     -- and the context should be λ (δ:κ1→⋯κN→⋆) . (⋯ (δ τ1) ⋯ τN)
     --
-    here = let d = U.s2n "δ"
-               kD = (ks `F.kArrs` F.KType)
+    here = let kD = (ks `F.kArrs` F.KType)
                appdD = (F.TV d) `F.tApps` tyArgs'
            in F.TLam $ U.bind (d, U.embed kD) appdD
     subject = F.App (F.PApp dtOut here) (F.V ysubj)
