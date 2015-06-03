@@ -59,36 +59,46 @@ checkConstructor (ConstructorDef ccon args) = do
 -- | Extend the typing context by adding the given type defintion.
 extendTypeDefnCtx :: (U.LFresh m, MonadReader Env m)
                      => TypeConstructor -> TypeDefn -> m a -> m a
-extendTypeDefnCtx dcon td =
-  case td of
-    DataDefn constrs -> extendDataDefnCtx dcon constrs
-    EnumDefn n -> extendEnumDefnCtx dcon n
+extendTypeDefnCtx dcon td kont = do
+  (genTyCon, constructors) <- mkConstructors dcon td
+  extendDConCtx dcon genTyCon
+    $ extendConstructorsCtx constructors
+    $ kont
 
 extendTypeAliasCtx :: TypeConstructor -> TypeAlias -> TC a -> TC a
-extendTypeAliasCtx dcon alias comp = do
+extendTypeAliasCtx dcon alias@(ManifestTypeAlias bnd) comp = do
   (alias', aliasInfo) <- checkTypeAlias alias
   env <- ask
   extendDConCtx dcon (AliasTyCon aliasInfo $ TypeAliasClosure env alias')
     $ comp
+extendTypeAliasCtx dcon alias@(DataCopyTypeAlias tp defn) comp = do
+  (alias', aliasInfo) <- checkTypeAlias alias
+  -- if this alias is a datatype copy, also add the constructors to
+  -- the env, o.w. nothing
+  extCons <- do
+    (_genTyCon, constructors) <- mkConstructors dcon defn
+    return (extendConstructorsCtx constructors)
+  env <- ask
+  extendDConCtx dcon (AliasTyCon aliasInfo $ TypeAliasClosure env alias')
+    $ extCons
+    $ comp
 
--- | Extend the typing context by adding the given type and value constructors
-extendDataDefnCtx :: (U.LFresh m, MonadReader Env m)
-                     => TypeConstructor -> DataDefn -> m a -> m a
-extendDataDefnCtx dcon bnd kont = do
-  (algty, constructors) <- U.lunbind bnd $ \ (vks, constrs) -> do
-    let kparams = map snd vks
-        makeVC = valueConstructorMakerForTypeConstructor dcon
-        cs = map (\(ConstructorDef c _) -> makeVC c) constrs
-        algty = AlgType kparams cs
-        constructors = map (mkConstructor dcon vks) constrs
-    return (algty, constructors)
-  extendDConCtx dcon (GenerativeTyCon $ AlgebraicType algty) $ 
-    extendConstructorsCtx constructors kont
+-- | Given a type constructor and its definition, return the data type
+-- descriptor, the value constructors, and the algebraic type
+-- constructors to be added to the environment.
+mkConstructors :: (U.LFresh m) => TypeConstructor -> TypeDefn -> m (TyConDesc, [(ValueConstructor, AlgConstructor)])
+mkConstructors dcon td =
+  case td of
+   EnumDefn n -> return (GenerativeTyCon (EnumerationType n), [])
+   DataDefn bnd ->
+     U.lunbind bnd $ \ (vks, constrs) -> do
+       let kparams = map snd vks
+           makeVC = valueConstructorMakerForTypeConstructor dcon
+           cs = map (\(ConstructorDef c _) -> makeVC c) constrs
+           algty = AlgType kparams cs
+           constructors = map (mkConstructor dcon vks) constrs
+       return (GenerativeTyCon (AlgebraicType algty), constructors)
 
--- | Extend the typing context by adding the given enumeration type
-extendEnumDefnCtx :: MonadReader Env m => TypeConstructor -> Nat -> m a -> m a
-extendEnumDefnCtx dcon n =
-  extendDConCtx dcon (GenerativeTyCon $ EnumerationType n)
 
 valueConstructorMakerForTypeConstructor :: TypeConstructor
                                            -> ValConName -> ValueConstructor
@@ -110,10 +120,14 @@ mkConstructor dcon vks (ConstructorDef ccon args) =
 -- number of mandatory arguments to the type alias, and the kind of
 -- the resulting type expression.
 checkTypeAlias :: TypeAlias -> TC (TypeAlias, TypeAliasInfo)
-checkTypeAlias (TypeAlias bnd) =
+checkTypeAlias (ManifestTypeAlias bnd) =
   U.lunbind bnd $ \(tvks, ty) -> do
     let kparams = map snd tvks
     mapM_ checkKind kparams
     (ty', kcod) <- extendTyVarsCtx tvks $ inferType ty
-    return (TypeAlias (U.bind tvks ty')
+    return (ManifestTypeAlias (U.bind tvks ty')
             , TypeAliasInfo kparams kcod)
+checkTypeAlias (DataCopyTypeAlias tp defn) =
+  -- XXX TODO: this is probably wrong for higher kinds.
+  return (DataCopyTypeAlias tp defn
+          , TypeAliasInfo [] KType)

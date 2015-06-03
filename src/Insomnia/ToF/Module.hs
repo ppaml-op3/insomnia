@@ -282,7 +282,7 @@ typeAliasDefn :: ToF m
                  -> TypeAlias
                  -> (ModSummary -> m ans)
                  -> m ans
-typeAliasDefn _mk f (TypeAlias bnd) kont =
+typeAliasDefn _mk f (ManifestTypeAlias bnd) kont =
   U.lunbind bnd $ \ (tvks, rhs) -> do
     (tlam, tK) <- withTyVars tvks $ \tvks' -> do
       (rhs', kcod) <- type' rhs
@@ -298,6 +298,44 @@ typeAliasDefn _mk f (TypeAlias bnd) kont =
                  mhole)
     local (tyConEnv %~ M.insert tc tsig) $
       kont thisOne
+typeAliasDefn _mk f (DataCopyTypeAlias tp@(TypePath pdefn fdefn) defn) kont = do
+  -- Add a new name for an existing generative type.  Since the
+  -- abstract type variable is already in scope (since it was lifted
+  -- out to scope over all the modules where the type is visible), we
+  -- just need to alias the original type's datatype variable, and to
+  -- add all the constructors to the environment.
+  --
+  --  ie, suppose we had:
+  --    module M { data D = D1 | D2 }
+  --    module N { datatype D = data M.D }
+  --    module P { ... N.D1 ... }
+  --  we will get
+  --   unpack δ, M = { ... } in
+  --   let N = { D = M.D } in
+  --   let P = { ... N.D.dataIn.D1  ... }   where N.D has a type that mentions δ
+  let rootLookup modId = do
+        ma <- view (modEnv . at modId)
+        case ma of
+         Nothing -> throwError "unexpected failure in ToF.typeAliasDefn - unbound module identifier"
+         Just (sig, x) -> return (sig, F.V x)
+  (dataSig, mpath) <- followUserPathAnything rootLookup (ProjP pdefn fdefn)
+  let tc = U.s2n f :: TyConName
+      xc = U.s2n f :: F.Var
+  -- map each constructor to a projection from the the corresponding
+  -- constructor field of the defining datatype.
+  conVs <- case defn of
+   EnumDefn {} -> return mempty
+   DataDefn bnd ->
+     U.lunbind bnd $ \(tvks, cdefs) -> 
+       return $ flip map cdefs $ \(ConstructorDef cname _) ->
+         let fcon = F.FCon (U.name2String cname)
+         in  (cname, (xc, fcon))
+  let mhole = Endo (F.Let . U.bind (xc, U.embed mpath))
+      thisOne = ((mempty, [(F.FUser f, dataSig)]), [(F.FUser f, F.V xc)], mhole)
+      conEnv = M.fromList conVs
+  local (tyConEnv %~ M.insert tc dataSig)
+    $ local (valConEnv %~ M.union conEnv)
+    $ kont thisOne
 
 submoduleDefn :: ToF m
                  => Maybe Path

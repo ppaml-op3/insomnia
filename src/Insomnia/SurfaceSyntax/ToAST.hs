@@ -403,7 +403,7 @@ typeAlias :: TypeAlias -> TA I.TypeAlias
 typeAlias (TypeAlias tvks ty) = do
   tvks' <- forM tvks $ \(tv, k) -> (,) <$> tyvar tv <*> kind k 
   ty' <- type' ty
-  return $ I.TypeAlias (U.bind tvks' ty') Nothing
+  return $ I.ManifestTypeAlias (U.bind tvks' ty')
 
 typeDefn :: TypeDefn -> TA (I.TypeDefn, [Ident])
 typeDefn (DataTD dD) = do

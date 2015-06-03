@@ -58,8 +58,22 @@ importValue q@(QVar _ f) ty stoch = do
   return (dSig <> dVal)
 
 importType :: TypePath -> TypeSigDecl -> TC Decls
-importType tp@(TypePath _ f) _tsd = do
-  -- TODO: import constructors
+importType tp@(TypePath _ f) tsd = do
   -- TODO: for polymorphic types this doesn't kindcheck.
-  return $ singleDecl $ TypeAliasDefn f $ TypeAlias $ U.bind [] (TC (TCGlobal tp))
+  let gcon = TCGlobal tp
+      manifestAlias = ManifestTypeAlias (U.bind [] (TC gcon))
+      -- if this is an alias for an abstract type or for another
+      -- manifest alias, just alias it.  If this is an alias for a
+      -- data type, make a datatype copy; if it's an alias for a
+      -- datatype copy, propagate the copy.
+      alias = case tsd of
+        AbstractTypeSigDecl _k ->
+          manifestAlias
+        AliasTypeSigDecl (ManifestTypeAlias _rhs) ->
+          manifestAlias
+        AliasTypeSigDecl copy@(DataCopyTypeAlias {}) ->
+          copy
+        ManifestTypeSigDecl defn ->
+          DataCopyTypeAlias tp defn
+  return $ singleDecl $ TypeAliasDefn f alias
    

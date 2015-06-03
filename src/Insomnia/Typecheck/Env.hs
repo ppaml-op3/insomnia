@@ -255,11 +255,13 @@ instance MonadTypeAlias (UnificationT Kind Type TCSimple) where
   expandTypeAlias c = do
     md <- view (envDCons . at c)
     case md of
-     Just (AliasTyCon _ (TypeAliasClosure _env (TypeAlias bnd))) ->
+     Just (AliasTyCon _ (TypeAliasClosure _env (ManifestTypeAlias bnd))) ->
            U.lunbind bnd $ \(tvks, ty) ->
            case tvks of
             [] -> return (Just ty)
             _ -> unimplemented "Env.expandTypeAlias for aliases with arguments"
+     Just (AliasTyCon _ (TypeAliasClosure _env (DataCopyTypeAlias tp _))) ->
+       return $ Just $ TC $ TCGlobal tp
      _ -> return Nothing
 
 -- | Given a value constructor c, return its type as a polymorphic function

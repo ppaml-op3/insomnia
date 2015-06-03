@@ -369,13 +369,25 @@ ppShortTypeDefn c (DataDefn _) = "data" <+> pp c <+> elipsis
 ppShortTypeDefn c (EnumDefn n) = "enum" <+> pp c <+> pp n
 
 ppTypeAlias :: Field -> TypeAlias -> PM Doc
-ppTypeAlias c (TypeAlias bnd) =
+ppTypeAlias c (ManifestTypeAlias bnd) =
   let (tvks, ty) = UU.unsafeUnbind bnd
-  in "type" <+> (nesting $ fsep
+  in "type" <+>  (nesting $ fsep
+                  [
+                    pp c
+                  , ppTyVarBindings tvks
+                  , indent "=" (pp ty)
+                  ])
+ppTypeAlias c (DataCopyTypeAlias tp defn) =
+  let (pfx, mcons) =
+        case defn of
+         DataDefn dd -> ("data",
+                         nesting $ parens $ ppDataDefn "_" dd)
+         EnumDefn {} -> ("enum", mempty)
+  in pfx <> "type" <+> (nesting $ fsep
                  [
                    pp c
-                 , ppTyVarBindings tvks
-                 , indent "=" (pp ty)
+                 , indent "=" (fsep [pfx, pp tp])
+                 , mcons
                  ])
 
 

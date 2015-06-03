@@ -16,8 +16,12 @@ import Insomnia.Types
 import Insomnia.Common.Literal (Literal)
 
 -- | A type alias does not define a new type, but it defines a new name for
--- an existing type expression.
-newtype TypeAlias = TypeAlias (Bind [KindedTVar] Type)
+-- an existing type expression.  If it's actually a data type or enum
+-- type copy, we also bring along their definition (so that we can
+-- bring the constructors into scope)
+data TypeAlias =
+  ManifestTypeAlias !(Bind [KindedTVar] Type)
+  | DataCopyTypeAlias !TypePath !TypeDefn
                deriving (Show, Typeable, Generic)
 
 -- | A declaration of a type.  Note that we omit providing the name
@@ -96,6 +100,7 @@ instance Subst Path ValueConstructor
 -- Capture avoid substitution of types for type variables in the following.
 instance Subst Type ConstructorDef
 instance Subst Type TypeAlias
+instance Subst Type TypeDefn
 
 instance Subst Type ValConPath where
   subst _ _ = id

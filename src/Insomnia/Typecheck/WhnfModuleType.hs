@@ -165,7 +165,7 @@ patchTypeSigDecl tsd ptf@(PatchTypeField fldPatch _ kPatch) =
 patchToAlias :: PatchTypeField -> TC TypeAlias
 patchToAlias (PatchTypeField _fld ty_ k_) = do
   (bs, ty) <- go k_ ([], ty_)
-  return $ TypeAlias $ U.bind bs ty
+  return $ ManifestTypeAlias (U.bind bs ty)
   where
     go KType acc = return acc
     go (KArr k1 ks) (bs, ty) = do

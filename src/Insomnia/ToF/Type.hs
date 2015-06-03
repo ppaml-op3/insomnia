@@ -18,13 +18,15 @@ import qualified FOmega.SemanticSig as F
 import Insomnia.ToF.Env
 
 typeAlias :: ToF m => TypeAlias -> m F.SemanticSig
-typeAlias (TypeAlias bnd) =
+typeAlias (ManifestTypeAlias bnd) =
   U.lunbind bnd $ \(tvks, t) ->
   withTyVars tvks $ \tvks' -> do
     (t', kcod) <- type' t
     let kdoms = map snd tvks'
         k = kdoms `F.kArrs` kcod
     return $ F.TypeSem t' k
+typeAlias (DataCopyTypeAlias _tp _defn) =
+  error "internal error: ToF.Type.typeAlias - translation of datatype copies unimplemented"
 
 withTyVars :: ToF m => [KindedTVar] -> ([(F.TyVar, F.Kind)] -> m r) -> m r
 withTyVars [] kont = kont []

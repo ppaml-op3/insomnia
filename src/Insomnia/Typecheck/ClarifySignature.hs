@@ -75,9 +75,11 @@ clarifyTypeSigDecl :: Path
                       -> TC Signature
 clarifyTypeSigDecl pmod f tycon tsd rest =
   case tsd of
-   AliasTypeSigDecl {} -> do
+   AliasTypeSigDecl (ManifestTypeAlias _clz) -> do
      rest' <- clarifySignature pmod rest
      return $ TypeSig f $ U.bind (tycon, U.embed tsd) rest'
+   AliasTypeSigDecl (DataCopyTypeAlias _tp _defn) ->
+     typeError ("clarifyTypeSigDecl unimplemented for data type copies")
    AbstractTypeSigDecl k -> do
      let c = TCGlobal (TypePath pmod f)
          a = mkTypeAlias k c
@@ -103,7 +105,7 @@ clarifyTypeSigDecl pmod f tycon tsd rest =
     mkTypeAlias :: Kind -> TypeConstructor -> TypeAlias
     mkTypeAlias k c =
       let (tvks, ty) = mkTypeAlias' k 0 c
-      in TypeAlias $ U.bind tvks ty
+      in ManifestTypeAlias (U.bind tvks ty)
     mkTypeAlias' :: Kind -> Integer -> TypeConstructor -> ([KindedTVar], Type)
     mkTypeAlias' KType _ c = ([], TC c)
     mkTypeAlias' (KArr kdom kcod) n c =

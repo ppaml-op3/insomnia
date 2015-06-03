@@ -57,7 +57,7 @@ generalizeK k kont =
 -- @[t1, ...., tN, s1, .... sM]@ returns
 -- @tRHS[t1/a1, ... tN/aN] `TApp` s1 `TApp` ... `TApp` sM@
 expandAndApply :: TypeAlias -> [Type] -> TC Type
-expandAndApply (TypeAlias bnd) tAllArgs =
+expandAndApply (ManifestTypeAlias bnd) tAllArgs =
   U.lunbind bnd $ \(tparamks, ty) ->
   return $ let tparams = map fst tparamks
                n = length tparamks
@@ -65,3 +65,5 @@ expandAndApply (TypeAlias bnd) tAllArgs =
                substitution = zip tparams tsubArgs
                tRHS = U.substs substitution ty
            in tRHS `tApps ` tappArgs
+expandAndApply (DataCopyTypeAlias tp _defn) tAllArgs =
+  return $ (TC $ TCGlobal tp) `tApps` tAllArgs

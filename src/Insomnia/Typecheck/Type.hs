@@ -158,12 +158,14 @@ checkAliasInfoArgs dcon (TypeAliasInfo kargs _kRHS) targs = do
   return (tsubArgs, tAppArgs)
 
 expandAliasClosure :: TypeAliasClosure -> [Type] -> TC Type
-expandAliasClosure (TypeAliasClosure env (TypeAlias bnd)) targs =
+expandAliasClosure (TypeAliasClosure env (ManifestTypeAlias bnd)) targs =
   local (const env)
   $ U.lunbind bnd
   $ \(tvks, ty) -> return $ let tvs = map fst tvks
                                 substitution = zip tvs targs
                             in U.substs substitution ty
+expandAliasClosure (TypeAliasClosure _env (DataCopyTypeAlias tp _defn)) targs =
+  return $ (TC $ TCGlobal tp) `tApps` targs
 
 -- | @reconstructApplication (thead, khead) [t1,...,tN]@ returns the
 -- type @thead `TApp` t1 `TApp` ... `TApp` tN@ and its infered kind
