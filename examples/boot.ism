@@ -13,36 +13,3 @@ module __BOOT = assume {
   }
 
 }
-
-module Prelude {
-  sig (+) : Int -> Int -> Int
-  fun (+) x y = __BOOT.intAdd x y
-
-  data Bool = True | False
-
-  fun (<) x y = __BOOT.ifIntLt x y (\ _v -> True) (\_v -> False) {}
-
-
-  fun flip d = __BOOT.Distribution.choose d (return True) (return False)
-
-  fun bernoulli d = __BOOT.Distribution.choose d (return 1) (return 0)
-
-  fun uniform p =
-    case p of
-      ({ lo = lo, hi = hi }) -> __BOOT.Distribution.uniform lo hi
-}
-
-module TestArith {
-
-  import Prelude
-
-  val x = (1 + 1) < 3
-
-}
-
-model TestFlip {
-  val coin1 ~ Prelude.flip 0.5
-  val r ~ Prelude.uniform { lo = 0.0 , hi = 1.0 }
-}
-
-query sample TestFlip 3

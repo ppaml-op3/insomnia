@@ -1,0 +1,21 @@
+
+import "examples/Prelude.ism" (module Prelude)
+
+module TestArith {
+
+  import Prelude
+
+  -- sig x : Bool
+  val x =
+    case (1 + 1) < 3 of
+      True -> False
+      False -> True
+
+}
+
+model TestFlip {
+  val coin1 ~ Prelude.flip 0.5
+  val r ~ Prelude.uniform { lo = 0.0 , hi = 1.0 }
+}
+
+query sample TestFlip 3

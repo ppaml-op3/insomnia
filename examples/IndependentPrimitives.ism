@@ -1,0 +1,20 @@
+-- insomnia test flags:
+-- eval: True
+
+import "examples/Prelude.ism" (module Prelude)
+
+model B {
+
+  import Prelude
+
+  sig y : Bool
+  val y = case 0 < 0 of
+    True -> True
+    False -> False
+
+  val z ~ bernoulli 0.5
+
+  val r ~ uniform { lo = 10.0, hi = 11.0 }
+}
+
+query sample B 2
