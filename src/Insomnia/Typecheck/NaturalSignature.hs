@@ -28,12 +28,14 @@ import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.ModuleType
 import Insomnia.Module
+import Insomnia.Types (TypeConstructor (..))
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.LookupModuleSigPath (lookupModuleSigPath)
 import Insomnia.Typecheck.ModuleType (extendModuleCtxFunctorArgs)
 import Insomnia.Typecheck.ExtendModuleCtx (extendModuleCtxNF)
 import Insomnia.Typecheck.WhnfModuleType (whnfModuleType)
+import Insomnia.Typecheck.TypeDefn (extendTypeDefnCtx, extendTypeAliasCtx)
 
 -- | Returns the "natural" signature of a module.
 -- This is a signature in which all type equations are preserved, all
@@ -60,12 +62,12 @@ naturalSignature = go . moduleDecls
           error ("internal error: naturalSignature.goDecl did not expect to see an ImportDecl")
         TypeDefn fld defn -> do
           let ident = U.s2n fld
-          sig' <- kont
-          let tsd = ManifestTypeSigDecl defn
+              tsd = ManifestTypeSigDecl defn
+          sig' <- extendTypeDefnCtx (TCLocal ident) defn kont
           return $ TypeSig fld (U.bind (ident, U.embed tsd) sig')
         TypeAliasDefn fld alias -> do
           let ident = U.s2n fld
-          sig' <- kont
+          sig' <- extendTypeAliasCtx (TCLocal ident) alias kont
           let tsd = AliasTypeSigDecl alias
           return $ TypeSig fld (U.bind (ident, U.embed tsd) sig')
         SubmoduleDefn fld moduleExpr -> do
