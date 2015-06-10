@@ -180,6 +180,9 @@ instance Subst TypeConstructor TypePath where
 instance Subst TypeConstructor Path where
   subst _ _ = id
   substs _ = id
+instance Subst TypeConstructor SigPath where
+  subst _ _ = id
+  substs _ = id
 instance Subst TypeConstructor Literal where
   subst _ _ = id
   substs _ = id

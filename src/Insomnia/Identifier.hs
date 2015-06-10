@@ -58,7 +58,7 @@ data Path =
   deriving (Show, Typeable, Generic)
 
 -- | A signature path identifies a model type.  The namespace for
--- model types is flat, so this is a particularly degenerate representation.
+-- model types is flat, except by reference into another toplevel.
 data SigPath = SigIdP SigIdentifier
              | SigTopRefP !TopRef !Field
   deriving (Show, Typeable, Generic)
@@ -119,6 +119,8 @@ instance Subst TopPath TopPath where
 
 instance Subst TopPath Path
 instance Subst TopPath SigPath
+
+instance Subst Path SigPath
 
 instance Subst Path Path where
   isvar (IdP i) = Just (SubstName i)

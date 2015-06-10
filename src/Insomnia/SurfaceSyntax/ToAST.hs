@@ -225,7 +225,7 @@ toplevelImportSpec it (ImportModuleSpecItem modId fld) = do
   return $ I.ToplevelModule ident' reimportingModule
 toplevelImportSpec it (ImportModuleTypeSpecItem sigId) = do
   sigId' <- sigIdentifier sigId
-  return $ I.ToplevelModuleType sigId' (I.TopRefMT it sigId)
+  return $ I.ToplevelModuleType sigId' (I.IdentMT $ I.SigTopRefP it sigId)
 
 modIdentifier :: Ident -> TA I.Identifier
 modIdentifier s = return $ U.s2n s
@@ -255,7 +255,7 @@ moduleType (FunMT args resultK result) = do
   functorArguments args $ \args' -> do
     result' <- local (currentModuleKind .~ resultK) (moduleType result)
     return (I.FunMT $ U.bind args' result')
-moduleType (IdentMT ident) = I.IdentMT <$> sigIdentifier ident
+moduleType (IdentMT ident) = I.IdentMT . I.SigIdP <$> sigIdentifier ident
 moduleType (WhereMT mt wh) = I.WhereMT <$> moduleType mt <*> whereClause wh
 
 whereClause :: WhereClause -> TA I.WhereClause

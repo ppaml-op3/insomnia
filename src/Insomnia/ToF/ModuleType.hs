@@ -35,11 +35,29 @@ moduleType modTy_ =
      signature s
    SigMT (SigV s ModelMK) ->
      model s
-   IdentMT sigId -> do
+   IdentMT (SigIdP sigId) -> do
      ma <- view $ sigEnv . at sigId
      case ma of
       Nothing -> throwError "unexpected ToF.moduleTyp' sig lookup returned Nothing"
       Just absSig -> return absSig
+   IdentMT (SigTopRefP topref f) -> do
+     m <- view (toplevelEnv . at topref)
+     sigTop <- case m of
+      Just (sig, _x) -> return sig
+      Nothing -> throwError ("unexpected failure in ToF.moduleType: toplevel "
+                             ++ show topref ++ " not in environment")
+     case sigTop of
+      F.ModSem flds -> do
+        let p (F.FUser f', _) | f == f' = True
+            p _ = False
+        case List.find p flds of
+         Just (_, (F.SigSem absSig)) -> return absSig
+         Just _ -> throwError ("unexpected failure in ToF.moduleType: field "
+                               ++ show f ++ " is not a semantic signature")
+         Nothing -> throwError ("unexpected failure in ToF.moduleType: field "
+                                ++ show f ++ " not found in " ++ show topref)
+      _ -> throwError "unexpected failure in followUserPathAnything: not a module record"
+        
    WhereMT modTy whereClause -> do
      abstr <- moduleType modTy
      patchWhereClause abstr whereClause

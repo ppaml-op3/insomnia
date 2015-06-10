@@ -2,7 +2,7 @@
 --  Among other things, it eliminates "SIG where type p = ty" signatures by patching
 -- the signature with the type of the RHS.
 {-# LANGUAGE ViewPatterns, OverloadedStrings #-}
-module Insomnia.Typecheck.WhnfModuleType (whnfModuleType, reduceWhereModuleTypeNF) where
+module Insomnia.Typecheck.WhnfModuleType (whnfModuleType, reduceWhereModuleTypeNF, projectToplevelModuleTypeField) where
 
 import Control.Applicative
 import Data.Monoid ((<>))
@@ -179,7 +179,10 @@ patchToAlias (PatchTypeField _fld ty_ k_) = do
 
 whnfModuleType :: ModuleType -> TC ModuleTypeNF
 whnfModuleType (SigMT sigv) = return (SigMTNF sigv)
-whnfModuleType (IdentMT modId) = lookupModuleType modId
+whnfModuleType (IdentMT (SigIdP modId)) = lookupModuleType modId
+whnfModuleType (IdentMT (SigTopRefP topref f)) = do
+  tsum <- lookupToplevelSummary topref
+  projectToplevelModuleTypeField (TopRefP topref) tsum f
 whnfModuleType (FunMT bnd) =
   U.lunbind bnd $ \(tele, body) ->
   whnfTelescope tele $ \telenf -> do
@@ -203,4 +206,16 @@ whnfFunctorArgument (FunctorArgument argId modK (U.unembed -> mt)) k = do
   k $ FunctorArgument argId modK $ U.embed mtnf
 
 
+projectToplevelModuleTypeField :: Path -> ToplevelSummary -> Field -> TC ModuleTypeNF
+projectToplevelModuleTypeField path UnitTS fld =
+  typeError ("toplevel " <> formatErr path <> " does not have a module type " <> formatErr fld)
+projectToplevelModuleTypeField path (ModuleTS fld' bnd) fld =
+  U.lunbind bnd $ \((modId, _), rest) ->
+  let rest' = U.subst modId (ProjP path fld') rest
+  in projectToplevelModuleTypeField path rest fld
+projectToplevelModuleTypeField path (SignatureTS fld' bnd) fld =
+  U.lunbind bnd $ \((sigId, U.unembed -> sigMT), rest) ->
+  if fld == fld'
+  then return sigMT
+  else projectToplevelModuleTypeField path rest fld
                  

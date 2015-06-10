@@ -34,8 +34,7 @@ data ToplevelSummary =
 
 data ModuleType =
   SigMT !(SigV Signature) -- "module/model { decls ... }"
-  | IdentMT !SigIdentifier -- "X_SIG"
-  | TopRefMT !TopRef !Field -- "^foo:F" sig from an imported toplevel
+  | IdentMT !SigPath -- "X_SIG"
   | FunMT !(Bind (Telescope (FunctorArgument ModuleType)) ModuleType)
   | WhereMT !ModuleType !WhereClause
   deriving (Show, Typeable, Generic)

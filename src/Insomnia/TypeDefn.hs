@@ -128,6 +128,9 @@ instance Subst ValueConstructor TypeAlias where
 instance Subst ValueConstructor Path where
   subst _ _ = id
   substs _ = id
+instance Subst ValueConstructor SigPath where
+  subst _ _ = id
+  substs _ = id
 instance Subst ValueConstructor Kind where
   subst _ _ = id
   substs _ = id

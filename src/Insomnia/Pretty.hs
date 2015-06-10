@@ -224,6 +224,10 @@ instance Pretty Path where
   pp (TopRefP tr) =
     pp tr
 
+instance Pretty SigPath where
+  pp (SigIdP identifier) = pp identifier
+  pp (SigTopRefP tr f) = pp tr <> ":" <> pp f
+
 instance Pretty ValConPath where
   pp (ValConPath modPath vc) = pp modPath <> "." <> pp vc
 
@@ -507,8 +511,6 @@ instance Pretty ModuleType where
   pp (IdentMT ident) = pp ident
   pp (WhereMT mt wh) =
     fsep [pp mt, indent "where" (pp wh)]
-  pp (TopRefMT t fld) =
-    pp t <> ":" <> pp fld
 
 instance Pretty WhereClause where
   pp (WhereTypeCls bnd rhs) =

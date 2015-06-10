@@ -8,7 +8,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.ModuleKind
 import Insomnia.Common.Telescope
-import Insomnia.Identifier (Field, Path(..))
+import Insomnia.Identifier (Field, Path(..), SigPath(..))
 import Insomnia.Types (TypeConstructor(..), Kind(..))
 import Insomnia.ModuleType
 
@@ -16,7 +16,7 @@ import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkKind, checkType)
 import Insomnia.Typecheck.TypeDefn (checkTypeDefn, checkTypeAlias)
 import Insomnia.Typecheck.ExtendModuleCtx (extendTypeSigDeclCtx, extendModuleCtxNF)
-import Insomnia.Typecheck.WhnfModuleType (reduceWhereModuleTypeNF)
+import Insomnia.Typecheck.WhnfModuleType (reduceWhereModuleTypeNF, projectToplevelModuleTypeField)
 
 -- | Check that the given module type expression is well-formed, and
 -- return both the module type expression and the signature that it
@@ -31,9 +31,13 @@ checkModuleType (FunMT bnd) =
     (body', bodynf) <- checkModuleType body
     return (FunMT $ U.bind args' body',
             FunMTNF $ U.bind argsnf bodynf)
-checkModuleType (IdentMT ident) = do
+checkModuleType (IdentMT (SigIdP ident)) = do
   mtnf <- lookupModuleType ident
-  return (IdentMT ident, mtnf)
+  return (IdentMT (SigIdP ident), mtnf)
+checkModuleType (IdentMT (SigTopRefP topref f)) = do
+  tsum <- lookupToplevelSummary topref
+  mtnf <- projectToplevelModuleTypeField (TopRefP topref) tsum f
+  return (IdentMT (SigTopRefP topref f), mtnf)
 checkModuleType (WhereMT mt whClause) = do
   (mt', mtnf) <- checkModuleType mt
   mtnf' <- reduceWhereModuleTypeNF mtnf whClause

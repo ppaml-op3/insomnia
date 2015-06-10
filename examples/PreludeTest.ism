@@ -1,5 +1,18 @@
 
-import "examples/Prelude.ism" (module Prelude)
+import "examples/Prelude.ism" (module Prelude
+                               module type FUNCTOR)
+
+module Lists {
+  data List (a : *) = Nil | Cons a (List a)
+  module Functor : (FUNCTOR where type T = List) {
+    type T = List
+    sig map : forall (a : *) (b : *) . (a -> b) -> List a -> List b
+    fun map f xs =
+      case xs of
+        Nil -> Nil
+        (Cons x xs1) -> Cons (f x) (map f xs1)
+  }
+}
 
 module TestArith {
 
