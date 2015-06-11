@@ -1,4 +1,6 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, MultiParamTypeClasses, TemplateHaskell, RankNTypes #-}
+{-# LANGUAGE FlexibleInstances, FlexibleContexts, MultiParamTypeClasses,
+             ScopedTypeVariables, TemplateHaskell, RankNTypes
+  #-}
 module Insomnia.SurfaceSyntax.ToAST where
 
 import Prelude hiding (foldr)
@@ -43,31 +45,34 @@ data Ctx = Ctx {_declaredFixity :: M.Map QualifiedIdent Fixity
 $(makeLenses ''Ctx)
 
 -- "To AST" monad is just a reader of some contextual info...
-type TA = ReaderT Ctx YTA
+-- (the freshness monad is used to make new Toprefs)
+type TA = ReaderT Ctx (U.FreshMT YTA)
 
 -- ... except that we can yield mid-computation and ask for an imported file.
 --
 -- this is a coroutine monad.
 data YTA a = 
   DoneTA a
-  | YieldTA Ctx ImportFileSpec (Either ImportFileError I.Toplevel -> TA a)
+  | YieldTA Suspended ImportFileSpec (Either ImportFileError I.Toplevel -> TA a)
+
+type Suspended = (Ctx, Integer)
 
 newtype ImportFileError = ImportFileError { importFileErrorMsg :: String }
 
 instance Functor YTA where
   fmap f (DoneTA x) = DoneTA (f x)
-  fmap f (YieldTA ctx want k) = YieldTA ctx want (fmap f . k)
+  fmap f (YieldTA susp want k) = YieldTA susp want (fmap f . k)
 
 instance Applicative YTA where
   pure = DoneTA 
   (DoneTA f) <*> (DoneTA x) = DoneTA (f x)
-  (DoneTA f) <*> (YieldTA ctx want k) = YieldTA ctx want (fmap f . k)
-  (YieldTA ctx want f) <*> m = YieldTA ctx want (\i -> f i <*> lift m)
+  (DoneTA f) <*> (YieldTA susp want k) = YieldTA susp want (fmap f . k)
+  (YieldTA susp want f) <*> m = YieldTA susp want (\i -> f i <*> lift (lift m))
 
 instance Monad YTA where
    return = pure
    DoneTA x >>= k = k x
-   YieldTA want ctx k >>= k' = YieldTA want ctx (\i -> k i >>= (lift . k'))
+   YieldTA susp want k >>= k' = YieldTA susp want (\i -> k i >>= (lift . lift . k'))
 
 -- the CPS version of TA
 newtype CTA a = CTA { runCTA :: forall r . (a -> TA r) -> TA r }
@@ -94,14 +99,20 @@ instance MonadState Ctx CTA where
 -- | given a To AST computation and a monadic handler for import requests and an initial context,
 -- repeatedly call the handler whenever the To AST computation yields with a request until it returns a final answer.
 -- Return that final answer.
-feedTA :: Monad m => TA a -> (ImportFileSpec -> m (Either ImportFileError I.Toplevel)) -> Ctx -> m a
+feedTA :: forall m a .
+          Monad m
+          => TA a
+          -> (ImportFileSpec -> m (Either ImportFileError I.Toplevel))
+          -> Ctx -> m a
 feedTA comp onImport =
-  let go ctx c = case runReaderT c ctx of
+  let
+    go :: Suspended -> TA a -> m a
+    go (ctx,freshness) c = case U.contFreshMT (runReaderT c ctx) freshness of
                   DoneTA ans -> return ans
-                  YieldTA ctx' wanted resume -> do
+                  YieldTA susp' wanted resume -> do
                     reply <- onImport wanted
-                    go ctx' (resume reply)
-  in \ctx -> go ctx comp
+                    go susp' (resume reply)
+  in \ctx -> go (ctx, 0) comp
 
 -- main function
 toAST :: Monad m => Toplevel -> (ImportFileSpec -> m (Either ImportFileError I.Toplevel)) -> m I.Toplevel
@@ -118,15 +129,16 @@ toASTbaseCtx = Ctx (M.fromList
 
 
 runToAST :: Ctx -> TA a -> YTA a
-runToAST ctx comp = runReaderT comp ctx
+runToAST ctx comp = U.runFreshMT (runReaderT comp ctx)
 
 await :: ImportFileSpec -> TA I.Toplevel
 await want = do
   ctx <- ask
-  lift (YieldTA ctx want $ \got ->
-         case got of
-          Left err -> fail (importFileErrorMsg err)
-          Right it -> return it)
+  freshness <- lift (U.FreshMT get)
+  lift $ lift (YieldTA (ctx,freshness) want $ \got ->
+                case got of
+                Left err -> fail (importFileErrorMsg err)
+                Right it -> return it)
 
 liftCTA :: TA a -> CTA a
 liftCTA comp = CTA $ \k -> comp >>= k
@@ -204,8 +216,8 @@ toplevelImport :: ImportFileSpec -> [ImportSpecItem] -> TA [I.ToplevelItem]
 toplevelImport filespec importSpecs = do
   tl <- await filespec
   let fp = importFileSpecPath filespec
-      a =U.s2n $ "^" ++ fp
-      it = I.ToplevelImported fp a tl
+  a <- U.fresh (U.s2n $ "^" ++ fp)
+  let it = I.ToplevelImported fp a tl
   its <- mapM (toplevelImportSpec a) importSpecs
   return (it:its)
 

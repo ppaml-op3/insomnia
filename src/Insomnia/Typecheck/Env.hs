@@ -186,6 +186,11 @@ baseEnv = emptyEnv
           & (envDCons . at conInt) ?~ GenerativeTyCon (AlgebraicType algInt)
           & (envDCons . at conReal) ?~ GenerativeTyCon (AlgebraicType algReal)
 
+-- | Set all the components of the env back to empty, except the toplevel refs.
+clearExceptToplevelsEnv :: Env -> Env
+clearExceptToplevelsEnv e =
+  baseEnv & (envTopSums .~ e^.envTopSums)
+
 builtinCon :: String -> TypeConstructor
 builtinCon = TCLocal . U.s2n
 

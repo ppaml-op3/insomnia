@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Insomnia.Typecheck.Toplevel (checkToplevel) where
 
+import Control.Monad.Reader
 import Data.Monoid (Monoid(..), (<>), Endo(..))
 
 import qualified Unbound.Generics.LocallyNameless as U
@@ -46,7 +47,7 @@ checkToplevelItem item kont =
         $ let updSum = SignatureTS (U.name2String modTypeIdent) . U.bind (modTypeIdent, U.embed sigV)
           in kont (ToplevelModuleType modTypeIdent modType') (Endo updSum)
     ToplevelImported fp tr tl -> do
-      (tl', tsum) <- checkToplevel tl
+      (tl', tsum) <- local clearExceptToplevelsEnv (checkToplevel tl)
                      <??@ ("while importing the toplevel from " <> formatErr fp
                            <> " as " <> formatErr tr)
       extendToplevelDeclCtx tr tsum $ extendToplevelSummaryCtx tr tsum $ kont (ToplevelImported fp tr tl') mempty
