@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Insomnia.Typecheck.Equiv.Types (equivTypes) where
 
+import Data.Monoid ((<>))
 import Control.Lens.Plated (plate)
 
 import Insomnia.Types (Kind(..), Type(..))
@@ -14,6 +15,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 -- equivlant
 equivTypes :: Type -> Type -> Kind -> TC Bool
 equivTypes t1 t2 KType = checkEquivKType t1 t2
+                         <??@ ("while checking " <> formatErr t1 <> " ≡ " <> formatErr t2)
 equivTypes _t1 _t2 k = error ("finish implementing type equivalence at higher kind " ++ show k)
 
 -- | Given two types of kind ⋆, check that they are equivalent by

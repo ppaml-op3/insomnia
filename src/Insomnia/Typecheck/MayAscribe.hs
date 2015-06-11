@@ -392,6 +392,7 @@ checkSubmoduleField pmod fld bnd msig1 kont =
           let
             pSubmod = ProjP pmod fld
           checkModuleTypeNF pSubmod sigV1 sigV2
+            <??@ ("while checking the submodule field " <> formatErr pSubmod)
           -- when mrest2 talks about this submodule, it should actually
           -- talk about the selfified version from sig1 which is just
           -- the projection of this submodule field from the current

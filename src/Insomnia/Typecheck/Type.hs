@@ -125,10 +125,13 @@ expandAliasApplication t targs =
           k' <- inferGenerativeType gt
           reconstructApplication (t,k') targs
         AliasTyCon aliasInfo aliasClosure -> do
-          (tsubArgs, tAppArgs) <- checkAliasInfoArgs dcon aliasInfo targs
-          tRHS <- expandAliasClosure aliasClosure tsubArgs
-          -- maybe RHS is also an alias, expand it again.
-          expandAliasApplication tRHS tAppArgs
+          m <- checkAliasInfoArgs dcon aliasInfo targs
+          case m of
+           Left (_wantMoreArgs, kt) -> reconstructApplication (t, kt) targs
+           Right (tsubArgs, tAppArgs) -> do
+             tRHS <- expandAliasClosure aliasClosure tsubArgs
+             -- maybe RHS is also an alias, expand it again.
+             expandAliasApplication tRHS tAppArgs
     TV v -> do
       k' <- lookupTyVar v
       reconstructApplication (t, k') targs
@@ -139,23 +142,23 @@ expandAliasApplication t targs =
                        <> " cannot be applied to "
                        <> mconcat (intersperse ", " $ map formatErr targs))
 
+type RequiredArgsCount = Int
+
 -- | Given a type alias and some number of types to which it is applied,
 -- split up the arguments into the set that's required by the alias,
 -- and the rest to which the RHS of the alias will be applied.
 -- Also check that the mandatory args are of the correct kind.
-checkAliasInfoArgs :: TypeConstructor -> TypeAliasInfo -> [Type] -> TC ([Type], [Type])
-checkAliasInfoArgs dcon (TypeAliasInfo kargs _kRHS) targs = do
+checkAliasInfoArgs :: TypeConstructor -> TypeAliasInfo -> [Type] -> TC (Either (RequiredArgsCount, Kind)
+                                                                        ([Type], [Type]))
+checkAliasInfoArgs dcon (TypeAliasInfo kargs kRHS) targs = do
   let
     n = length kargs
-  when (length targs < n) $
-    typeError ("Type alias " <> formatErr dcon
-               <> " expects " <> formatErr n
-               <> " type arguments, but applied only to "
-               <> formatErr (length targs)
-               <> " types")
-  let (tsubArgs, tAppArgs) = splitAt n targs
-  zipWithM_ checkType tsubArgs kargs
-  return (tsubArgs, tAppArgs)
+  if (length targs < n)
+    then return $ Left (n, kargs `kArrs` kRHS)
+    else let (tsubArgs, tAppArgs) = splitAt n targs
+         in do
+           zipWithM_ checkType tsubArgs kargs
+           return $ Right (tsubArgs, tAppArgs)
 
 expandAliasClosure :: TypeAliasClosure -> [Type] -> TC Type
 expandAliasClosure (TypeAliasClosure env (ManifestTypeAlias bnd)) targs =
