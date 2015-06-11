@@ -13,6 +13,7 @@ import FOmega.Check as F
 
 import qualified Insomnia.SurfaceSyntax.Parse as P
 import qualified Insomnia.SurfaceSyntax.ToAST as ToAST
+import qualified Insomnia.SurfaceSyntax.ToastMonad as ToAST
 import qualified Insomnia.ToF as ToF
 import Insomnia.Typecheck.Env as TC
 import Insomnia.Typecheck.Module as TC

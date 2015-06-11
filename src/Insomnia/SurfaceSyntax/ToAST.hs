@@ -8,8 +8,6 @@ import Control.Applicative (Applicative (..), (<$>))
 import Control.Lens
 import Control.Monad (forM)
 import Control.Monad.Trans.Class (MonadTrans(..))
-import Control.Monad.Reader (runReader, Reader, runReaderT, ReaderT)
-import Control.Monad.Reader.Class (MonadReader(..))
 import Control.Monad.State.Class (MonadState (..))
 
 import Data.Foldable (Foldable(..))
@@ -37,87 +35,7 @@ import qualified Insomnia.Toplevel    as I
 import Insomnia.SurfaceSyntax.Syntax
 import Insomnia.SurfaceSyntax.FixityParser
 
-data Ctx = Ctx {_declaredFixity :: M.Map QualifiedIdent Fixity
-               , _currentModuleKind :: ModuleKind
-               }
-         deriving (Show)
-
-$(makeLenses ''Ctx)
-
--- "To AST" monad is just a reader of some contextual info...
--- (the freshness monad is used to make new Toprefs)
-type TA = ReaderT Ctx (U.FreshMT YTA)
-
--- ... except that we can yield mid-computation and ask for an imported file.
---
--- this is a coroutine monad.
-data YTA a = 
-  DoneTA a
-  | YieldTA Suspended ImportFileSpec (Either ImportFileError I.Toplevel -> TA a)
-
-type Suspended = (Ctx, Integer)
-
-newtype ImportFileError = ImportFileError { importFileErrorMsg :: String }
-
-instance Functor YTA where
-  fmap f (DoneTA x) = DoneTA (f x)
-  fmap f (YieldTA susp want k) = YieldTA susp want (fmap f . k)
-
-instance Applicative YTA where
-  pure = DoneTA 
-  (DoneTA f) <*> (DoneTA x) = DoneTA (f x)
-  (DoneTA f) <*> (YieldTA susp want k) = YieldTA susp want (fmap f . k)
-  (YieldTA susp want f) <*> m = YieldTA susp want (\i -> f i <*> lift (lift m))
-
-instance Monad YTA where
-   return = pure
-   DoneTA x >>= k = k x
-   YieldTA susp want k >>= k' = YieldTA susp want (\i -> k i >>= (lift . lift . k'))
-
--- the CPS version of TA
-newtype CTA a = CTA { runCTA :: forall r . (a -> TA r) -> TA r }
-
-instance Monad CTA where
-  return x = CTA $ \k -> k x
-  m >>= f = CTA $ \k -> runCTA m $ \x -> runCTA (f x) k
-
-instance Applicative CTA where
-  pure = return
-  mf <*> mx = CTA $ \k -> runCTA mf $ \f -> runCTA mx $ \x -> k (f x)
-
-instance Functor CTA where
-  fmap f mx = CTA $ \k -> runCTA mx $ \x -> k (f x)
-
--- in the CPS version of TA, the Ctx is a state that persists
--- within the continuation.
-instance MonadState Ctx CTA where
-  state xform = CTA $ \k -> do
-    ctx <- ask
-    let (x, ctx') = xform ctx
-    local (const ctx') $ k x
-
--- | given a To AST computation and a monadic handler for import requests and an initial context,
--- repeatedly call the handler whenever the To AST computation yields with a request until it returns a final answer.
--- Return that final answer.
-feedTA :: forall m a .
-          Monad m
-          => TA a
-          -> (ImportFileSpec -> m (Either ImportFileError I.Toplevel))
-          -> Ctx -> m a
-feedTA comp onImport =
-  let
-    go :: Suspended -> TA a -> m a
-    go (ctx,freshness) c = case U.contFreshMT (runReaderT c ctx) freshness of
-                  DoneTA ans -> return ans
-                  YieldTA susp' wanted resume -> do
-                    reply <- onImport wanted
-                    go susp' (resume reply)
-  in \ctx -> go (ctx, 0) comp
-
--- main function
-toAST :: Monad m => Toplevel -> (ImportFileSpec -> m (Either ImportFileError I.Toplevel)) -> m I.Toplevel
-toAST tl onImport =
-  feedTA (toplevel tl) onImport toASTbaseCtx
+import Insomnia.SurfaceSyntax.ToastMonad
 
 -- TODO: these really ought to be imported from somewhere, not built in.
 toASTbaseCtx :: Ctx
@@ -127,21 +45,14 @@ toASTbaseCtx = Ctx (M.fromList
                     ])
                ModuleMK
 
+-- main function
+toAST :: Monad m
+         => Toplevel
+         -> (ImportFileSpec -> m (Either ImportFileError Toplevel))
+         -> m I.Toplevel
+toAST tl onImport =
+  feedTA (toplevel tl) onImport toASTbaseCtx
 
-runToAST :: Ctx -> TA a -> YTA a
-runToAST ctx comp = U.runFreshMT (runReaderT comp ctx)
-
-await :: ImportFileSpec -> TA I.Toplevel
-await want = do
-  ctx <- ask
-  freshness <- lift (U.FreshMT get)
-  lift $ lift (YieldTA (ctx,freshness) want $ \got ->
-                case got of
-                Left err -> fail (importFileErrorMsg err)
-                Right it -> return it)
-
-liftCTA :: TA a -> CTA a
-liftCTA comp = CTA $ \k -> comp >>= k
 
 updateWithFixity :: QualifiedIdent -> Fixity -> TA a -> TA a
 updateWithFixity qid f =
@@ -181,8 +92,13 @@ contextualStochasticity Nothing =
   views currentModuleKind stochasticityForModule
 
 toplevel :: Toplevel -> TA I.Toplevel
-toplevel (Toplevel items) =
-  (I.Toplevel . concat) <$> mapM toplevelItem items
+toplevel (Toplevel items) = do
+  (its, imps) <- listenToplevels $ mapM toplevelItem items
+  return $ I.Toplevel $ imps ++ concat its
+
+nestedToplevel :: Toplevel -> TA I.Toplevel
+nestedToplevel (Toplevel items) = do
+  I.Toplevel . concat <$> mapM toplevelItem items
 
 singleton :: a -> [a]
 singleton x = [x]
@@ -214,12 +130,13 @@ toplevelItem (ToplevelImport filespec impspec) =
 --   module M = ^foo:N
 toplevelImport :: ImportFileSpec -> [ImportSpecItem] -> TA [I.ToplevelItem]
 toplevelImport filespec importSpecs = do
-  tl <- await filespec
   let fp = importFileSpecPath filespec
-  a <- U.fresh (U.s2n $ "^" ++ fp)
-  let it = I.ToplevelImported fp a tl
+  a <- withTopRefFor_ fp $ \a -> do
+    tl <- await filespec
+    tl' <- nestedToplevel tl
+    tellToplevel fp a tl'
   its <- mapM (toplevelImportSpec a) importSpecs
-  return (it:its)
+  return its
 
 toplevelImportSpec :: I.TopRef -> ImportSpecItem -> TA I.ToplevelItem
 toplevelImportSpec it (ImportModuleSpecItem modId fld) = do
