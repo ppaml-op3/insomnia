@@ -81,6 +81,8 @@ runTC c = runLFreshMT $ runExceptT (runReaderT c initialCtx)
       , CType (U.s2n "Real") KType
       , CVal (U.s2n "__BOOT.intAdd") intAddTy
       , CVal (U.s2n "__BOOT.ifIntLt") ifIntLtTy
+      , CVal (U.s2n "__BOOT.realAdd") realAddTy
+      , CVal (U.s2n "__BOOT.ifRealLt") ifRealLtTy
       , CVal (U.s2n "__BOOT.Distribution.choose") distChooseTy
       , CVal (U.s2n "__BOOT.Distribution.uniform") distUniformTy
       ]
@@ -94,6 +96,16 @@ ifIntLtTy =
       a = TV va
       kontT = unitT `TArr` a
   in TForall $ U.bind (va, U.embed KType) $ [intT, intT, kontT, kontT] `tArrs` kontT
+
+realAddTy :: Type
+realAddTy = [realT, realT] `tArrs` realT
+
+ifRealLtTy :: Type
+ifRealLtTy =
+  let va = U.s2n "a"
+      a = TV va
+      kontT = unitT `TArr` a
+  in TForall $ U.bind (va, U.embed KType) $ [realT, realT, kontT, kontT] `tArrs` kontT
 
 distChooseTy :: Type
 distChooseTy =

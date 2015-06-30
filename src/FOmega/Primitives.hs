@@ -13,6 +13,8 @@ primitives =
           , primitive "__BOOT.ifIntLt" 1 4
           , primitive "__BOOT.Distribution.choose" 1 3
           , primitive "__BOOT.Distribution.uniform" 0 2
+          , primitive "__BOOT.realAdd" 0 2
+          , primitive "__BOOT.ifRealLt" 1 4
           ]
   where
     mkTable l = M.fromList (mconcat l)

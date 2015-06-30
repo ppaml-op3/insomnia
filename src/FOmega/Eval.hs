@@ -81,6 +81,8 @@ primitiveEvalMap :: MonadEval m => M.Map PrimitiveClosureHead (PrimitiveClosureS
 primitiveEvalMap =
   M.fromList [ primitive "__BOOT.intAdd"  intAddImpl
              , primitive "__BOOT.ifIntLt" ifIntLtImpl
+             , primitive "__BOOT.realAdd"  realAddImpl
+             , primitive "__BOOT.ifRealLt" ifRealLtImpl
              , primitive "__BOOT.Distribution.choose" distChooseImpl
              , primitive "__BOOT.Distribution.uniform" distUniformImpl
              ]
@@ -95,6 +97,14 @@ intAddImpl (NilPCS
   return $ LitV $ IntL $! n1 + n2
 intAddImpl _ = evaluationError "__BOOT.intAdd incorrect arguments"
 
+-- realAdd :: Int -> Int -> Int
+realAddImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+realAddImpl (NilPCS
+             `AppPCS` (LitV (RealL r1))
+             `AppPCS` (LitV (RealL r2))) =
+  return $ LitV $ RealL $! r1 + r2
+realAddImpl _ = evaluationError "__BOOT.realAdd incorrect arguments"
+
 -- ifIntLt :: forall a . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
 ifIntLtImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
 ifIntLtImpl (NilPCS
@@ -104,6 +114,15 @@ ifIntLtImpl (NilPCS
   return $ if n1 < n2 then k1 else k2
 ifIntLtImpl _ = evaluationError "__BOOT.ifIntLt incorrect arguments"
   
+-- ifRealLt :: forall a . Real -> Real -> ({} -> a) -> ({} -> a) -> ({} -> a)
+ifRealLtImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+ifRealLtImpl (NilPCS
+              `AppPCS` (LitV (RealL n1))
+              `AppPCS` (LitV (RealL n2))
+              `AppPCS` k1 `AppPCS` k2) =
+  return $ if n1 < n2 then k1 else k2
+ifRealLtImpl _ = evaluationError "__BOOT.ifRealLt incorrect arguments"
+
 -- distChooseImpl :: forall a . Real -> Dist a -> Dist a -> Dist a
 distChooseImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
 distChooseImpl (NilPCS

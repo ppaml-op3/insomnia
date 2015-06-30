@@ -5,6 +5,9 @@ module __BOOT = assume {
   sig intAdd : Int -> Int -> Int
   sig ifIntLt : forall (a : *) . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
 
+  sig realAdd : Real -> Real -> Real
+  sig ifRealLt : forall (a : *) . Real -> Real -> ({} -> a) -> ({} -> a) -> ({} -> a)
+
   module Distribution {
     sig choose : forall (a : *) . Real -> Dist a -> Dist a -> Dist a
     sig uniform : Real -- lo

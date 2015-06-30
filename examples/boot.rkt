@@ -13,6 +13,12 @@
   (lambda (_)
     (if (< x y) (t null) (f null))))
 
+(define ((__BOOT.realAdd x) y) (+ x y))
+
+(define (((((__BOOT.ifRealLt) x) y) t) f)
+  (lambda (_)
+    (if (< x y) (t null) (f null))))
+
 (define (((((__BOOT.Distribution.choose) r) d1) d2))
   (if (flip r)
       (d1)

@@ -7,10 +7,10 @@ model B {
 
   import Prelude
 
-  sig y : Bool
+  sig y : Real
   val y = case 0 < 0 of
-    True -> True
-    False -> False
+    True -> 0.0
+    False -> 1.0
 
   val z ~ bernoulli 0.5
 
