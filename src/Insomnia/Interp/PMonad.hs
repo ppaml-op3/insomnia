@@ -16,8 +16,9 @@ module Insomnia.Interp.PMonad (ProbabilityMonad(..)
        where
 
 import Control.Applicative
-import Control.Monad ()
+import Control.Monad (liftM)
 import System.Random (RandomGen(split), random, newStdGen)
+import Data.Number.Erf (invnormcdf)
 
 type Probability = Double    -- number from 0 to 1
 certainty, impossibility :: Probability
@@ -123,6 +124,9 @@ instance SamplingMonad Sample where
 
 class ProbabilityMonad m => ContinuousProbabilityMonad m where
   u :: m Probability -- uniform over the unit interval
+  gauss :: m Double
+  gauss = liftM invnormcdf u
+  {-# MINIMAL u #-}
 
 instance ContinuousProbabilityMonad Sample where
   u = Sample random

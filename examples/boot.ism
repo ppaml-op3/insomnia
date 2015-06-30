@@ -6,6 +6,7 @@ module __BOOT = assume {
   sig ifIntLt : forall (a : *) . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
 
   sig realAdd : Real -> Real -> Real
+  sig realMul : Real -> Real -> Real
   sig ifRealLt : forall (a : *) . Real -> Real -> ({} -> a) -> ({} -> a) -> ({} -> a)
 
   module Distribution {
@@ -13,6 +14,10 @@ module __BOOT = assume {
     sig uniform : Real -- lo
                    -> Real -- hi
                    -> Dist Real
+
+    sig normal : Real -- mu
+                 -> Real -- sigma
+                 -> Dist Real
   }
 
 }

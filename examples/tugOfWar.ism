@@ -1,0 +1,65 @@
+import "examples/Prelude.ism" (module Prelude)
+
+model type PLAYER {
+  sig pulling_power : Real
+}
+
+module type PLAYER_M {
+  sig pulling_power : Real
+}
+
+model type PERSON {
+  sig strength : Real
+  model PullingPower : PLAYER
+}
+
+model NormalPerson : PERSON {
+  val strength ~ Prelude.normal { μ = 10.0 , σ² = 2.0 }
+  model PullingPower {
+    val lazy ~ Prelude.flip 0.1
+    val pulling_power = let
+      (laziness_factor : Real) = case lazy of
+        Prelude.True -> 0.5 
+        Prelude.False -> 1.0
+      in 0.5 Prelude.*. strength
+  }
+}
+
+module Winner {
+  data Winner = FirstPlayerWins | SecondPlayerWins
+}
+
+model type MATCH_RESULT {
+  sig winner : Winner.Winner
+}
+
+module type MATCH_RESULT_M {
+  sig winner : Winner.Winner
+}
+
+model NormalMatch (model P1 : PLAYER  model P2 : PLAYER) : MATCH_RESULT {
+  module Player1 ~ P1
+  module Player2 ~ P2
+  val winner = case Player1.pulling_power Prelude.<. Player2.pulling_power of
+    Prelude.True -> Winner.SecondPlayerWins
+    Prelude.False -> Winner.FirstPlayerWins
+}
+
+model type J_VS_H {
+  sig jill_strength : Real
+  sig hank_strength : Real
+  module Result : MATCH_RESULT_M
+}
+
+model Matchup = model local
+  module Jill ~ NormalPerson
+  module Hank ~ NormalPerson
+  in {
+    val jill_strength = Jill.strength
+    val hank_strength = Hank.strength
+--    model Outcomes = NormalMatch (Jill.PullingPower , Hank.PullingPower)
+    model Result ~ NormalMatch (Jill.PullingPower , Hank.PullingPower)
+  } : J_VS_H
+
+-- query sample Matchup.Outcomes 10
+query sample Matchup 10

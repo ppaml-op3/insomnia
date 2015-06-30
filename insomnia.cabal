@@ -158,6 +158,7 @@ library
                        unbound-generics >= 0.1,
                        pretty >= 1.1 && < 2,
                        indentation >= 0.2.0.1,
+                       erf >= 2.0,
                        parsec
 
   hs-source-dirs:      src      

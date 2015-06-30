@@ -82,9 +82,11 @@ primitiveEvalMap =
   M.fromList [ primitive "__BOOT.intAdd"  intAddImpl
              , primitive "__BOOT.ifIntLt" ifIntLtImpl
              , primitive "__BOOT.realAdd"  realAddImpl
+             , primitive "__BOOT.realMul"  realMulImpl
              , primitive "__BOOT.ifRealLt" ifRealLtImpl
              , primitive "__BOOT.Distribution.choose" distChooseImpl
              , primitive "__BOOT.Distribution.uniform" distUniformImpl
+             , primitive "__BOOT.Distribution.normal" distNormalImpl
              ]
   where
     primitive h c = (h, c)
@@ -97,13 +99,21 @@ intAddImpl (NilPCS
   return $ LitV $ IntL $! n1 + n2
 intAddImpl _ = evaluationError "__BOOT.intAdd incorrect arguments"
 
--- realAdd :: Int -> Int -> Int
+-- realAdd :: Real -> Real -> Real
 realAddImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
 realAddImpl (NilPCS
              `AppPCS` (LitV (RealL r1))
              `AppPCS` (LitV (RealL r2))) =
   return $ LitV $ RealL $! r1 + r2
 realAddImpl _ = evaluationError "__BOOT.realAdd incorrect arguments"
+
+-- realMul :: Real -> Real -> Real
+realMulImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+realMulImpl (NilPCS
+             `AppPCS` (LitV (RealL r1))
+             `AppPCS` (LitV (RealL r2))) =
+  return $ LitV $ RealL $! r1 * r2
+realMulImpl _ = evaluationError "__BOOT.realMul incorrect arguments"
 
 -- ifIntLt :: forall a . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
 ifIntLtImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
@@ -143,6 +153,17 @@ distUniformImpl (NilPCS
     evaluationError "__BOOT.Distribution.uniform: lo not less then or equal to hi"
   return $ DistV $ DistClosure emptyEnv $ PrimitiveTh $ UniformPD lo hi
 distUniformImpl _ = evaluationError "__BOOT.Distribution.uniform incorrect arguments"
+
+-- distNormalImpl :: Real -> Real -> Dist Real
+distNormalImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+distNormalImpl (NilPCS
+                 `AppPCS` (LitV (RealL mu))
+                 `AppPCS` (LitV (RealL sigma2))) = do
+  unless (sigma2 >= 0) $
+    evaluationError "__BOOT.Distribution.normal: σ² is negative"
+  return $ DistV $ DistClosure emptyEnv $ PrimitiveTh $ NormalPD mu sigma2
+distNormalImpl _ = evaluationError "__BOOT.Distribution.uniform incorrect arguments"
+
 
 extendEnv :: Var -> Value -> Env -> Env
 extendEnv x v e =
@@ -501,4 +522,7 @@ forcePrimitiveDistribution pd =
    UniformPD lo hi -> do
      r <- PMonad.u
      return $ LitV $ RealL $ r * lo + (1 - r) * hi
-     
+   NormalPD mu sigma2 -> do
+     r <- PMonad.gauss
+     let r' = mu + r * sigma2
+     return $ LitV $ RealL r'

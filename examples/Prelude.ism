@@ -11,6 +11,7 @@ module type FUNCTOR {
 module type PRELUDE {
   sig (+) : Int -> Int -> Int
   sig (+.) : Real -> Real -> Real
+  sig (*.) : Real -> Real -> Real
   data Bool = True | False
   sig (||) : Bool -> Bool -> Bool
   sig (<) : Int -> Int -> Bool
@@ -18,11 +19,13 @@ module type PRELUDE {
   sig flip : Real -> Dist Bool
   sig bernoulli : Real -> Dist Int
   sig uniform : { lo : Real ; hi : Real } -> Dist Real
+  sig normal : { μ : Real ; σ² : Real } -> Dist Real
 }
 
 module Prelude : PRELUDE {
   fun (+) x y = __BOOT.intAdd x y
   fun (+.) x y = __BOOT.realAdd x y
+  fun (*.) x y = __BOOT.realMul x y
 
   data Bool = True | False
 
@@ -41,4 +44,8 @@ module Prelude : PRELUDE {
   fun uniform p =
     case p of
       ({ lo = lo, hi = hi }) -> __BOOT.Distribution.uniform lo hi
+
+  fun normal p =
+    case p of
+      ({ μ = m, σ² = s }) -> __BOOT.Distribution.normal m s
 }
