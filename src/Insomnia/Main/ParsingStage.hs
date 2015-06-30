@@ -19,30 +19,26 @@ import Insomnia.Pretty
 parsingStage :: Stage FilePath Toplevel
 parsingStage = Stage {
   bannerStage = "Parsing"
-  , performStage = parseAndToast []
+  , performStage = parseAndToast
   , formatStage = F.format . ppDefault 
   }
 
-type ImportStack = [FilePath]
-
-parseAndToast :: ImportStack -> FilePath -> InsomniaMain Toplevel
-parseAndToast imps fp =
-  -- TODO: error out if imports recursively visit this same file again
+parseAndToast :: FilePath -> InsomniaMain Toplevel
+parseAndToast fp = do
   do
-    surfaceAst <- parseInsomniaFile imps fp
-    ToAST.toAST surfaceAst (importHandler $ fp:imps)
+    surfaceAst <- parseInsomniaFile fp
+    ToAST.toAST surfaceAst importHandler
 
-parseInsomniaFile :: ImportStack -> FilePath -> InsomniaMain Surface.Toplevel
-parseInsomniaFile imps fp = do
+parseInsomniaFile :: FilePath -> InsomniaMain Surface.Toplevel
+parseInsomniaFile fp = do
   result <- lift $ P.parseFile fp
   case result of
    Left err -> showErrorAndDie "parsing" err
    Right surfaceAst -> return surfaceAst
 
-importHandler :: ImportStack
-                 -> Surface.ImportFileSpec
+importHandler :: Surface.ImportFileSpec
                  -> InsomniaMain (Either ToAST.ImportFileError Surface.Toplevel)
-importHandler imps s = do
+importHandler s = do
   let fp = Surface.importFileSpecPath s
-  surfStx <- parseInsomniaFile imps fp
+  surfStx <- parseInsomniaFile fp
   return (Right surfStx)
