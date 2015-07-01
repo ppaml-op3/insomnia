@@ -58,7 +58,7 @@ model Matchup = model local
     val jill_strength = Jill.strength
     val hank_strength = Hank.strength
 --    model Outcomes = NormalMatch (Jill.PullingPower , Hank.PullingPower)
-    model Result ~ NormalMatch (Jill.PullingPower , Hank.PullingPower)
+    module Result ~ NormalMatch (Jill.PullingPower , Hank.PullingPower)
   } : J_VS_H
 
 -- query sample Matchup.Outcomes 10
