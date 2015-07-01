@@ -15,6 +15,8 @@
 
 (define ((__BOOT.realAdd x) y) (+ x y))
 
+(define ((__BOOT.realMul x) y) (+ x y))
+
 (define (((((__BOOT.ifRealLt) x) y) t) f)
   (lambda (_)
     (if (< x y) (t null) (f null))))
@@ -26,3 +28,6 @@
 
 (define (((__BOOT.Distribution.uniform lo) hi))
   (uniform lo hi))
+
+(define (((__BOOT.Distribution.normal μ) σ²))
+  (normal μ σ²))
