@@ -8,6 +8,16 @@ Slogans:
 * A *model* is a distribution over *modules*.
 * *Model sealing* is marginalization.
 
+Documentation
+-------------
+
+None yet.  Sorry.
+
+Some examples are in pretty good shape.  See:
+
+* [normal.ism](examples/normal.ism)
+* [tugOfWar.ism](examples/tugOfWar.ism)
+
 Building from source - installation instructions
 ------------------------------------------------
 
