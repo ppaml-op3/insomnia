@@ -1,0 +1,18 @@
+model type R {
+  sig r : Real
+}
+
+model type T {
+  model A : R
+}
+
+model X : T {
+  model A {
+    val r ~ return 1.0
+  }
+}
+
+model Y {
+  module XM ~ X
+  module AM ~ XM.A
+}

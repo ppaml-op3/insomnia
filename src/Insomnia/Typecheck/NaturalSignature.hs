@@ -83,7 +83,7 @@ naturalSignature = go . moduleDecls
            (SigMTNF (SigV subSig ModelMK)) -> do
              let ident = U.s2n fld
                  moduleTy = SigMT (SigV subSig ModuleMK)
-                 submodNF = SigMTNF (SigV subSig ModelMK)
+                 submodNF = SigMTNF (SigV subSig ModuleMK)
              sig' <- extendModuleCtxNF (IdP ident) submodNF $ kont
              return $ SubmoduleSig fld (U.bind (ident, U.embed moduleTy) sig')
            (SigMTNF (SigV _ ModuleMK)) ->
