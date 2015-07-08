@@ -13,6 +13,12 @@ model type PERSON {
   model PullingPower : PLAYER
 }
 
+module type PERSON_M {
+  sig strength : Real
+  model PullingPower : PLAYER
+}
+
+
 model NormalPerson : PERSON {
   val strength ~ Prelude.normal { μ = 10.0 , σ² = 2.0 }
   model PullingPower {
@@ -25,6 +31,8 @@ model NormalPerson : PERSON {
   }
 }
 
+----------------------------------------
+
 module Winner {
   data Winner = FirstPlayerWins | SecondPlayerWins
 }
@@ -33,11 +41,8 @@ model type MATCH_RESULT {
   sig winner : Winner.Winner
 }
 
-module type MATCH_RESULT_M {
-  sig winner : Winner.Winner
-}
 
-model NormalMatch (model P1 : PLAYER  model P2 : PLAYER) : MATCH_RESULT {
+model TugOfWarMatch (model P1 : PLAYER  model P2 : PLAYER) : MATCH_RESULT {
   module Player1 ~ P1
   module Player2 ~ P2
   val winner = case Player1.pulling_power Prelude.<. Player2.pulling_power of
@@ -45,21 +50,52 @@ model NormalMatch (model P1 : PLAYER  model P2 : PLAYER) : MATCH_RESULT {
     Prelude.False -> Winner.FirstPlayerWins
 }
 
-model type J_VS_H {
-  sig jill_strength : Real
-  sig hank_strength : Real
-  module Result : MATCH_RESULT_M
+----------------------------------------
+
+module type HULK {
+  sig strength : Real
 }
 
-model Matchup = model local
+model type HULK_OR_BRUCE {
+  module Hulk : HULK
+  module Bruce : PERSON_M
+  model PullingPower : PLAYER
+}
+
+model HulkOrBruce : HULK_OR_BRUCE {
+  val hulk_strength ~ Prelude.normal { μ = 100.0 , σ² = 20.0 }
+  module Hulk {
+    val strength = hulk_strength
+  }
+  module Bruce ~ NormalPerson
+
+  model PullingPower {
+    val isAngry ~ Prelude.flip 0.3
+
+    module BPP ~ Bruce.PullingPower
+
+    -- Bruce may be lazy, Hulk isn't
+    val pulling_power ~ case isAngry of
+      Prelude.True -> return Hulk.strength
+      Prelude.False -> return BPP.pulling_power
+  }
+}
+
+----------------------------------------
+
+model Normal_Matchup {
   module Jill ~ NormalPerson
   module Hank ~ NormalPerson
-  in {
-    val jill_strength = Jill.strength
-    val hank_strength = Hank.strength
---    model Outcomes = NormalMatch (Jill.PullingPower , Hank.PullingPower)
-    module Result ~ NormalMatch (Jill.PullingPower , Hank.PullingPower)
-  } : J_VS_H
 
--- query sample Matchup.Outcomes 10
-query sample Matchup 10
+  module Result ~ TugOfWarMatch (Jill.PullingPower , Hank.PullingPower)
+}
+
+model Earth616_Matchup {
+  module Peter ~ NormalPerson
+  module H ~ HulkOrBruce
+
+  module Result ~ TugOfWarMatch (Peter.PullingPower , H.PullingPower)
+}
+
+query sample Earth616_Matchup 10
+
