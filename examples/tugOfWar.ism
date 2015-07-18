@@ -27,7 +27,7 @@ model NormalPerson : PERSON {
       (laziness_factor : Real) = case lazy of
         Prelude.True -> 0.5 
         Prelude.False -> 1.0
-      in 0.5 Prelude.*. strength
+      in laziness_factor Prelude.*. strength
   }
 }
 
