@@ -44,6 +44,7 @@ toASTbaseCtx = Ctx (M.fromList
                       (QId [] "->", Fixity AssocRight 5)
                     ])
                ModuleMK
+               M.empty
 
 -- main function
 toAST :: Monad m
@@ -93,33 +94,104 @@ contextualStochasticity Nothing =
 
 toplevel :: Toplevel -> TA I.Toplevel
 toplevel (Toplevel items) = do
-  (its, imps) <- listenToplevels $ mapM toplevelItem items
+  let comp = mapM toplevelItem items
+  (its, imps) <- listenToplevels (runCTA comp return)
   return $ I.Toplevel $ imps ++ concat its
 
-nestedToplevel :: Toplevel -> TA I.Toplevel
+nestedToplevel :: Toplevel -> CTA I.Toplevel
 nestedToplevel (Toplevel items) = do
   I.Toplevel . concat <$> mapM toplevelItem items
 
 singleton :: a -> [a]
 singleton x = [x]
 
-toplevelItem :: ToplevelItem -> TA [I.ToplevelItem]
+toplevelItem :: ToplevelItem -> CTA [I.ToplevelItem]
 toplevelItem (ToplevelModule modK ident mmt me) = do
-  ident' <- modIdentifier ident
-  me' <- local (currentModuleKind .~ modK) (moduleExpr me)
+  ident' <- liftCTA $ modIdentifier ident
+  me' <- liftCTA $ local (currentModuleKind .~ modK) (moduleExpr me)
   case mmt of
    Just mt -> do
-     mt' <- moduleType mt
+     mt' <- liftCTA $ moduleType mt
      return [I.ToplevelModule ident' (I.ModuleSeal me' mt')]
    Nothing -> return [I.ToplevelModule ident' me']
 toplevelItem (ToplevelModuleType modK ident mt) =
-  singleton <$> (I.ToplevelModuleType
-                 <$> sigIdentifier ident
-                 <*> local (currentModuleKind .~ modK) (moduleType mt))
+  singleton <$> liftCTA (I.ToplevelModuleType
+                         <$> sigIdentifier ident
+                         <*> local (currentModuleKind .~ modK) (moduleType mt))
 toplevelItem (ToplevelQuery qe) =
-  singleton <$> (I.ToplevelQuery <$> queryExpr qe)
+  singleton . I.ToplevelQuery <$> liftCTA (queryExpr qe)
 toplevelItem (ToplevelImport filespec impspec) =
   toplevelImport filespec impspec
+toplevelItem (ToplevelBigExpr ident be) = do
+  be' <- liftCTA $ inferBigExpr be
+  case be' of
+    ModuleBV me -> do
+      ident' <- liftCTA $ modIdentifier ident
+      addModuleVarC ident ident'
+      return $ singleton $ I.ToplevelModule ident' me
+    SignatureBV mt -> do
+      ident' <- liftCTA $ sigIdentifier ident
+      addSignatureVarC ident ident'
+      return $ singleton $ I.ToplevelModuleType ident' mt
+
+data BigValue =
+  ModuleBV I.ModuleExpr
+  | SignatureBV I.ModuleType
+
+inferBigExpr :: BigExpr -> TA BigValue
+inferBigExpr (LiteralBE mk m) =
+  let f = case mk of
+        ModuleMK -> I.ModuleStruct
+        ModelMK -> I.ModuleModel . I.ModelStruct
+  in ModuleBV . f <$> local (currentModuleKind .~ mk) (runCTA (module' m) return)
+inferBigExpr (ClassifierBE mk sig) =
+  SignatureBV . I.SigMT . flip I.SigV mk  <$> signature sig
+inferBigExpr (AppBE qid qids) =
+  return $ ModuleBV $ I.ModuleApp (qualifiedIdPath qid) (map qualifiedIdPath qids)
+inferBigExpr (VarBE (QId [] ident)) = do
+  mv <- lookupBigIdent ident
+  case mv of
+    Just (StructureBIS ident') -> return $ ModuleBV $ I.ModuleId (I.IdP ident')
+    Just (SignatureBIS ident') -> return $ SignatureBV $ I.IdentMT (I.SigIdP ident')
+    _ -> error $ " unknown whether a structure or signature: " ++ show ident
+inferBigExpr (VarBE qid) =
+  return $ ModuleBV $ I.ModuleId (qualifiedIdPath qid)
+inferBigExpr (SealBE mbe sbe) =
+  ModuleBV <$> (I.ModuleSeal <$> expectBigExprModule mbe <*> expectBigExprSignature sbe)
+inferBigExpr (AbsBE args be) =
+  functorArguments args $ \args' -> do
+    mv <- inferBigExpr be
+    case mv of
+      ModuleBV me' -> return $ ModuleBV $ I.ModuleFun $ U.bind args' me'
+      SignatureBV msig' -> return $ SignatureBV $ I.FunMT $ U.bind args' msig'
+inferBigExpr (WhereTypeBE be wh) =
+  SignatureBV <$> (I.WhereMT <$> expectBigExprSignature be <*> whereClause wh)
+inferBigExpr (LocalBE m beMod beSig) = do
+  mt' <- expectBigExprSignature beSig
+  let comp = do
+        hiddenMod' <- module' m
+        bodyMdl' <- liftCTA $ expectBigExprModule beMod
+        body' <- case bodyMdl' of
+          I.ModuleModel body -> return body
+          _ -> error $ "local with a body that isn't a model: " ++ show bodyMdl'
+        return $ ModuleBV $ I.ModuleModel $ I.ModelLocal hiddenMod' body' mt'
+  runCTA comp return
+inferBigExpr (AssumeBE be) =
+  (ModuleBV . I.ModuleAssume) <$> expectBigExprSignature be
+
+expectBigExprModule :: BigExpr -> TA I.ModuleExpr
+expectBigExprModule be = do
+  bv <- inferBigExpr be
+  case bv of
+    ModuleBV me -> return me
+    SignatureBV sig -> error $ "toasting expected a module but got a signature" ++ show sig
+
+expectBigExprSignature :: BigExpr -> TA I.ModuleType
+expectBigExprSignature be = do
+  bv <- inferBigExpr be
+  case bv of
+    SignatureBV mt -> return mt
+    ModuleBV me -> error $ "toasting expected a module type, but got a module or model " ++ show me
 
 -- an import
 --   import "foo.ism" (module type T
@@ -128,19 +200,19 @@ toplevelItem (ToplevelImport filespec impspec) =
 --   toplevel ^foo "foo.ism"
 --   module type T = ^foo:T
 --   module M = ^foo:N
-toplevelImport :: ImportFileSpec -> [ImportSpecItem] -> TA [I.ToplevelItem]
+toplevelImport :: ImportFileSpec -> [ImportSpecItem] -> CTA [I.ToplevelItem]
 toplevelImport filespec importSpecs = do
   let fp = importFileSpecPath filespec
-  a <- withTopRefFor_ fp $ \a -> do
-    tl <- await filespec
+  a <- withTopRefForC_ fp $ \a -> do
+    tl <- liftCTA $ await filespec
     tl' <- nestedToplevel tl
-    tellToplevel fp a tl'
+    liftCTA $ tellToplevel fp a tl'
   its <- mapM (toplevelImportSpec a) importSpecs
   return its
 
-toplevelImportSpec :: I.TopRef -> ImportSpecItem -> TA I.ToplevelItem
+toplevelImportSpec :: I.TopRef -> ImportSpecItem -> CTA I.ToplevelItem
 toplevelImportSpec it (ImportModuleSpecItem modId fld) = do
-  ident' <- modIdentifier modId
+  ident' <- liftCTA (modIdentifier modId)
   let p = I.ProjP (I.TopRefP it) fld
       -- import spec "module P using POther"
       -- becomes
@@ -151,9 +223,11 @@ toplevelImportSpec it (ImportModuleSpecItem modId fld) = do
       -- merely alias them.
       reimportingModule =
         I.ModuleStruct $ I.Module [I.ImportDecl p]
+  addModuleVarC modId ident'
   return $ I.ToplevelModule ident' reimportingModule
 toplevelImportSpec it (ImportModuleTypeSpecItem sigId) = do
-  sigId' <- sigIdentifier sigId
+  sigId' <- liftCTA (sigIdentifier sigId)
+  addSignatureVarC sigId sigId'
   return $ I.ToplevelModuleType sigId' (I.IdentMT $ I.SigTopRefP it sigId)
 
 modIdentifier :: Ident -> TA I.Identifier
@@ -215,7 +289,7 @@ functorArgument :: (ModuleKind, Ident, ModuleType)
 functorArgument (modK, ident, mt) kont = do
   ident' <- modIdentifier ident
   mt' <- local (currentModuleKind .~ modK) (moduleType mt)
-  kont $ I.FunctorArgument ident' (U.embed modK) (U.embed mt')
+  addModuleVar ident ident' $ kont $ I.FunctorArgument ident' (U.embed modK) (U.embed mt')
                        
 
 moduleExpr :: ModuleExpr -> TA I.ModuleExpr
@@ -241,9 +315,11 @@ modelExpr (ModelStruct mdl) =
   I.ModelStruct <$> runCTA (module' mdl) return
 modelExpr (ModelLocal hiddenMod body mt) = do
   mt' <- moduleType mt
-  runCTA (module' hiddenMod) $ \hiddenMod' -> do
-    body' <- modelExpr body
-    return (I.ModelLocal hiddenMod' body' mt')
+  let comp = do
+        hiddenMod' <- module' hiddenMod
+        body' <- liftCTA $ modelExpr body
+        return (I.ModelLocal hiddenMod' body' mt')
+  runCTA comp return
 
 signature :: Signature -> TA I.Signature
 signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
@@ -320,6 +396,14 @@ decl d kont =
      (f,_) <- moduleField ident
      me' <- moduleExpr me
      kont [I.SampleModuleDefn f me']
+   BigSubmoduleDefn ident be -> do
+     me' <- expectBigExprModule be
+     (f, ident') <- moduleField ident
+     addModuleVar ident ident' $ kont [I.SubmoduleDefn f me']
+   BigSampleDefn ident be -> do
+     me' <- expectBigExprModule be
+     (f, ident') <- moduleField ident
+     addModuleVar ident ident' $ kont [I.SampleModuleDefn f me']
 
 typeSigDecl :: TypeSigDecl -> TA I.TypeSigDecl
 typeSigDecl (AbstractTypeSigDecl k) = I.AbstractTypeSigDecl <$> kind k
@@ -712,6 +796,7 @@ example1 () = runIdentity $ feedTA (type' y) handler c
          ]
         )
         ModuleMK
+        M.empty
     handler _ = return $ Left $ ImportFileError "did not expect an import"
     
 example1_expected :: I.Type
@@ -746,6 +831,7 @@ example2 () = runIdentity $ feedTA (expr e) handler ctx
            ]
           )
           ModuleMK
+          M.empty
     handler _ = return $ Left $ ImportFileError "did not expect an import"
     
 example2_expected :: I.Expr
@@ -781,6 +867,7 @@ example3 () = runIdentity $ feedTA (clause cls) handler ctx
              (QId [] "Cons", Fixity AssocRight 3)
            ])
           ModuleMK
+          M.empty
     handler _ = return $ Left $ ImportFileError "did not expect an import"
     
 example3_expected :: I.Clause
@@ -814,6 +901,7 @@ example4 () = runIdentity $ feedTA (clause cls) handler ctx
     ctx = Ctx
           M.empty
           ModuleMK
+          M.empty
     handler _ = return $ Left $ ImportFileError "did not expect an import"
     
 example4_expected :: I.Clause

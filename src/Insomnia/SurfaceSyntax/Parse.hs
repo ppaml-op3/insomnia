@@ -13,7 +13,7 @@ import qualified Data.Text.IO as T
 import Data.Ratio ((%))
 
 import Text.Parsec.Char (char, letter, alphaNum, oneOf, noneOf)
-import Text.Parsec.Combinator (eof, sepBy1, between, manyTill)
+import Text.Parsec.Combinator (eof, sepBy1, between, manyTill, chainl1)
 import Text.Parsec.Error (ParseError)
 import qualified Text.Parsec.Token as Tok hiding (makeTokenParser)
 import qualified Text.Parsec.Indentation.Token as Tok
@@ -182,7 +182,7 @@ infixConId =
 -- | X.Y.Z -- all components initial-uppercase
 conId :: Parser Con
 conId = ((Con . mkQId) <$> qualifiedName tyconIdentifier)
-        <?> "(possibly qualifieD) constructor identifier"
+        <?> "(possibly qualified) constructor identifier"
   where
     mkQId (path,ident) = QId path ident
 
@@ -225,10 +225,83 @@ toplevel = Toplevel
 
 toplevelItem :: Parser ToplevelItem
 toplevelItem =
-  (toplevelModule <?> "toplevel module or model definition")
+  (toplevelBigExpr <?> "toplevel module, model, module type or model type declaration")
+  <|> (toplevelModule <?> "toplevel module or model definition")
   <|> (toplevelModuleType <?> "toplevel module or model type definition")
   <|> (toplevelQuery <?> "toplevel query expression")
   <|> (toplevelImport <?> "toplevel import declaration")
+
+toplevelBigExpr :: Parser ToplevelItem
+toplevelBigExpr =
+  mkToplevelBigExpr <$> tyconIdentifier
+  <*> optional (classify *> bigExpr)
+  <* reservedOp "="
+  <*> bigExpr
+  where
+    mkToplevelBigExpr ident Nothing be = ToplevelBigExpr ident be
+    mkToplevelBigExpr ident (Just sigBE) be = ToplevelBigExpr ident (SealBE be sigBE)
+
+bigExpr :: Parser BigExpr
+bigExpr =
+  factorBigExpr `chainl1` (SealBE <$ classify) -- (M : S) : S'
+
+factorBigExpr :: Parser BigExpr
+factorBigExpr =
+  whereTypeBE <$> atomicBigExpr
+  <*> many whereTypeClause
+  where
+    -- BigExpr -> [WhereClause] -> BigExpr
+    whereTypeBE = foldl WhereTypeBE
+
+atomicBigExpr :: Parser BigExpr
+atomicBigExpr =
+  (abstractionBigExpr <?> "functor or functor signature")
+  <|> (assumeBigExpr <?> "assumed module")
+  <|> (classifierBigExpr <?> "literal model type or module type signature")
+  <|> (literalBigExpr <?> "literal model or module structure")
+  <|> (applicationOrVarBigExpr <?> "functor application")
+  <|> (localBigExpr <?> "model local declaration")
+  <|> parens bigExpr
+
+classifierBigExpr :: Parser BigExpr
+classifierBigExpr =
+  ClassifierBE <$> try (moduleKind <* reserved "type")
+  <*> braces signature
+
+literalBigExpr :: Parser BigExpr
+literalBigExpr =
+  LiteralBE <$> moduleKind
+  <*> moduleLiteral
+
+assumeBigExpr :: Parser BigExpr
+assumeBigExpr =
+  AssumeBE <$ reserved "assume"
+  <*> bigExpr
+
+applicationOrVarBigExpr :: Parser BigExpr
+applicationOrVarBigExpr =
+  mkAppBE <$> modulePath
+  <*> optional (parens $ commaSep modulePath)
+  where
+    modulePath = modelId
+    mkAppBE p Nothing = VarBE p
+    mkAppBE p (Just args) = AppBE p args
+
+abstractionBigExpr :: Parser BigExpr
+abstractionBigExpr =
+  AbsBE <$> try functorArguments
+  <* try (reservedOp "->")
+  <*> bigExpr
+
+
+localBigExpr :: Parser BigExpr
+localBigExpr =
+  LocalBE <$ reserved "local"
+  <*> (Module <$> declList)
+  <* reserved "in"
+  <*> atomicBigExpr
+  <* classify
+  <*> bigExpr
 
 toplevelModule :: Parser ToplevelItem
 toplevelModule =
@@ -506,6 +579,17 @@ modelLocalExpr =
   <* classify
   <*> moduleTypeExpr
 
+bigSubmoduleOrSampleDefn =
+  mk <$> modelIdentifier
+  <*> optional (classify *> bigExpr)
+  <*> ((BigSubmoduleDefn <$ reservedOp "=")
+       <|> (BigSampleDefn <$ reservedOp "~"))
+  <*> bigExpr
+  where
+    mk :: Ident -> Maybe BigExpr -> (Ident -> BigExpr -> Decl) -> BigExpr -> Decl
+    mk ident Nothing maker be = maker ident be
+    mk ident (Just sigBE) maker be = maker ident (SealBE be sigBE)
+
 sampleModuleDefn :: Parser Decl
 sampleModuleDefn =
   try (SampleModuleDefn
@@ -522,6 +606,7 @@ decl = (valueDecl <?> "value declaration")
        <|> (typeAliasDefn <?> "type alias definition")
        <|> (sampleModuleDefn <?> "submodule sampled from model")
        <|> (moduleDefn <?> "submodule definition")
+       <|> (bigSubmoduleOrSampleDefn <?> "submodule definiton or sample from model")
        <|> (tabulatedSampleDecl <?> "tabulated function definition")
 
 fixityDecl :: Parser Decl

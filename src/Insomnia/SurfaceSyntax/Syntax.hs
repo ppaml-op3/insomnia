@@ -38,7 +38,22 @@ data ToplevelItem =
   | ToplevelModuleType !ModuleKind !Ident !ModuleType
   | ToplevelImport !ImportFileSpec ![ImportSpecItem]
   | ToplevelQuery !QueryExpr
+  | ToplevelBigExpr !Ident !BigExpr
     deriving (Show)
+
+-- | "big" expressions - module or module type expression syntax
+data BigExpr =
+  LiteralBE !ModuleKind !Module -- module/model { defns }
+  | ClassifierBE !ModuleKind !Signature -- module/model type { decls }
+  | VarBE !QualifiedIdent -- M.M' or S
+  | AppBE !QualifiedIdent ![QualifiedIdent] -- F (X, Y, Z)
+  | AbsBE ![(ModuleKind, Ident, ModuleType)] !BigExpr -- (module X : S model Y : S') -> M or S
+  | LocalBE !Module !BigExpr !BigExpr -- "local decls in M : S"
+  | SealBE !BigExpr !BigExpr -- M : S
+  | WhereTypeBE !BigExpr !WhereClause -- S where type t = P.t'
+  | AssumeBE !BigExpr -- assume S
+    deriving (Show)
+
 
 newtype ImportFileSpec = ImportFileSpec { importFileSpecPath :: FilePath }
                        deriving (Show)
@@ -118,6 +133,8 @@ data Decl = ValueDecl !Ident !ValueDecl
           | TypeDefn !Ident !TypeDefn
           | TypeAliasDefn !Ident !TypeAlias
           | SubmoduleDefn !Ident !ModuleKind !ModuleExpr
+          | BigSubmoduleDefn !Ident !BigExpr
+          | BigSampleDefn !Ident !BigExpr
           | SampleModuleDefn !Ident !ModuleExpr
           | FixityDecl !Ident !Fixity
           | TabulatedSampleDecl !TabulatedDecl

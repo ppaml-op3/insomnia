@@ -10,6 +10,14 @@ module Insomnia.SurfaceSyntax.ToastMonad (
   Ctx(..)
   , declaredFixity
   , currentModuleKind
+    -- * Structure/Signature Name resolution
+  , bigIdentSort
+  , BigIdentSort(..)
+  , addModuleVar
+  , addModuleVarC
+  , addSignatureVar
+  , addSignatureVarC
+  , lookupBigIdent
     -- * Translation monads
   , TA
   , YTA
@@ -21,11 +29,13 @@ module Insomnia.SurfaceSyntax.ToastMonad (
   , await
   , freshTopRef
   , withTopRefFor_
+  , withTopRefForC_
   , tellToplevel
   , listenToplevels
     -- * Monad stacks
   , liftCTA
   , runToAST
+  , scopeCTA
   , module Control.Monad.Reader.Class
   ) where
 
@@ -49,8 +59,16 @@ import qualified Insomnia.Toplevel as I
 import Insomnia.SurfaceSyntax.Syntax
 import Insomnia.SurfaceSyntax.FixityParser
 
+-- | A "BigIdentSort" classifies "big" idents as to whether they stand
+-- for signatures or structures.
+data BigIdentSort =
+  SignatureBIS I.SigIdentifier
+  | StructureBIS I.Identifier
+    deriving (Show)
+
 data Ctx = Ctx {_declaredFixity :: M.Map QualifiedIdent Fixity
                , _currentModuleKind :: ModuleKind
+               , _bigIdentSort :: M.Map Ident BigIdentSort
                }
          deriving (Show)
 
@@ -174,6 +192,13 @@ withTopRefFor_ fp compNew = do
      return a
    Just a -> return a
 
+withTopRefForC_ :: FilePath -> (I.TopRef -> CTA ()) -> CTA I.TopRef
+withTopRefForC_ fp compNew =
+  CTA $ \k -> do
+    r <- withTopRefFor_ fp $ \r ->
+      runCTA (compNew r) return
+    k r
+
 freshTopRef :: FilePath -> TA I.TopRef
 freshTopRef fp = U.fresh (U.s2n $ "^" ++ fp)
 
@@ -183,3 +208,30 @@ liftCTA comp = CTA $ \k -> comp >>= k
 runToAST :: Ctx -> TA a -> YTA a
 runToAST ctx comp = U.runFreshMT (evalStateT (runReaderT comp ctx) mempty)
 
+-- | Run the given CTA subcomputation, but restrict all changes to the 'Ctx' to
+-- the extent of the given subcomputation.
+scopeCTA :: CTA a -> CTA a
+scopeCTA comp = liftCTA (runCTA comp return)
+
+addModuleVarC :: Ident -> I.Identifier -> CTA ()
+addModuleVarC ident x =
+  CTA $ \k -> addModuleVar ident x (k ())
+
+addModuleVar :: Ident -> I.Identifier -> TA a -> TA a
+addModuleVar ident x =
+  insertBigIdent ident (StructureBIS x)
+
+insertBigIdent :: Ident -> BigIdentSort -> TA a -> TA a
+insertBigIdent ident sort =
+  local (bigIdentSort %~ M.insert ident sort)
+
+addSignatureVar :: Ident -> I.SigIdentifier -> TA a -> TA a
+addSignatureVar ident x =
+  insertBigIdent ident (SignatureBIS x)
+
+addSignatureVarC :: Ident -> I.SigIdentifier -> CTA ()
+addSignatureVarC ident x =
+  CTA $ \k -> addSignatureVar ident x (k ())
+
+lookupBigIdent :: Ident -> TA (Maybe BigIdentSort)
+lookupBigIdent ident = view (bigIdentSort . at ident)
