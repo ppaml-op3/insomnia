@@ -1,7 +1,7 @@
 -- insomnia test flags:
 -- eval: False
 
-model Example {
+Example = model {
 -- Example tprob file.
 
 data Bool = True | False
@@ -44,7 +44,7 @@ fun fmapEither f = withEither Left (compose Right f)
 -- parameter sig swap : forall (a : *) (b : *) (g : *) . a -> b -> (b -> a -> g) -> g
 fun swap x y κ = κ y x
 
-module AssumeFlip = assume {
+AssumeFlip = assume module type {
     parameter sig flip : Real -> Dist Bool
   }
 import AssumeFlip
@@ -60,7 +60,7 @@ fun h i = -- bindings are of the form v or (v : ty)
 ----- enumeration types
 enum Five 5
 
-module AssumeFive = assume {
+AssumeFive = assume module type {
     parameter sig eqFive : Five -> Five -> Bool
     sig one : Five
 

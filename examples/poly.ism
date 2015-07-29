@@ -1,7 +1,7 @@
 -- insomnia test flags:
 -- eval: False
 
-module Poly {
+Poly = module {
   sig idC : forall (c : * -> *) (a : *) . c a -> c a
   fun idC x = x
 
@@ -11,7 +11,7 @@ module Poly {
   sig const : forall (a : *) (b : *) . a -> b -> a
   fun const x _y = x
 
-  module Assume = assume {
+  Assume = assume module type {
     sig r : forall (a : *) . Int -> a
   }
   import Assume

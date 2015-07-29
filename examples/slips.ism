@@ -7,7 +7,7 @@
 -- eval: False
 
 -- basics
-module type PRELUDE {
+PRELUDE = module type {
 
   data Bool = True | False
 
@@ -25,19 +25,19 @@ module type PRELUDE {
 }
 
 -- assume the prelude exists
-module Prelude = assume PRELUDE
+Prelude = assume PRELUDE
 
 -- a collection of standard distributions
-module type DISTS {
+DISTS = module type {
 
   sig uniformInt : { lo : Int ; hi : Int } -> Dist Int
 
 }
 
-module Dists = assume DISTS
+Dists = assume DISTS
 
 -- interesting utilities about dice
-module Dice {
+Dice = module {
 
   data Die = D4 | D6 | D8 | D10 | D12 | D20
 
@@ -52,7 +52,7 @@ module Dice {
       D20 -> Dists.uniformInt { lo = 1 , hi = 20}
 }
 
-module type DICE_WORLD {
+DICE_WORLD = module type {
 
   -- a bag of dice represented by how one ought to draw a die from it
   type Bag = Dist Dice.Die
@@ -62,9 +62,9 @@ module type DICE_WORLD {
 
 }
 
-module DiceWorld = assume DICE_WORLD
+DiceWorld = assume DICE_WORLD
 
-module DiceUtil {
+DiceUtil = module {
 
   import Prelude
   import Dice
@@ -100,7 +100,7 @@ module DiceUtil {
 }
 
 -- model drawing a slip of paper from a hat
-model Slip {
+Slip = model {
 
   sig n : Int
   val n ~ Dists.uniformInt { lo = 1 , hi = 5 }
@@ -110,19 +110,18 @@ model Slip {
 -- performs a new experiment (distribution of dice and dice rolls)
 -- each time that it is sampled.  But note that the number of dice is
 -- fixed upfront when the dice experiment model itself is sampled.
-model type DIE_EXPERIMENT {
+DIE_EXPERIMENT = model type {
   sig diceExperiment : Dist DiceUtil.Joint
 }
 
-model DiceExperiment =
-  model
+DiceExperiment = 
   local
     import Prelude
     import Dice
     import DiceUtil
     
-    module S ~ Slip
-  in {
+    S ~ Slip
+  in model {
 
   sig diceExperiment : Dist Joint
   val diceExperiment ~ return (let
@@ -134,29 +133,29 @@ model DiceExperiment =
 
   } : DIE_EXPERIMENT
 
-model type ONE_ROLL_EXPERIMENT {
+ONE_ROLL_EXPERIMENT = model type {
   sig outcome : DiceUtil.Joint
 }
 
-model OneRollExperiment = model
+OneRollExperiment = 
   local
     import DiceUtil
-    module E ~ DiceExperiment
-  in {
+    E ~ DiceExperiment
+  in model {
     sig outcome : Joint
     val outcome ~ E.diceExperiment
   } : ONE_ROLL_EXPERIMENT
 
-model type TWO_ROLL_EXPERIMENT {
+TWO_ROLL_EXPERIMENT = model type {
   sig outcome1 : DiceUtil.Joint
   sig outcome2 : DiceUtil.Joint
 }
 
-model TwoRollExperiment = model
+TwoRollExperiment =
   local
     import DiceUtil
-    module E ~ DiceExperiment
-  in {
+    E ~ DiceExperiment
+  in model {
     sig outcome1 : Joint
     val outcome1 ~ E.diceExperiment
 

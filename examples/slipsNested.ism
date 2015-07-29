@@ -8,7 +8,7 @@
 
 
 -- basics
-module type PRELUDE {
+PRELUDE = module type {
 
   data Bool = True | False
 
@@ -26,18 +26,18 @@ module type PRELUDE {
 }
 
 -- assume the prelude exists
-module Prelude = assume PRELUDE
+Prelude = assume PRELUDE
 
 -- a collection of standard distributions
-module type DISTS {
+DISTS = module type {
 
   sig uniformInt : { lo : Int ; hi : Int } -> Dist Int
 
 }
 
-module Dists = assume DISTS
+Dists = assume DISTS
 
-module type DICE {
+DICE = module type {
   data Die = D4 | D6 | D8 | D10 | D12 | D20
 
   -- given a die, return a distribution of rolls of that die
@@ -46,7 +46,7 @@ module type DICE {
 }
 
 -- interesting utilities about dice
-module Dice : DICE {
+Dice : DICE = module {
 
   data Die = D4 | D6 | D8 | D10 | D12 | D20
 
@@ -61,7 +61,7 @@ module Dice : DICE {
       D20 -> Dists.uniformInt { lo = 1 , hi = 20}
 }
 
-module type DICE_WORLD {
+DICE_WORLD = module type {
 
   -- a bag of dice represented by how one ought to draw a die from it
   type Bag = Dist Dice.Die
@@ -71,9 +71,9 @@ module type DICE_WORLD {
 
 }
 
-module DiceWorld = assume DICE_WORLD
+DiceWorld = assume DICE_WORLD
 
-module type DICE_UTIL {
+DICE_UTIL = module type {
   sig draw : DiceWorld.Bag -> Int -> Dist (Prelude.List Dice.Die)
 
   sig rollDice : Prelude.List Dice.Die -> Dist (Prelude.List Int)
@@ -83,7 +83,7 @@ module type DICE_UTIL {
   type Joint = { numDice : Int ; diceTotals : Int }
 }
 
-module DiceUtil : DICE_UTIL {
+DiceUtil : DICE_UTIL = module {
 
   import Prelude
   import Dice
@@ -118,23 +118,23 @@ module DiceUtil : DICE_UTIL {
 
 }
 
-model type SLIP {
+SLIP = model type {
   sig n : Int
 }
 
 -- model drawing a slip of paper from a hat
-model Slip : SLIP {
+Slip : SLIP = model {
 
   sig n : Int
   val n ~ Dists.uniformInt { lo = 1 , hi = 5 }
 }
 
 -- The outcome of running an experiment will be a pair of the number of dice and the dice total.
-model type EXPERIMENT_OUTCOME_MODEL {
+EXPERIMENT_OUTCOME_MODEL = model type {
   sig outcome : DiceUtil.Joint
 }
 
-module type EXPERIMENT_OUTCOME {
+EXPERIMENT_OUTCOME = module type {
   sig outcome : DiceUtil.Joint
 }
 
@@ -142,19 +142,18 @@ module type EXPERIMENT_OUTCOME {
 -- experiment outcomes (distribution of dice and dice rolls) each time
 -- that it is sampled.  But note that the number of dice is fixed
 -- upfront when the dice experiment model itself is sampled.
-model type DIE_EXPERIMENT {
+DIE_EXPERIMENT = model type {
   model Outcomes : EXPERIMENT_OUTCOME_MODEL
 }
 
-model DiceExperiment =
-  model
+DiceExperiment =
   local
-    module S ~ Slip
-  in {
+    S ~ Slip
+  in model {
     import DiceWorld
     import DiceUtil
 
-    model Outcomes = model {
+    Outcomes = model {
       sig outcome : Joint
       val outcome ~ let
         n = S.n
@@ -165,28 +164,28 @@ model DiceExperiment =
     }
   } : DIE_EXPERIMENT
 
-model type ONE_ROLL_EXPERIMENT {
+ONE_ROLL_EXPERIMENT = model type {
   module Outcome : EXPERIMENT_OUTCOME
 }
 
-model type TWO_ROLL_EXPERIMENT {
+TWO_ROLL_EXPERIMENT = model type {
   module Outcome1 : EXPERIMENT_OUTCOME
   module Outcome2 : EXPERIMENT_OUTCOME
 }
 
-model OneRollExperiment = model
+OneRollExperiment =
   local
-    module Experiment ~ DiceExperiment
-  in {
-    module Outcome ~ Experiment.Outcomes
+    Experiment ~ DiceExperiment
+  in model {
+    Outcome ~ Experiment.Outcomes
   } : ONE_ROLL_EXPERIMENT
 
-model TwoRollExperiment = model
+TwoRollExperiment =
   local
-    module Experiment ~ DiceExperiment
-  in {
-    module Outcome1 ~ Experiment.Outcomes
-    module Outcome2 ~ Experiment.Outcomes
+    Experiment ~ DiceExperiment
+  in model {
+    Outcome1 ~ Experiment.Outcomes
+    Outcome2 ~ Experiment.Outcomes
     -- Outcome1.outcome.n == Outcome2.outcome.n  by construction of DiceExperiment
   } : TWO_ROLL_EXPERIMENT
 

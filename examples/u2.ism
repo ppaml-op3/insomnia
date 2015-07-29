@@ -1,11 +1,11 @@
 -- insomnia test flags:
 -- eval: False
 
-module type S_SIG {
+S_SIG = module type {
   type T : *
 }
 
-module type PRELUDE {
+PRELUDE = module type {
   data Bool = True | False
   -- type Bool : *
   type Bool2 = Bool
@@ -32,10 +32,10 @@ module type PRELUDE {
   parameter sig foo : S.W -> S.S2.T
 }
 
-module Prelude : PRELUDE {
+Prelude : PRELUDE = module {
 
-   module S {
-      module S2 {
+   S = module {
+      S2 = module {
          type T = Int
       }
       type W = S2.T
@@ -81,7 +81,7 @@ module Prelude : PRELUDE {
 
    data Proxy (a : *) = Proxy
 
-   module AssumeDist = assume {
+   AssumeDist = assume module type {
      parameter sig uniform : forall (p : * -> *) (a : *). p a -> Dist a
      parameter sig flip : Real -> Dist Bool
    }
@@ -93,9 +93,9 @@ module Prelude : PRELUDE {
    fun foo x = x
 }
 
-model Q = Prelude.S
+Q = Prelude.S
 
-model Raining {
+Raining = model {
 
 sig raining : Prelude.Bool2
 val raining ~ (Prelude.uniform Prelude.Proxy)

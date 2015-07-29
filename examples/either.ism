@@ -1,7 +1,7 @@
 -- insomnia test flags:
 -- eval: True
 
-module Example {
+Example = module {
 -- Example tprob file.
 
 data Either (p : ⋆) (q : ⋆) = Left p | Right q

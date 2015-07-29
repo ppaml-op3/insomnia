@@ -6,7 +6,7 @@ import "examples/Prelude.ism"
    module type FUNCTOR
   )
 
-module type DATA_TYPES {
+DATA_TYPES = module type {
 
   data Maybe (a : *) = Nothing | Just a
 
@@ -24,8 +24,7 @@ module type DATA_TYPES {
 }
 
 
-module DataTypes : DATA_TYPES
-{
+DataTypes : DATA_TYPES = module {
 
   data Maybe (a : *) = Nothing | Just a
 
@@ -35,7 +34,7 @@ module DataTypes : DATA_TYPES
       Nothing -> n
       (Just x) -> j x
 
-  module FunctorMaybe : (FUNCTOR where type T = Maybe) {
+  FunctorMaybe : (FUNCTOR where type T = Maybe) = module {
     type T = Maybe
     sig map : forall (a : *) (b : *) . (a -> b) -> T a -> T b
     fun map f m =
@@ -46,7 +45,7 @@ module DataTypes : DATA_TYPES
 
   data List (a : *) = Nil | Cons a (List a)
 
-  module FunctorList : (FUNCTOR where type T = List) {
+  FunctorList : (FUNCTOR where type T = List) = module {
     type T = List
     sig map : ∀ (a : *) (b : *) . (a -> b) -> List a -> List b
     fun map f xs = case xs of

@@ -1,27 +1,27 @@
 -- insomnia test flags:
 -- eval: False
-module Prelude {
+Prelude = module {
   data Bool = True | False
   data Order = Lt | Eq | Gt
   
 }
 
-module type EQ {
+EQ = module type {
   type T : *
   sig eq : T -> T -> Prelude.Bool
 }
 
-module type ORD {
+ORD = module type {
   type T : *
   module Eq : EQ where type T = T
   sig compare : T -> T -> Prelude.Order
 }
 
-module IntOrd = assume (ORD where type T = Int)
+IntOrd = assume (ORD where type T = Int)
 
-module BoolOrd : (ORD where type T = Prelude.Bool) {
+BoolOrd : (ORD where type T = Prelude.Bool) = module {
   type T = Prelude.Bool
-  module Eq {
+  Eq = module {
     type T = T
     fun eq x y =
       case {x = x, y = y} of
@@ -37,25 +37,25 @@ module BoolOrd : (ORD where type T = Prelude.Bool) {
       _ -> Prelude.Eq
 }
 
-module X {
+X = module {
   sig f : Int -> Int -> Prelude.Bool
   fun f x y = IntOrd.Eq.eq x y
 }
 
-module type POINT {
+POINT = module type {
   type T : *
   sig x : T
 }
 
-module F (module M : POINT
-          module Z : EQ where type T = M.T ) {
+F = (module M : POINT
+     module Z : EQ where type T = M.T ) -> module {
   type T = M.T
   val p = Z.eq M.x
 }
 
-module IntPoint : (POINT where type T = Int) {
+IntPoint : (POINT where type T = Int) = module {
   type T = Int
   val x = 0
 }
 
-module R = F (IntPoint, IntOrd.Eq)
+R = F (IntPoint, IntOrd.Eq)

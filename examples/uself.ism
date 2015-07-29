@@ -1,12 +1,12 @@
 -- insomnia test flags:
 -- eval: False
-module type T {
+T = module type {
   type T : *
   sig x : T
   parameter sig f : T -> Real
 }
 
-module M1 : T {
+M1 : T = module {
   data T = T
 
   sig x : T
@@ -19,9 +19,9 @@ module M1 : T {
     }
 }
 
-model M2 = M1
+M2 = M1
 
-model H {
+H = model {
   sig r : Real
   val r = M2.f M1.x
 }  

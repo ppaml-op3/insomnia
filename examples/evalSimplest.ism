@@ -1,4 +1,4 @@
-module Id {
+Id = module {
   sig id : forall (a : *) . a -> a
   fun id x = x
 
@@ -12,16 +12,16 @@ module Id {
   val z = (const id) 10 11
 }
 
-module F (module X : {
+F = (module X : {
             sig id : forall (a : *) . a -> a
-          }) {
+          }) -> module {
   val z = X.id 2
 }
   
 
-module M2 = F (Id)
+M2 = F (Id)
 
-model Blip {
+Blip = model {
   val blip = 2.0
 }
 

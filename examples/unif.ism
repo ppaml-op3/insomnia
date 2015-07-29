@@ -1,4 +1,4 @@
-module Unif {
+Unif = module {
 
    -- parameter sig swap :: forall (a :: *) (b :: *) (g :: *) . a -> b -> (b -> a -> g) -> g
    fun swap κ x y = κ y x

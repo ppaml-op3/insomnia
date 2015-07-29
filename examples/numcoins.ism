@@ -1,23 +1,22 @@
 -- insomnia test flags:
 -- eval: False
 
-model type POISSOND {
+POISSOND = model type {
   type N : *
   sig x : N
 }
 
-model Q = assume POISSOND
+Q = assume POISSOND
 
-model type POISSONL {
+POISSONL = model type {
   type N : *
   sig x : N
 }
 
-module PoissonL =
-  model
+PoissonL =
   local
-    module H ~ Q
-  in {
+    H ~ Q
+  in model {
     type N = H.N
     sig x : H.N
     val x = H.x

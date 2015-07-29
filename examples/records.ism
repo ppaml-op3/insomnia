@@ -1,32 +1,32 @@
 -- insomnia test flags:
 -- eval: False
 
-module type DIST_PARAMS {
+DIST_PARAMS = module type {
   type NormalParams = { μ : Real ; σ : Real }
 
   sig normal : NormalParams -> Dist Real
 }
 
-module DistParams : DIST_PARAMS {
+DistParams : DIST_PARAMS = module {
    type NormalParams = { μ : Real ; σ : Real }
 
-   module Assume = assume {
+   Assume = assume module type {
      sig normal : NormalParams -> Dist Real
    }
    import Assume
 }
 
-model type N_SIG {
+N_SIG = model type {
   sig h : Real
 
   sig z : Real
 }
 
-model N : N_SIG {
+N : N_SIG = model {
   sig h : Real
   val h ~ DistParams.normal { μ = 1.0, σ = 1.0 }
 
-  module Assume = assume {
+  Assume = assume module type {
     parameter sig (.+) : Real -> Real -> Real
   }
   import Assume

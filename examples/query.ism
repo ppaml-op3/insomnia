@@ -1,4 +1,4 @@
-model M {
+M = model {
   val x = 1
 }
 

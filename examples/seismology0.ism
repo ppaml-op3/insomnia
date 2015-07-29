@@ -1,11 +1,11 @@
 -- insomnia test flags:
 -- eval: False
 
-module Boot {
+Boot = module {
   data Bool = True | False
 }
 
-module Builtins = assume {
+Builtins = assume module type {
   sig (.+) : Real -> Real -> Real
   sig (.-) : Real -> Real -> Real
   sig (.*) : Real -> Real -> Real
@@ -18,19 +18,19 @@ module Builtins = assume {
   sig isZero : Int -> Boot.Bool
 }
 
-module Prelude {
+Prelude = module {
   import Boot
   import Builtins
 }
 
 
-module type LIST {
+LIST = module type {
   data List (a : *) = Nil | Cons a (List a)
 
   sig replicate : forall (a : *) . Int -> a -> List a
 }
 
-module List : LIST {
+List : LIST = module {
   data List (a : *) = Nil | Cons a (List a)
 
   sig replicate : forall (a : *) . Int -> a -> List a
@@ -40,7 +40,7 @@ module List : LIST {
       Boot.False -> Cons x (replicate (j Prelude.- 1) x)
 }
 
-module type STD_DIST {
+STD_DIST = module type {
   type R = Real
   type Rp = Real -- positive
   type Nat = Int -- non-negative
@@ -62,15 +62,15 @@ module type STD_DIST {
   sig sequence : forall (a : *) . List.List (Dist a) -> Dist (List.List a)
 }
 
-module StdDist = assume STD_DIST
+StdDist = assume STD_DIST
 
 
-module type STATION {
+STATION = module type {
   type Station : *
   sig loc : Station -> Real
 }
 
-module type SEISMIC_EARTH {
+SEISMIC_EARTH = module type {
   type R = Real
   type Rp = Real -- positive
   type Probability = Real
@@ -83,33 +83,30 @@ module type SEISMIC_EARTH {
   sig velocity_parameters : StdDist.Gaussian_params -- #3
   sig absorptivity_parameters : StdDist.Gaussian_params -- #4
 
-  module Earth
-    : (module Station : STATION) -> model {
+  model Earth : (module Station : STATION) -> model {
+     sig λ₀ : Rp  -- rate of event occurrence
+     sig v₀ : R                             -- #3
+     sig α₀ : Rp
 
-         sig λ₀ : Rp  -- rate of event occurrence
-         sig v₀ : R                             -- #3
-         sig α₀ : Rp
-
-
-         -----------------------------------------------
-         --   things to do with each (real event)
-         --
-         type Station = Station.Station
-         type Event =
-           { location  : R -- [0..1]
-           ; time      : R -- [0..1]
-           ; magnitude : R -- [2..]
-           ; log_amplitude : Station -> R
-           ; detection_probability : Station -> Probability
-           }
+     -----------------------------------------------
+     --   things to do with each (real event)
+     --
+     type Station = Station.Station
+     type Event =
+       { location  : R -- [0..1]
+       ; time      : R -- [0..1]
+       ; magnitude : R -- [2..]
+       ; log_amplitude : Station -> R
+       ; detection_probability : Station -> Probability
+       }
     
-         -- each event will be a draw from this distribution
-         sig event : Dist Event
-  }
+     -- each event will be a draw from this distribution
+     sig event : Dist Event
+   }
 
 }
 
-module type SEISMIC {
+SEISMIC = module type {
   type Probability = Real -- [0.0 .. 1.0]
   type R = Real
   type Rp = Real -- positive
@@ -173,7 +170,7 @@ module type SEISMIC {
   }
 }
 
-module type SEISMOLOGY {
+SEISMOLOGY = module type {
   type R = Real
 
   type Station : *
@@ -197,7 +194,7 @@ module type SEISMOLOGY {
 
 -- Implementations start here 
 
-module SeismicEarth : SEISMIC_EARTH {
+SeismicEarth : SEISMIC_EARTH = module {
   import Prelude
 
   type R = Real
@@ -211,10 +208,10 @@ module SeismicEarth : SEISMIC_EARTH {
   sig absorptivity_parameters : StdDist.Gaussian_params -- #4
   val absorptivity_parameters = { μ = 2.0, σ² = 1.0 }
 
-  model Earth (module S : { type Station : *
-                            sig loc : Station -> R -- [0..1]
-                           }
-              ) {
+  Earth = (module S : { type Station : *
+                        sig loc : Station -> R -- [0..1]
+                      }
+          ) -> model {
     sig λ₀ : Rp
     val λ₀ ~ StdDist.gamma rate_parameters
 
@@ -257,14 +254,14 @@ module SeismicEarth : SEISMIC_EARTH {
 
 }
 
-module Seismic = assume SEISMIC
+Seismic = assume SEISMIC
 
-module Seismology = (Seismic : SEISMOLOGY)
+Seismology = (Seismic : SEISMOLOGY)
 
 -- Suppose we have a module that describes a concrete configuration of stations.
-module FiveStations : STATION {
+FiveStations : STATION = module {
   enum Station 5
-  module A = assume {
+  A = assume module type {
     sig loc : Station -> Real
   }
   import A
@@ -273,7 +270,7 @@ module FiveStations : STATION {
 
 -- now let's talk about a model that exposes the unknown params and a
 -- list of generated events.
-model type GENERATE_EVENTS {
+GENERATE_EVENTS = model type {
   type R = Real
   type Station : *
   type Event =
@@ -289,9 +286,9 @@ model type GENERATE_EVENTS {
   sig events : List.List Event
 }
 
-model GenerateEvents = model local
-  module E ~ SeismicEarth.Earth (FiveStations)
-  in {
+GenerateEvents = local
+  E ~ SeismicEarth.Earth (FiveStations)
+  in model {
     type R = Real
     type Station = FiveStations.Station
     type Event = E.Event

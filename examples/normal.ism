@@ -1,10 +1,10 @@
 import "examples/Prelude.ism" (module Prelude)
 
-model Tight {
+Tight = model {
   val n ~ Prelude.normal { μ = 5.0 , σ² = 0.1 }
 }
 
-model Loose {
+Loose = model {
   val n ~ Prelude.normal { μ = 20.0 , σ² = 100.0 }
 }
 

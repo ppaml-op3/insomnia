@@ -1,18 +1,18 @@
-model type R {
+R = model type {
   sig r : Real
 }
 
-model type T {
+T = model type {
   model A : R
 }
 
-model X : T {
-  model A {
+X : T = model {
+  A = model {
     val r ~ return 1.0
   }
 }
 
-model Y {
-  module XM ~ X
-  module AM ~ XM.A
+Y = model {
+  XM ~ X
+  AM ~ XM.A
 }

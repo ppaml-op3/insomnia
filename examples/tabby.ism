@@ -1,11 +1,11 @@
 -- insomnia test flags:
 -- eval: False
 
-module M {
+M = module {
 
   enum E 2
 
-  module Assumed = assume {
+  Assumed = assume module type {
     sig (+) : Int -> Int -> Int
 
     sig c : E -> Dist Int
@@ -23,7 +23,7 @@ module M {
       return (s x x)
 
 
-  model S {
+  S = model {
     forall (i : E) in
       g i ~ c i
   }

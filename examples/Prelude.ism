@@ -1,14 +1,14 @@
 
 import "examples/boot.ism" (module __BOOT)
 
-module type FUNCTOR {
+FUNCTOR = module type {
 
   type T : * -> *
   sig map : forall (a : *) (b : *) . (a -> b) -> T a -> T b
 
 }
 
-module type PRELUDE {
+PRELUDE = module type {
   sig (+) : Int -> Int -> Int
   sig (+.) : Real -> Real -> Real
   sig (*.) : Real -> Real -> Real
@@ -22,7 +22,7 @@ module type PRELUDE {
   sig normal : { μ : Real ; σ² : Real } -> Dist Real
 }
 
-module Prelude : PRELUDE {
+Prelude : PRELUDE = module {
   fun (+) x y = __BOOT.intAdd x y
   fun (+.) x y = __BOOT.realAdd x y
   fun (*.) x y = __BOOT.realMul x y

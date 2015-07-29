@@ -1,7 +1,7 @@
 -- insomnia test flags:
 -- eval: True
 
-module __BOOT = assume {
+__BOOT = assume module type {
   sig intAdd : Int -> Int -> Int
   sig ifIntLt : forall (a : *) . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
 

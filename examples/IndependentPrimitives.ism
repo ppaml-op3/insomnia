@@ -3,7 +3,7 @@
 
 import "examples/Prelude.ism" (module Prelude)
 
-model B {
+B = model {
 
   import Prelude
 

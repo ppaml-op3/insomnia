@@ -1,7 +1,7 @@
 -- insomnia test flags:
 -- eval: True
 
-module List {
+List = module {
 
   data List (a : *) = Nil | Cons a (List a)
 
