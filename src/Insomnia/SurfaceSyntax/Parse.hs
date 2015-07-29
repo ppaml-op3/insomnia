@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings, NamedFieldPuns #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
-module Insomnia.SurfaceSyntax.Parse (parseFile, parseText, moduleTypeExpr, bigExpr, toplevel) where
+module Insomnia.SurfaceSyntax.Parse (parseFile, parseText, bigExpr, toplevel) where
 
 import Control.Applicative
 import Control.Monad (guard)
@@ -274,7 +274,7 @@ literalBigExpr =
 assumeBigExpr :: Parser BigExpr
 assumeBigExpr =
   AssumeBE <$ reserved "assume"
-  <*> bigExpr
+  <*> atomicBigExpr
 
 applicationOrVarBigExpr :: Parser BigExpr
 applicationOrVarBigExpr =
@@ -345,22 +345,17 @@ signature =
 
 sigDecl :: Parser SigDecl
 sigDecl =
-  (submodelSig <?> "submodule declaration")
+  (submoduleSig <?> "submodule or submodel declaration")
   <|> (valueSig <?> "value signature declaration")
   <|> (typeSig <?> "type signature or type alias definition")
   <|> (fixitySig <?> "fixity declaration")
 
-submodelSig :: Parser SigDecl
-submodelSig =
-  mkSubmoduleSig
-  <$> moduleKind
-  <*> modelIdentifier
-  <*> (shorthandModelSig
-       <|> (classify *> moduleTypeExpr))
-  where
-    shorthandModelSig = literalModuleType
-    mkSubmoduleSig modK modId modTyExp =
-      SubmoduleSig modId modTyExp modK 
+submoduleSig :: Parser SigDecl
+submoduleSig =
+  SubmoduleSig
+  <$> modelIdentifier
+  <* classify
+  <*> bigExpr
 
 valueSig :: Parser SigDecl
 valueSig =
@@ -427,19 +422,6 @@ fixity =
     mkRational num (Just denom) = num % denom
     mkRational num Nothing = num % 1
 
-    
-
-literalModuleType :: Parser ModuleType
-literalModuleType =
-  SigMT <$> braces signature <?> "module signature in braces"
-
-moduleTypeExpr :: Parser ModuleType
-moduleTypeExpr =
-  mkWheres <$> atomicModuleTypeExpr
-  <*> many whereTypeClause
-  where mkWheres at [] = at
-        mkWheres at (cls:clss) = mkWheres (WhereMT at cls) clss
-
 whereTypeClause :: Parser WhereClause
 whereTypeClause =
   WhereTypeCls
@@ -449,34 +431,12 @@ whereTypeClause =
   <* reservedOp "="
   <*> typeExpr
 
-atomicModuleTypeExpr :: Parser ModuleType
-atomicModuleTypeExpr = 
-  (IdentMT <$> moduleTypeIdentifier <?> "module type identifier")
-  <|> literalModuleType
-  <|> functorOrParenthesizedModuleType
 
-functorOrParenthesizedModuleType :: Parser ModuleType
-functorOrParenthesizedModuleType =
-  functorModuleType -- has an embedded try
-  <|> parens moduleTypeExpr
-
-functorModuleType :: Parser ModuleType
-functorModuleType =
-  FunMT
-  <$> try functorArguments -- 'try' in case we see "( modTyExpr )"
-                           -- instead and need to backtrack out of
-                           -- here
-  <* reservedOp "->"
-  <*> ((reservedOp "model" *> pure ModelMK)
-       <|> pure ModuleMK)
-  <*> moduleTypeExpr
-
-
-functorArguments :: Parser [(ModuleKind, Ident, ModuleType)]
+functorArguments :: Parser [(ModuleKind, Ident, BigExpr)]
 functorArguments =
   parens (many namedSigComponent <?> "zero or more module/model modId : SIG elements") 
   where
-    namedSigComponent = (,,) <$> moduleKind <*> moduleTypeIdentifier <* classify <*> moduleTypeExpr
+    namedSigComponent = (,,) <$> moduleKind <*> moduleTypeIdentifier <* classify <*> bigExpr
 
 declList :: Parser [Decl]
 declList = localIndentation Ge $ many $ absoluteIndentation decl

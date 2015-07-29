@@ -237,18 +237,6 @@ typeField :: Ident -> TA (I.Field, I.TyConName)
 typeField ident = return (ident, U.s2n ident)
 
 
-moduleType :: ModuleType -> TA I.ModuleType
-moduleType (SigMT sig) = do
-  modK <- view currentModuleKind
-  let mkSig s = I.SigMT (I.SigV s modK)
-  mkSig <$> (signature sig)
-moduleType (FunMT args resultK result) = do
-  functorArguments args $ \args' -> do
-    result' <- local (currentModuleKind .~ resultK) (moduleType result)
-    return (I.FunMT $ U.bind args' result')
-moduleType (IdentMT ident) = I.IdentMT . I.SigIdP <$> sigIdentifier ident
-moduleType (WhereMT mt wh) = I.WhereMT <$> moduleType mt <*> whereClause wh
-
 whereClause :: WhereClause -> TA I.WhereClause
 whereClause (WhereTypeCls con rhs) = do
   p <- whereClausePath (unCon con)
@@ -262,7 +250,7 @@ whereClausePath (QId pfx fld) =
     path = I.headSkelFormToPath (Right modId, pfx)
   in return $ U.bind modId $ I.TypePath path fld
 
-functorArguments :: [(ModuleKind, Ident, ModuleType)]
+functorArguments :: [(ModuleKind, Ident, BigExpr)]
                     -> (Telescope (I.FunctorArgument I.ModuleType) -> TA a)
                     -> TA a
 functorArguments [] kont = kont NilT
@@ -271,12 +259,12 @@ functorArguments (arg:args) kont =
   functorArguments args $ \args' ->
   kont (ConsT $ U.rebind arg' args')
 
-functorArgument :: (ModuleKind, Ident, ModuleType)
+functorArgument :: (ModuleKind, Ident, BigExpr)
                    -> (I.FunctorArgument I.ModuleType -> TA a)
                    -> TA a
-functorArgument (modK, ident, mt) kont = do
+functorArgument (modK, ident, be) kont = do
   ident' <- modIdentifier ident
-  mt' <- local (currentModuleKind .~ modK) (moduleType mt)
+  mt' <- local (currentModuleKind .~ modK) (expectBigExprSignature be)
   addModuleVar ident ident' $ kont $ I.FunctorArgument ident' (U.embed modK) (U.embed mt')
                        
 
@@ -309,9 +297,9 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
          tsd' <- typeSigDecl tsd
          rest <- kont
          return $ I.TypeSig f (U.bind (tycon, U.embed tsd') rest)
-       SubmoduleSig ident mt modK -> do
+       SubmoduleSig ident be -> do
          (f, ident') <- moduleField ident
-         mt' <- local (currentModuleKind .~ modK) (moduleType mt)
+         mt' <- expectBigExprSignature be
          rest <- kont
          return $ I.SubmoduleSig f (U.bind (ident', U.embed mt') rest)
 

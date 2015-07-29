@@ -45,7 +45,7 @@ data BigExpr =
   | ClassifierBE !ModuleKind !Signature -- module/model type { decls }
   | VarBE !QualifiedIdent -- M.M' or S
   | AppBE !QualifiedIdent ![QualifiedIdent] -- F (X, Y, Z)
-  | AbsBE ![(ModuleKind, Ident, ModuleType)] !BigExpr -- (module X : S model Y : S') -> M or S
+  | AbsBE ![(ModuleKind, Ident, BigExpr)] !BigExpr -- (module X : S model Y : S') -> M or S
   | LocalBE !Module !BigExpr !BigExpr -- "local decls in M : S"
   | SealBE !BigExpr !BigExpr -- M : S
   | WhereTypeBE !BigExpr !WhereClause -- S where type t = P.t'
@@ -65,13 +65,6 @@ data QueryExpr =
   GenSamplesQE !QualifiedIdent !SampleParameters
   deriving (Show)
 
-data ModuleType =
-  SigMT !Signature
-  | IdentMT !Ident
-  | FunMT ![(ModuleKind, Ident, ModuleType)] !ModuleKind !ModuleType
-  | WhereMT !ModuleType !WhereClause
-    deriving (Show)
-
 data WhereClause =
   WhereTypeCls !Con !Type
     deriving (Show)
@@ -82,7 +75,7 @@ data Signature = Sig ![SigDecl]
 data SigDecl = ValueSig !(Maybe Stochasticity) !Ident !Type
              | FixitySig !Ident !Fixity
              | TypeSig !Ident !TypeSigDecl
-             | SubmoduleSig !Ident !ModuleType !ModuleKind
+             | SubmoduleSig !Ident !BigExpr
              deriving (Show)
 
 data TypeSigDecl =
