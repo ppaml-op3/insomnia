@@ -13,13 +13,13 @@ X1 : T1 = module {
   val v = 0
 }
 
-FT = (module P : T1) -> T1
+FT = (P : T1) -> T1
 
-F = (module P : T1) -> P
+F = (P : T1) -> P
 
 X2 = F (X1)
 
-F2 = (module P : T1) -> (module {
+F2 = (P : T1) -> (module {
   type T = P.T
   fun f x = P.f x
   val v = P.v
@@ -33,11 +33,11 @@ T1_TRANSPARENT = module type {
   sig v : T
 }
 
-FT_SUB = (module P : T1_TRANSPARENT) -> T1
+FT_SUB = (P : T1_TRANSPARENT) -> T1
 
 F_B : FT_SUB = F
 
-F3 = (module P : T1_TRANSPARENT) -> (module {
+F3 = (P : T1_TRANSPARENT) -> (module {
   type T = Int
   sig f : T -> T
   fun f x = 0

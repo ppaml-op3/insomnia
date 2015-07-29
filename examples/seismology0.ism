@@ -83,7 +83,7 @@ SEISMIC_EARTH = module type {
   sig velocity_parameters : StdDist.Gaussian_params -- #3
   sig absorptivity_parameters : StdDist.Gaussian_params -- #4
 
-  Earth : (module Station : STATION) -> model type {
+  Earth : (Station : STATION) -> model type {
      sig λ₀ : Rp  -- rate of event occurrence
      sig v₀ : R                             -- #3
      sig α₀ : Rp
@@ -208,11 +208,10 @@ SeismicEarth : SEISMIC_EARTH = module {
   sig absorptivity_parameters : StdDist.Gaussian_params -- #4
   val absorptivity_parameters = { μ = 2.0, σ² = 1.0 }
 
-  Earth = (module S : module type {
-                        type Station : *
-                        sig loc : Station -> R -- [0..1]
-                      }
-          ) -> model {
+  Earth = (S : module type {
+             type Station : *
+             sig loc : Station -> R -- [0..1]
+           }) -> model {
     sig λ₀ : Rp
     val λ₀ ~ StdDist.gamma rate_parameters
 

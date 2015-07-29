@@ -47,8 +47,8 @@ POINT = module type {
   sig x : T
 }
 
-F = (module M : POINT
-     module Z : EQ where type T = M.T ) -> module {
+F = (M : POINT,
+     Z : EQ where type T = M.T ) -> module {
   type T = M.T
   val p = Z.eq M.x
 }

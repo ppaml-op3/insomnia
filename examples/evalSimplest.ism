@@ -12,9 +12,9 @@ Id = module {
   val z = (const id) 10 11
 }
 
-F = (module X : module type {
-            sig id : forall (a : *) . a -> a
-          }) -> module {
+F = (X : module type {
+       sig id : forall (a : *) . a -> a
+     }) -> module {
   val z = X.id 2
 }
   

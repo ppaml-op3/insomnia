@@ -42,7 +42,7 @@ MATCH_RESULT = model type {
 }
 
 
-TugOfWarMatch = (model P1 : PLAYER  model P2 : PLAYER) -> (model {
+TugOfWarMatch = (P1 : PLAYER, P2 : PLAYER) -> (model {
   Player1 ~ P1
   Player2 ~ P2
   val winner = case Player1.pulling_power Prelude.<. Player2.pulling_power of
