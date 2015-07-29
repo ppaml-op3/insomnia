@@ -18,7 +18,7 @@ PRELUDE = module type {
 
   data List (a : *) = Nil | Cons a (List a)
 
-  module ListFunctor {
+  ListFunctor : module type {
     sig map : forall (a : *) (b : *) . (a -> b) -> List a -> List b
   }
 

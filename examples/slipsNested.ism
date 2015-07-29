@@ -19,7 +19,7 @@ PRELUDE = module type {
 
   data List (a : *) = Nil | Cons a (List a)
 
-  module ListFunctor {
+  ListFunctor : module type {
     sig map : forall (a : *) (b : *) . (a -> b) -> List a -> List b
   }
 
@@ -143,7 +143,7 @@ EXPERIMENT_OUTCOME = module type {
 -- that it is sampled.  But note that the number of dice is fixed
 -- upfront when the dice experiment model itself is sampled.
 DIE_EXPERIMENT = model type {
-  model Outcomes : EXPERIMENT_OUTCOME_MODEL
+  Outcomes : EXPERIMENT_OUTCOME_MODEL
 }
 
 DiceExperiment =
@@ -165,12 +165,12 @@ DiceExperiment =
   } : DIE_EXPERIMENT
 
 ONE_ROLL_EXPERIMENT = model type {
-  module Outcome : EXPERIMENT_OUTCOME
+  Outcome : EXPERIMENT_OUTCOME
 }
 
 TWO_ROLL_EXPERIMENT = model type {
-  module Outcome1 : EXPERIMENT_OUTCOME
-  module Outcome2 : EXPERIMENT_OUTCOME
+  Outcome1 : EXPERIMENT_OUTCOME
+  Outcome2 : EXPERIMENT_OUTCOME
 }
 
 OneRollExperiment =

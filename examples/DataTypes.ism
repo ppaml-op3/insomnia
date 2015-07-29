@@ -12,15 +12,14 @@ DATA_TYPES = module type {
 
   sig maybe : forall (t : *) (c : *) . c -> (t -> c) -> Maybe t -> c
 
-  module FunctorMaybe : -- FUNCTOR -- where type T = Maybe
-    {
+  FunctorMaybe : module type { -- FUNCTOR -- where type T = Maybe
       type T = Maybe
       sig map : forall (a : *) (b : *) . (a -> b) -> T a -> T b
     }
 
   data List (a : *) = Nil | Cons a (List a)
 
---       module FunctorList : FUNCTOR -- where type T = List
+  FunctorList : FUNCTOR where type T = List
 }
 
 

@@ -9,7 +9,7 @@ __BOOT = assume module type {
   sig realMul : Real -> Real -> Real
   sig ifRealLt : forall (a : *) . Real -> Real -> ({} -> a) -> ({} -> a) -> ({} -> a)
 
-  module Distribution {
+  Distribution : module type {
     sig choose : forall (a : *) . Real -> Dist a -> Dist a -> Dist a
     sig uniform : Real -- lo
                    -> Real -- hi

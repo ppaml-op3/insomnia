@@ -10,12 +10,12 @@ PLAYER_M = module type {
 
 PERSON = model type {
   sig strength : Real
-  model PullingPower : PLAYER
+  PullingPower : PLAYER
 }
 
 PERSON_M = module type {
   sig strength : Real
-  model PullingPower : PLAYER
+  PullingPower : PLAYER
 }
 
 
@@ -57,9 +57,9 @@ HULK = module type {
 }
 
 HULK_OR_BRUCE = model type {
-  module Hulk : HULK
-  module Bruce : PERSON_M
-  model PullingPower : PLAYER
+  Hulk : HULK
+  Bruce : PERSON_M
+  PullingPower : PLAYER
 }
 
 HulkOrBruce : HULK_OR_BRUCE = model {

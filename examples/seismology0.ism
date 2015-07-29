@@ -83,7 +83,7 @@ SEISMIC_EARTH = module type {
   sig velocity_parameters : StdDist.Gaussian_params -- #3
   sig absorptivity_parameters : StdDist.Gaussian_params -- #4
 
-  model Earth : (module Station : STATION) -> model {
+  Earth : (module Station : STATION) -> model type {
      sig λ₀ : Rp  -- rate of event occurrence
      sig v₀ : R                             -- #3
      sig α₀ : Rp
@@ -111,7 +111,7 @@ SEISMIC = module type {
   type R = Real
   type Rp = Real -- positive
   
-  module Earth : SEISMIC_EARTH
+  Earth : SEISMIC_EARTH
   
   enum Station 5
 
@@ -131,7 +131,7 @@ SEISMIC = module type {
     }
 
   -- Second, latent varibles that give properties of each station
-  model Stations {
+  Stations : model type {
 
     sig noise                : Station -> Rp    -- #2's capital N
     sig false_alarm          : Station -> Rp    -- #2's capital F
@@ -164,7 +164,7 @@ SEISMIC = module type {
   --
   type Episode = Station -> List.List Detection
 
-  model Episodes {
+  Episodes : model type {
 
     sig episodes : Dist Episode
   }
@@ -185,7 +185,7 @@ SEISMOLOGY = module type {
 
   type Episode = Station -> List.List Detection
 
-  model Episodes {
+  Episodes : model type {
     sig episodes : Dist Episode
   }
 }
@@ -208,7 +208,8 @@ SeismicEarth : SEISMIC_EARTH = module {
   sig absorptivity_parameters : StdDist.Gaussian_params -- #4
   val absorptivity_parameters = { μ = 2.0, σ² = 1.0 }
 
-  Earth = (module S : { type Station : *
+  Earth = (module S : module type {
+                        type Station : *
                         sig loc : Station -> R -- [0..1]
                       }
           ) -> model {

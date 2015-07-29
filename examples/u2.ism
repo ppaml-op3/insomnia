@@ -15,8 +15,8 @@ PRELUDE = module type {
   parameter sig (::) : ∀ (a : ⋆) . a -> List a -> List a
   
 
-  module S : {
-     module S2 : S_SIG
+  S : module type {
+     S2 : S_SIG
      type W = S2.T
   }
 

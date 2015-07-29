@@ -13,7 +13,7 @@ EQ = module type {
 
 ORD = module type {
   type T : *
-  module Eq : EQ where type T = T
+  Eq : EQ where type T = T
   sig compare : T -> T -> Prelude.Order
 }
 

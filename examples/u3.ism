@@ -9,8 +9,8 @@ PRELUDE = module type {
   -- type Bool : *
   type Bool2 = Bool
 
-  module S : {
-     module S2 : S_SIG
+  S : module type {
+     S2 : S_SIG
   }
 
   parameter sig cond : forall (c : *) . Bool -> c -> c -> c

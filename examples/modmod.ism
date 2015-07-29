@@ -3,7 +3,7 @@ R = model type {
 }
 
 T = model type {
-  model A : R
+  A : R
 }
 
 X : T = model {
