@@ -106,18 +106,6 @@ singleton :: a -> [a]
 singleton x = [x]
 
 toplevelItem :: ToplevelItem -> CTA [I.ToplevelItem]
-toplevelItem (ToplevelModule modK ident mmt me) = do
-  ident' <- liftCTA $ modIdentifier ident
-  me' <- liftCTA $ local (currentModuleKind .~ modK) (moduleExpr me)
-  case mmt of
-   Just mt -> do
-     mt' <- liftCTA $ moduleType mt
-     return [I.ToplevelModule ident' (I.ModuleSeal me' mt')]
-   Nothing -> return [I.ToplevelModule ident' me']
-toplevelItem (ToplevelModuleType modK ident mt) =
-  singleton <$> liftCTA (I.ToplevelModuleType
-                         <$> sigIdentifier ident
-                         <*> local (currentModuleKind .~ modK) (moduleType mt))
 toplevelItem (ToplevelQuery qe) =
   singleton . I.ToplevelQuery <$> liftCTA (queryExpr qe)
 toplevelItem (ToplevelImport filespec impspec) =
@@ -292,35 +280,6 @@ functorArgument (modK, ident, mt) kont = do
   addModuleVar ident ident' $ kont $ I.FunctorArgument ident' (U.embed modK) (U.embed mt')
                        
 
-moduleExpr :: ModuleExpr -> TA I.ModuleExpr
-moduleExpr (ModuleStruct mdl) =
-  I.ModuleStruct <$> runCTA (module' mdl) return
-moduleExpr (ModuleFun args body) = 
-  functorArguments args $ \args' -> do
-    body' <- moduleExpr body
-    return (I.ModuleFun $ U.bind args' body')
-moduleExpr (ModuleApp qid qids) =
-  return $ I.ModuleApp (qualifiedIdPath qid) (map qualifiedIdPath qids)
-moduleExpr (ModuleSeal me mt) =
-  I.ModuleSeal <$> moduleExpr me <*> moduleType mt
-moduleExpr (ModuleAssume mt) =
-  I.ModuleAssume <$> moduleType mt
-moduleExpr (ModuleId qid) = return $ I.ModuleId (qualifiedIdPath qid)
-moduleExpr (ModuleModel mdl) = 
-  I.ModuleModel <$> local (currentModuleKind .~ ModelMK) (modelExpr mdl)
-
-modelExpr :: ModelExpr -> TA I.ModelExpr
-modelExpr (ModelId qid) = return $ I.ModelId (qualifiedIdPath qid)
-modelExpr (ModelStruct mdl) = 
-  I.ModelStruct <$> runCTA (module' mdl) return
-modelExpr (ModelLocal hiddenMod body mt) = do
-  mt' <- moduleType mt
-  let comp = do
-        hiddenMod' <- module' hiddenMod
-        body' <- liftCTA $ modelExpr body
-        return (I.ModelLocal hiddenMod' body' mt')
-  runCTA comp return
-
 signature :: Signature -> TA I.Signature
 signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
   where
@@ -384,18 +343,10 @@ decl d kont =
      kont [I.TypeAliasDefn f alias']
    FixityDecl ident fixity ->
      updateWithFixity (QId [] ident) fixity $ kont []
-   SubmoduleDefn ident modK me -> do
-     (f, _) <- moduleField ident
-     me' <- local (currentModuleKind .~ modK) (moduleExpr me)
-     kont [I.SubmoduleDefn f me']
    TabulatedSampleDecl tabD -> do
      let
        mkD f tf = I.ValueDecl f $ I.TabulatedSampleDecl tf
      tabulatedDecl tabD mkD kont
-   SampleModuleDefn ident me -> do
-     (f,_) <- moduleField ident
-     me' <- moduleExpr me
-     kont [I.SampleModuleDefn f me']
    BigSubmoduleDefn ident be -> do
      me' <- expectBigExprModule be
      (f, ident') <- moduleField ident

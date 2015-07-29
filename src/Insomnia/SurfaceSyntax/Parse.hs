@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings, NamedFieldPuns #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
-module Insomnia.SurfaceSyntax.Parse (parseFile, parseText, moduleTypeExpr, moduleExpr, toplevel) where
+module Insomnia.SurfaceSyntax.Parse (parseFile, parseText, moduleTypeExpr, bigExpr, toplevel) where
 
 import Control.Applicative
 import Control.Monad (guard)
@@ -226,8 +226,6 @@ toplevel = Toplevel
 toplevelItem :: Parser ToplevelItem
 toplevelItem =
   (toplevelBigExpr <?> "toplevel module, model, module type or model type declaration")
-  <|> (toplevelModule <?> "toplevel module or model definition")
-  <|> (toplevelModuleType <?> "toplevel module or model type definition")
   <|> (toplevelQuery <?> "toplevel query expression")
   <|> (toplevelImport <?> "toplevel import declaration")
 
@@ -303,51 +301,11 @@ localBigExpr =
   <* classify
   <*> bigExpr
 
-toplevelModule :: Parser ToplevelItem
-toplevelModule =
-  mkToplevelModule
-  <$> (try kindAndId)
-  <*> optional functorArguments
-  <*> optional (classify *> atomicModuleTypeExpr)
-  <*> ((Left <$ reservedOp "=" <*> moduleExpr)
-       <|> (Right <$> literalModuleShorthand))
-  where
-    kindAndId = ((,) <$> moduleKind <*> modelIdentifier)
-    literalModuleShorthand = moduleLiteral
-    mkToplevelModule (modK, modId) mArgs mTy m =
-      let
-        mRHS = case m of
-          Left me -> me
-          Right mlit -> (case modK of
-                          ModuleMK -> ModuleStruct mlit
-                          ModelMK -> ModuleModel (ModelStruct mlit))
-        top = case mArgs of
-          Nothing ->
-            ToplevelModule modK modId mTy mRHS
-          Just args ->
-            ToplevelModule modK modId Nothing
-                       (ModuleFun args (case mTy of
-                                         Nothing -> mRHS
-                                         Just modTy -> ModuleSeal mRHS modTy))
-      in top
-
 moduleKind :: Parser ModuleKind
 moduleKind =
   ((ModelMK <$ reserved "model")
    <|> (ModuleMK <$ reserved "module"))
   <?> "module kind"
-
-toplevelModuleType :: Parser ToplevelItem
-toplevelModuleType =
-  mkToplevelModuleType
-  <$> (try ((,) <$> moduleKind <* reserved "type" <*> moduleTypeIdentifier))
-  <*> ((Left <$ reservedOp "=" <*> moduleTypeExpr)
-       <|> (Right <$> braces signature))
-  where
-    mkToplevelModuleType (modK, ident) (Left mt) =
-      ToplevelModuleType modK ident mt
-    mkToplevelModuleType (modK, ident) (Right sig) =
-      ToplevelModuleType modK ident (SigMT sig)
 
 toplevelQuery :: Parser ToplevelItem
 toplevelQuery =
@@ -527,58 +485,6 @@ moduleLiteral :: Parser Module
 moduleLiteral =
   Module <$> braces declList
 
-moduleExprLiteral :: Parser ModuleExpr
-moduleExprLiteral = ModuleStruct <$> moduleLiteral
-
-modelExprLiteral :: Parser ModelExpr
-modelExprLiteral = ModelStruct <$> moduleLiteral
-
-moduleExpr :: Parser ModuleExpr
-moduleExpr =
-  (moduleExprLiteral <?> "braced module definition")
-  <|> (moduleAssume <?> "module postulate (\"assume\")")
-  <|> (nestedModule <?> "module sealed with a signature")
-  <|> modulePathOrApp
-  <|> (reserved "model" *> (ModuleModel <$> modelExpr) <?> "model expression")
-  where
-    moduleAssume =  ModuleAssume
-                    <$ reserved "assume"
-                    <*> atomicModuleTypeExpr
-    nestedModule = parens (mkNestedModuleExpr
-                           <$> moduleExpr
-                           <*> optional (classify *> moduleTypeExpr))
-
-    mkNestedModuleExpr modExpr Nothing = modExpr
-    mkNestedModuleExpr modExpr (Just modTy) = ModuleSeal modExpr modTy
-
-modulePathOrApp :: Parser ModuleExpr
-modulePathOrApp =
-  mkAppOrPath
-  <$> modulePath
-  <*> optional (parens $ commaSep modulePath)
-  where
-    modulePath = modelId
-    mkAppOrPath pmod Nothing = ModuleId pmod
-    mkAppOrPath pmod (Just args) = ModuleApp pmod args
-
-modelExpr :: Parser ModelExpr
-modelExpr =
-  (modelPath <?> "model identifier")
-  <|> (modelExprLiteral <?> "braced model definition")
-  <|> (modelLocalExpr <?> "local model expression")
-  where
-    modelPath = ModelId <$> modelId
-
-modelLocalExpr :: Parser ModelExpr
-modelLocalExpr =
-  ModelLocal
-  <$ reserved "local"
-  <*> (Module <$> declList)
-  <* reserved "in"
-  <*> modelExpr
-  <* classify
-  <*> moduleTypeExpr
-
 bigSubmoduleOrSampleDefn =
   mk <$> modelIdentifier
   <*> optional (classify *> bigExpr)
@@ -590,22 +496,12 @@ bigSubmoduleOrSampleDefn =
     mk ident Nothing maker be = maker ident be
     mk ident (Just sigBE) maker be = maker ident (SealBE be sigBE)
 
-sampleModuleDefn :: Parser Decl
-sampleModuleDefn =
-  try (SampleModuleDefn
-       <$ reservedOp "module"
-       <*> modelIdentifier
-       <* reservedOp "~")
-  <*> moduleExpr
-
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")
        <|> (importDecl <?> "import declaration")
        <|> (fixityDecl <?> "fixity declaration")
        <|> (typeDefn <?> "type definition")
        <|> (typeAliasDefn <?> "type alias definition")
-       <|> (sampleModuleDefn <?> "submodule sampled from model")
-       <|> (moduleDefn <?> "submodule definition")
        <|> (bigSubmoduleOrSampleDefn <?> "submodule definiton or sample from model")
        <|> (tabulatedSampleDecl <?> "tabulated function definition")
 
@@ -646,32 +542,6 @@ typeAliasDefn =
   where
     mkTypeAliasDefn fld tyvars ty =
       TypeAliasDefn fld (TypeAlias tyvars ty)
-
-
-moduleDefn :: Parser Decl
-moduleDefn =
-  mkModuleDefn <$> moduleKind
-  <*> modelIdentifier
-  <*> optional functorArguments
-  <*> optional (try (classify *> atomicModuleTypeExpr))
-  <*> (try (Left <$ reservedOp "=" <*> moduleExpr)
-       <|> (Right <$> literalModuleShorthand))
-  where
-    literalModuleShorthand = moduleLiteral
-    mkModuleDefn modK modIdent maybeArgs maybeMt body_ =
-      let
-        body = case body_ of
-          Left me -> me
-          Right mlit -> (case modK of
-                          ModuleMK -> ModuleStruct mlit
-                          ModelMK -> ModuleModel (ModelStruct mlit))
-        cod = case maybeMt of
-          Nothing -> body
-          Just modTy -> ModuleSeal body modTy
-        m = case maybeArgs of
-          Nothing -> cod
-          Just args -> ModuleFun args cod
-      in SubmoduleDefn modIdent modK m
 
 funDecl :: Parser (Ident, ValueDecl)
 funDecl =

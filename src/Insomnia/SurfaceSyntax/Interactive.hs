@@ -45,11 +45,11 @@ interactiveImportHandler _ =
 -- | >>> moduleExpr "{ module X :: {\n type T :: *\n sig t :: T -> T\n } {\n type T = Int\n sig t :: T -> T\n fun t x = x } }"
 moduleExpr :: T.Text -> IO (F.AbstractSig, F.Term)
 moduleExpr txt = do
-  let okOrErr = P.parseText "-" txt P.moduleExpr
+  let okOrErr = P.parseText "-" txt P.bigExpr
   syn <- case okOrErr of
     Left err -> fail (docToString $ format err)
     Right ok -> return ok
-  modExpr <- ToAST.feedTA (ToAST.moduleExpr syn) interactiveImportHandler ToAST.toASTbaseCtx
+  modExpr <- ToAST.feedTA (ToAST.expectBigExprModule syn) interactiveImportHandler ToAST.toASTbaseCtx
   let tc = TC.runTC $ TC.inferModuleExpr (IdP $ U.s2n "M") modExpr (\modExpr' _ -> return modExpr')
   modExpr' <- case tc of
     Left err -> fail (docToString $ format err)

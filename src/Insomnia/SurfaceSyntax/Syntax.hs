@@ -34,11 +34,9 @@ data Toplevel = Toplevel ![ToplevelItem]
               deriving (Show)
 
 data ToplevelItem =
-  ToplevelModule !ModuleKind !Ident !(Maybe ModuleType) !ModuleExpr
-  | ToplevelModuleType !ModuleKind !Ident !ModuleType
+  ToplevelBigExpr !Ident !BigExpr
   | ToplevelImport !ImportFileSpec ![ImportSpecItem]
   | ToplevelQuery !QueryExpr
-  | ToplevelBigExpr !Ident !BigExpr
     deriving (Show)
 
 -- | "big" expressions - module or module type expression syntax
@@ -67,22 +65,6 @@ data QueryExpr =
   GenSamplesQE !QualifiedIdent !SampleParameters
   deriving (Show)
 
-data ModuleExpr =
-  ModuleStruct !Module
-  | ModuleFun ![(ModuleKind, Ident, ModuleType)] !ModuleExpr
-  | ModuleApp !QualifiedIdent ![QualifiedIdent]
-  | ModuleSeal !ModuleExpr !ModuleType
-  | ModuleAssume !ModuleType
-  | ModuleId !QualifiedIdent
-  | ModuleModel !ModelExpr
-    deriving (Show)
-
-data ModelExpr =
-  ModelId !QualifiedIdent
-  | ModelStruct !Module
-  | ModelLocal !Module !ModelExpr !ModuleType
-    deriving (Show)
-             
 data ModuleType =
   SigMT !Signature
   | IdentMT !Ident
@@ -132,10 +114,8 @@ data Decl = ValueDecl !Ident !ValueDecl
           | ImportDecl !QualifiedIdent
           | TypeDefn !Ident !TypeDefn
           | TypeAliasDefn !Ident !TypeAlias
-          | SubmoduleDefn !Ident !ModuleKind !ModuleExpr
           | BigSubmoduleDefn !Ident !BigExpr
           | BigSampleDefn !Ident !BigExpr
-          | SampleModuleDefn !Ident !ModuleExpr
           | FixityDecl !Ident !Fixity
           | TabulatedSampleDecl !TabulatedDecl
           deriving (Show)
