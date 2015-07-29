@@ -43,7 +43,7 @@ data ToplevelItem_ =
 type ToplevelItem = Positioned ToplevelItem_
 
 -- | "big" expressions - module or module type expression syntax
-data BigExpr =
+data BigExpr_ =
   LiteralBE !ModuleKind !Module -- module/model { defns }
   | ClassifierBE !ModuleKind !Signature -- module/model type { decls }
   | VarBE !QualifiedIdent -- M.M' or S
@@ -55,6 +55,7 @@ data BigExpr =
   | AssumeBE !BigExpr -- assume S
     deriving (Show)
 
+type BigExpr = Positioned BigExpr_
 
 newtype ImportFileSpec = ImportFileSpec { importFileSpecPath :: FilePath }
                        deriving (Show)

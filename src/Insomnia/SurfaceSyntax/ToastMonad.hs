@@ -13,6 +13,7 @@ module Insomnia.SurfaceSyntax.ToastMonad (
   , currentModuleKind
   , toastPositioned
   , toastPositionedC
+  , toastNear
     -- * Structure/Signature Name resolution
   , bigIdentSort
   , BigIdentSort(..)
@@ -301,3 +302,7 @@ throwToastError msg = do
 
 throwToastErrorC :: String -> CTA a
 throwToastErrorC = liftCTA . throwToastError
+
+toastNear :: Positioned s -> TA a -> TA a
+toastNear p =
+  local (currentNearbyPosition .~ (First $ Just $ view positionedSourcePos p))

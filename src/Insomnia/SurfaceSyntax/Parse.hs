@@ -4,6 +4,7 @@ module Insomnia.SurfaceSyntax.Parse (parseFile, parseText, bigExpr, toplevel) wh
 
 import Control.Applicative
 import Control.Monad (guard)
+import Control.Lens (set, over)
 
 import Data.Char (isUpper, isLower)
 import Data.List (isPrefixOf)
@@ -34,7 +35,7 @@ import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
 import Insomnia.Common.SampleParameters
 import Insomnia.SurfaceSyntax.Syntax
-import Insomnia.SurfaceSyntax.SourcePos (Positioned(..), parsePositioned)
+import Insomnia.SurfaceSyntax.SourcePos (Positioned(..), positioned, parsePositioned)
 import Insomnia.SurfaceSyntax.FixityParser (Fixity(..), Assoc(..))
 
 newtype FormatParseError = FormatParseError ParseError
@@ -236,24 +237,29 @@ toplevelBigExpr = parsePositioned toplevelBigExpr_
 toplevelBigExpr_ :: Parser ToplevelItem_
 toplevelBigExpr_ =
   mkToplevelBigExpr <$> tyconIdentifier
-  <*> optional (classify *> bigExpr)
+  <*> optional (parsePositioned (classify *> bigExpr))
   <* reservedOp "="
   <*> bigExpr
   where
     mkToplevelBigExpr ident Nothing be = ToplevelBigExpr ident be
-    mkToplevelBigExpr ident (Just sigBE) be = ToplevelBigExpr ident (SealBE be sigBE)
+    mkToplevelBigExpr ident (Just psigBE) be =
+      ToplevelBigExpr ident (over positioned (SealBE be) psigBE)
 
 bigExpr :: Parser BigExpr
 bigExpr =
-  factorBigExpr `chainl1` (SealBE <$ classify) -- (M : S) : S'
+  factorBigExpr `chainl1` (mkSealBE <$> parsePositioned classify) -- (M : S) : S'
+  where
+    mkSealBE :: Positioned a -> BigExpr -> BigExpr -> BigExpr
+    mkSealBE pseal m s = set positioned (SealBE m s) pseal
 
 factorBigExpr :: Parser BigExpr
 factorBigExpr =
   whereTypeBE <$> atomicBigExpr
-  <*> many whereTypeClause
+  <*> many (parsePositioned whereTypeClause)
   where
-    -- BigExpr -> [WhereClause] -> BigExpr
-    whereTypeBE = foldl WhereTypeBE
+    -- BigExpr -> [Positioned WhereClause] -> BigExpr
+    whereTypeBE = foldl mkWhereTypeBE
+    mkWhereTypeBE be pwh = over positioned (WhereTypeBE be) pwh
 
 atomicBigExpr :: Parser BigExpr
 atomicBigExpr =
@@ -267,23 +273,23 @@ atomicBigExpr =
 
 classifierBigExpr :: Parser BigExpr
 classifierBigExpr =
-  ClassifierBE <$> try (moduleKind <* reserved "type")
-  <*> braces signature
+  parsePositioned (ClassifierBE <$> try (moduleKind <* reserved "type")
+                   <*> braces signature)
 
 literalBigExpr :: Parser BigExpr
 literalBigExpr =
-  LiteralBE <$> moduleKind
-  <*> moduleLiteral
+  parsePositioned (LiteralBE <$> moduleKind
+                   <*> moduleLiteral)
 
 assumeBigExpr :: Parser BigExpr
 assumeBigExpr =
-  AssumeBE <$ reserved "assume"
-  <*> atomicBigExpr
+  parsePositioned (AssumeBE <$ reserved "assume"
+                   <*> atomicBigExpr)
 
 applicationOrVarBigExpr :: Parser BigExpr
 applicationOrVarBigExpr =
-  mkAppBE <$> modulePath
-  <*> optional (parens $ commaSep modulePath)
+  parsePositioned (mkAppBE <$> modulePath
+                   <*> optional (parens $ commaSep modulePath))
   where
     modulePath = modelId
     mkAppBE p Nothing = VarBE p
@@ -291,19 +297,19 @@ applicationOrVarBigExpr =
 
 abstractionBigExpr :: Parser BigExpr
 abstractionBigExpr =
-  AbsBE <$> try (functorArguments <* arrowKW)
-  <*> bigExpr
+  parsePositioned (AbsBE <$> try (functorArguments <* arrowKW)
+                   <*> bigExpr)
   where
     arrowKW = reservedOp "->" <|> reserved "→"
 
 localBigExpr :: Parser BigExpr
 localBigExpr =
-  LocalBE <$ reserved "local"
-  <*> (Module <$> declList)
-  <* reserved "in"
-  <*> atomicBigExpr
-  <* classify
-  <*> bigExpr
+  parsePositioned (LocalBE <$ reserved "local"
+                   <*> (Module <$> declList)
+                   <* reserved "in"
+                   <*> atomicBigExpr
+                   <* classify
+                   <*> bigExpr)
 
 moduleKind :: Parser ModuleKind
 moduleKind =
@@ -457,14 +463,15 @@ moduleLiteral =
 
 bigSubmoduleOrSampleDefn =
   mk <$> modelIdentifier
-  <*> optional (classify *> bigExpr)
+  <*> optional (parsePositioned (classify *> bigExpr))
   <*> ((BigSubmoduleDefn <$ reservedOp "=")
        <|> (BigSampleDefn <$ reservedOp "~"))
   <*> bigExpr
   where
-    mk :: Ident -> Maybe BigExpr -> (Ident -> BigExpr -> Decl) -> BigExpr -> Decl
+    mk :: Ident -> Maybe (Positioned BigExpr)
+          -> (Ident -> BigExpr -> Decl) -> BigExpr -> Decl
     mk ident Nothing maker be = maker ident be
-    mk ident (Just sigBE) maker be = maker ident (SealBE be sigBE)
+    mk ident (Just psigBE) maker be = maker ident (over positioned (SealBE be) psigBE)
 
 decl :: Parser Decl
 decl = (valueDecl <?> "value declaration")

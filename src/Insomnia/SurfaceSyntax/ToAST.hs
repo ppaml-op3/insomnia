@@ -135,34 +135,37 @@ data BigValue =
   | SignatureBV I.ModuleType
 
 inferBigExpr :: BigExpr -> TA BigValue
-inferBigExpr (LiteralBE mk m) =
+inferBigExpr = toastPositioned inferBigExpr_
+
+inferBigExpr_ :: BigExpr_ -> TA BigValue
+inferBigExpr_ (LiteralBE mk m) =
   let f = case mk of
         ModuleMK -> I.ModuleStruct
         ModelMK -> I.ModuleModel . I.ModelStruct
   in ModuleBV . f <$> local (currentModuleKind .~ mk) (runCTA (module' m) return)
-inferBigExpr (ClassifierBE mk sig) =
+inferBigExpr_ (ClassifierBE mk sig) =
   SignatureBV . I.SigMT . flip I.SigV mk  <$> signature sig
-inferBigExpr (AppBE qid qids) =
+inferBigExpr_ (AppBE qid qids) =
   return $ ModuleBV $ I.ModuleApp (qualifiedIdPath qid) (map qualifiedIdPath qids)
-inferBigExpr (VarBE (QId [] ident)) = do
+inferBigExpr_ (VarBE (QId [] ident)) = do
   mv <- lookupBigIdent ident
   case mv of
     Just (StructureBIS ident') -> return $ ModuleBV $ I.ModuleId (I.IdP ident')
     Just (SignatureBIS ident') -> return $ SignatureBV $ I.IdentMT (I.SigIdP ident')
     _ -> throwToastError $ " unknown whether a structure or signature: " ++ show ident
-inferBigExpr (VarBE qid) =
+inferBigExpr_ (VarBE qid) =
   return $ ModuleBV $ I.ModuleId (qualifiedIdPath qid)
-inferBigExpr (SealBE mbe sbe) =
+inferBigExpr_ (SealBE mbe sbe) =
   ModuleBV <$> (I.ModuleSeal <$> expectBigExprModule mbe <*> expectBigExprSignature sbe)
-inferBigExpr (AbsBE args be) =
+inferBigExpr_ (AbsBE args be) =
   functorArguments args $ \args' -> do
     mv <- inferBigExpr be
     case mv of
       ModuleBV me' -> return $ ModuleBV $ I.ModuleFun $ U.bind args' me'
       SignatureBV msig' -> return $ SignatureBV $ I.FunMT $ U.bind args' msig'
-inferBigExpr (WhereTypeBE be wh) =
+inferBigExpr_ (WhereTypeBE be wh) =
   SignatureBV <$> (I.WhereMT <$> expectBigExprSignature be <*> whereClause wh)
-inferBigExpr (LocalBE m beMod beSig) = do
+inferBigExpr_ (LocalBE m beMod beSig) = do
   mt' <- expectBigExprSignature beSig
   let comp = do
         hiddenMod' <- module' m
@@ -172,7 +175,7 @@ inferBigExpr (LocalBE m beMod beSig) = do
           _ -> throwToastErrorC $ "local with a body that isn't a model: " ++ show bodyMdl'
         return $ ModuleBV $ I.ModuleModel $ I.ModelLocal hiddenMod' body' mt'
   runCTA comp return
-inferBigExpr (AssumeBE be) =
+inferBigExpr_ (AssumeBE be) =
   (ModuleBV . I.ModuleAssume) <$> expectBigExprSignature be
 
 expectBigExprModule :: BigExpr -> TA I.ModuleExpr
@@ -180,14 +183,14 @@ expectBigExprModule be = do
   bv <- inferBigExpr be
   case bv of
     ModuleBV me -> return me
-    SignatureBV sig -> throwToastError $ "toasting expected a module but got a signature" ++ show sig
+    SignatureBV sig -> toastNear be $ throwToastError $ "toasting expected a module but got a signature" ++ show sig
 
 expectBigExprSignature :: BigExpr -> TA I.ModuleType
 expectBigExprSignature be = do
   bv <- inferBigExpr be
   case bv of
     SignatureBV mt -> return mt
-    ModuleBV me -> throwToastError $ "toasting expected a module type, but got a module or model " ++ show me
+    ModuleBV me -> toastNear be $ throwToastError $ "toasting expected a module type, but got a module or model " ++ show me
 
 -- an import
 --   import "foo.ism" (module type T
