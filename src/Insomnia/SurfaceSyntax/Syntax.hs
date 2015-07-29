@@ -45,7 +45,7 @@ data BigExpr =
   | ClassifierBE !ModuleKind !Signature -- module/model type { decls }
   | VarBE !QualifiedIdent -- M.M' or S
   | AppBE !QualifiedIdent ![QualifiedIdent] -- F (X, Y, Z)
-  | AbsBE ![(ModuleKind, Ident, BigExpr)] !BigExpr -- (module X : S model Y : S') -> M or S
+  | AbsBE ![(Ident, BigExpr)] !BigExpr -- (X : S, Y : S') -> M or S
   | LocalBE !Module !BigExpr !BigExpr -- "local decls in M : S"
   | SealBE !BigExpr !BigExpr -- M : S
   | WhereTypeBE !BigExpr !WhereClause -- S where type t = P.t'

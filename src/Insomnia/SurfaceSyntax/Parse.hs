@@ -64,7 +64,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
                      "query",
                      "where",
                      "forall", "∀",
-                     "⋆", "∷",
+                     "⋆", "∷", "→",
                      "infix", "infixr", "infixl",
                      "assume",
                      "data", "type", "enum",
@@ -287,10 +287,10 @@ applicationOrVarBigExpr =
 
 abstractionBigExpr :: Parser BigExpr
 abstractionBigExpr =
-  AbsBE <$> try functorArguments
-  <* try (reservedOp "->")
+  AbsBE <$> try (functorArguments <* arrowKW)
   <*> bigExpr
-
+  where
+    arrowKW = reservedOp "->" <|> reserved "→"
 
 localBigExpr :: Parser BigExpr
 localBigExpr =
@@ -432,11 +432,11 @@ whereTypeClause =
   <*> typeExpr
 
 
-functorArguments :: Parser [(ModuleKind, Ident, BigExpr)]
+functorArguments :: Parser [(Ident, BigExpr)]
 functorArguments =
-  parens (many namedSigComponent <?> "zero or more module/model modId : SIG elements") 
+  parens (commaSep namedSigComponent <?> "zero or more module/model modId : SIG elements") 
   where
-    namedSigComponent = (,,) <$> moduleKind <*> moduleTypeIdentifier <* classify <*> bigExpr
+    namedSigComponent = (,) <$> moduleTypeIdentifier <* classify <*> bigExpr
 
 declList :: Parser [Decl]
 declList = localIndentation Ge $ many $ absoluteIndentation decl

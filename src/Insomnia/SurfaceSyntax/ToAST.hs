@@ -250,7 +250,7 @@ whereClausePath (QId pfx fld) =
     path = I.headSkelFormToPath (Right modId, pfx)
   in return $ U.bind modId $ I.TypePath path fld
 
-functorArguments :: [(ModuleKind, Ident, BigExpr)]
+functorArguments :: [(Ident, BigExpr)]
                     -> (Telescope (I.FunctorArgument I.ModuleType) -> TA a)
                     -> TA a
 functorArguments [] kont = kont NilT
@@ -259,12 +259,12 @@ functorArguments (arg:args) kont =
   functorArguments args $ \args' ->
   kont (ConsT $ U.rebind arg' args')
 
-functorArgument :: (ModuleKind, Ident, BigExpr)
+functorArgument :: (Ident, BigExpr)
                    -> (I.FunctorArgument I.ModuleType -> TA a)
                    -> TA a
-functorArgument (modK, ident, be) kont = do
+functorArgument (ident, be) kont = do
   ident' <- modIdentifier ident
-  mt' <- local (currentModuleKind .~ modK) (expectBigExprSignature be)
+  mt' <- expectBigExprSignature be
   addModuleVar ident ident' $ kont $ I.FunctorArgument ident' (U.embed mt')
                        
 
