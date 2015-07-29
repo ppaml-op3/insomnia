@@ -34,6 +34,7 @@ import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
 import Insomnia.Common.SampleParameters
 import Insomnia.SurfaceSyntax.Syntax
+import Insomnia.SurfaceSyntax.SourcePos (Positioned(..), parsePositioned)
 import Insomnia.SurfaceSyntax.FixityParser (Fixity(..), Assoc(..))
 
 newtype FormatParseError = FormatParseError ParseError
@@ -230,7 +231,10 @@ toplevelItem =
   <|> (toplevelImport <?> "toplevel import declaration")
 
 toplevelBigExpr :: Parser ToplevelItem
-toplevelBigExpr =
+toplevelBigExpr = parsePositioned toplevelBigExpr_
+
+toplevelBigExpr_ :: Parser ToplevelItem_
+toplevelBigExpr_ =
   mkToplevelBigExpr <$> tyconIdentifier
   <*> optional (classify *> bigExpr)
   <* reservedOp "="
@@ -308,11 +312,17 @@ moduleKind =
   <?> "module kind"
 
 toplevelQuery :: Parser ToplevelItem
-toplevelQuery =
+toplevelQuery = parsePositioned toplevelQuery_
+
+toplevelQuery_ :: Parser ToplevelItem_
+toplevelQuery_ =
   ToplevelQuery <$ reserved "query" <*> queryExpr
 
 toplevelImport :: Parser ToplevelItem
-toplevelImport =
+toplevelImport = parsePositioned toplevelImport_
+
+toplevelImport_ :: Parser ToplevelItem_
+toplevelImport_ =
   ToplevelImport <$ reserved "import"
   <*> importFileSpec
   <*> parens (localIndentation Any $ many $ absoluteIndentation importSpecItem)

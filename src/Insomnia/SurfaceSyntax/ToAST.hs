@@ -12,6 +12,7 @@ import Control.Monad.State.Class (MonadState (..))
 
 import Data.Foldable (Foldable(..))
 import qualified Data.Map as M
+import Data.Monoid (Monoid(..))
 
 import qualified Text.Parsec.Prim as P
 
@@ -33,6 +34,7 @@ import qualified Insomnia.Query       as I
 import qualified Insomnia.Toplevel    as I
 
 import Insomnia.SurfaceSyntax.Syntax
+import Insomnia.SurfaceSyntax.SourcePos (Positioned, positioned)
 import Insomnia.SurfaceSyntax.FixityParser
 
 import Insomnia.SurfaceSyntax.ToastMonad
@@ -44,15 +46,17 @@ toASTbaseCtx = Ctx (M.fromList
                       (QId [] "->", Fixity AssocRight 5)
                     ])
                ModuleMK
-               M.empty
+               mempty
+               mempty
 
 -- main function
 toAST :: Monad m
          => Toplevel
+         -> (ToastError -> m I.Toplevel)
          -> (ImportFileSpec -> m (Either ImportFileError Toplevel))
          -> m I.Toplevel
-toAST tl onImport =
-  feedTA (toplevel tl) onImport toASTbaseCtx
+toAST tl onErr onImport =
+  feedTA (toplevel tl) onErr onImport toASTbaseCtx
 
 
 updateWithFixity :: QualifiedIdent -> Fixity -> TA a -> TA a
@@ -106,11 +110,15 @@ singleton :: a -> [a]
 singleton x = [x]
 
 toplevelItem :: ToplevelItem -> CTA [I.ToplevelItem]
-toplevelItem (ToplevelQuery qe) =
+toplevelItem =
+  toastPositionedC toplevelItem_
+
+toplevelItem_ :: ToplevelItem_ -> CTA [I.ToplevelItem]
+toplevelItem_ (ToplevelQuery qe) =
   singleton . I.ToplevelQuery <$> liftCTA (queryExpr qe)
-toplevelItem (ToplevelImport filespec impspec) =
+toplevelItem_ (ToplevelImport filespec impspec) =
   toplevelImport filespec impspec
-toplevelItem (ToplevelBigExpr ident be) = do
+toplevelItem_ (ToplevelBigExpr ident be) = do
   be' <- liftCTA $ inferBigExpr be
   case be' of
     ModuleBV me -> do
@@ -141,7 +149,7 @@ inferBigExpr (VarBE (QId [] ident)) = do
   case mv of
     Just (StructureBIS ident') -> return $ ModuleBV $ I.ModuleId (I.IdP ident')
     Just (SignatureBIS ident') -> return $ SignatureBV $ I.IdentMT (I.SigIdP ident')
-    _ -> error $ " unknown whether a structure or signature: " ++ show ident
+    _ -> throwToastError $ " unknown whether a structure or signature: " ++ show ident
 inferBigExpr (VarBE qid) =
   return $ ModuleBV $ I.ModuleId (qualifiedIdPath qid)
 inferBigExpr (SealBE mbe sbe) =
@@ -161,7 +169,7 @@ inferBigExpr (LocalBE m beMod beSig) = do
         bodyMdl' <- liftCTA $ expectBigExprModule beMod
         body' <- case bodyMdl' of
           I.ModuleModel body -> return body
-          _ -> error $ "local with a body that isn't a model: " ++ show bodyMdl'
+          _ -> throwToastErrorC $ "local with a body that isn't a model: " ++ show bodyMdl'
         return $ ModuleBV $ I.ModuleModel $ I.ModelLocal hiddenMod' body' mt'
   runCTA comp return
 inferBigExpr (AssumeBE be) =
@@ -172,14 +180,14 @@ expectBigExprModule be = do
   bv <- inferBigExpr be
   case bv of
     ModuleBV me -> return me
-    SignatureBV sig -> error $ "toasting expected a module but got a signature" ++ show sig
+    SignatureBV sig -> throwToastError $ "toasting expected a module but got a signature" ++ show sig
 
 expectBigExprSignature :: BigExpr -> TA I.ModuleType
 expectBigExprSignature be = do
   bv <- inferBigExpr be
   case bv of
     SignatureBV mt -> return mt
-    ModuleBV me -> error $ "toasting expected a module type, but got a module or model " ++ show me
+    ModuleBV me -> throwToastError $ "toasting expected a module type, but got a module or model " ++ show me
 
 -- an import
 --   import "foo.ism" (module type T
@@ -715,10 +723,13 @@ disfix atms precs = do
 
 ---------------------------------------- Examples/Tests
 
--- TODO: make infix resolution tests executable again.
+runInfixResolutionTest comp ctx = runIdentity $ feedTA comp onErr handler ctx
+  where
+    onErr = fail . show
+    handler _ = return $ Left $ ImportFileError "did not expect an import"
 
 example1 :: () -> I.Type
-example1 () = runIdentity $ feedTA (type' y) handler c
+example1 () = runInfixResolutionTest (type' y) c
   where
     a = TV (TyVar "a")
     arrow = TC (InfixN $ Con $ QId [] "->")
@@ -735,8 +746,8 @@ example1 () = runIdentity $ feedTA (type' y) handler c
          ]
         )
         ModuleMK
-        M.empty
-    handler _ = return $ Left $ ImportFileError "did not expect an import"
+        mempty
+        mempty
     
 example1_expected :: I.Type
 example1_expected =
@@ -753,7 +764,7 @@ example1_expected =
     infixl 6 `prod`
 
 example2 :: () -> I.Expr
-example2 () = runIdentity $ feedTA (expr e) handler ctx
+example2 () = runInfixResolutionTest (expr e) ctx
   where
     c = C (InfixN $ Con $ QId [] "Cons")
     n = C (PrefixN $ Con $ QId [] "N")
@@ -770,8 +781,8 @@ example2 () = runIdentity $ feedTA (expr e) handler ctx
            ]
           )
           ModuleMK
-          M.empty
-    handler _ = return $ Left $ ImportFileError "did not expect an import"
+          mempty
+          mempty
     
 example2_expected :: I.Expr
 example2_expected =
@@ -787,7 +798,7 @@ example2_expected =
     infixl 7 .+.
 
 example3 :: () -> I.Clause
-example3 () = runIdentity $ feedTA (clause cls) handler ctx
+example3 () = runInfixResolutionTest (clause cls) ctx
   where
     (cp, c) = let q = (InfixN $ Con $ QId [] "Cons")
               in (ConP q, C q)
@@ -806,8 +817,8 @@ example3 () = runIdentity $ feedTA (clause cls) handler ctx
              (QId [] "Cons", Fixity AssocRight 3)
            ])
           ModuleMK
-          M.empty
-    handler _ = return $ Left $ ImportFileError "did not expect an import"
+          mempty
+          mempty
     
 example3_expected :: I.Clause
 example3_expected =
@@ -829,7 +840,7 @@ example3_expected =
     v = I.V
 
 example4 :: () -> I.Clause
-example4 () = runIdentity $ feedTA (clause cls) handler ctx
+example4 () = runInfixResolutionTest (clause cls) ctx
   where
     cls = Clause p e
     p = PhraseP [xp]
@@ -838,10 +849,10 @@ example4 () = runIdentity $ feedTA (clause cls) handler ctx
     (xp, x) = let q = "x"
               in (VarP q, V $ PrefixN $ Var $ QId [] q)
     ctx = Ctx
-          M.empty
+          mempty
           ModuleMK
-          M.empty
-    handler _ = return $ Left $ ImportFileError "did not expect an import"
+          mempty
+          mempty
     
 example4_expected :: I.Clause
 example4_expected =

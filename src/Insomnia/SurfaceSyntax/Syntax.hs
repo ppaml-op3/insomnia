@@ -7,6 +7,7 @@ import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
 import Insomnia.Common.SampleParameters
 import Insomnia.SurfaceSyntax.FixityParser (Fixity)
+import Insomnia.SurfaceSyntax.SourcePos
 
 type Ident = String
 
@@ -33,11 +34,13 @@ instance Eq QualifiedIdent where
 data Toplevel = Toplevel ![ToplevelItem]
               deriving (Show)
 
-data ToplevelItem =
+data ToplevelItem_ =
   ToplevelBigExpr !Ident !BigExpr
   | ToplevelImport !ImportFileSpec ![ImportSpecItem]
   | ToplevelQuery !QueryExpr
     deriving (Show)
+
+type ToplevelItem = Positioned ToplevelItem_
 
 -- | "big" expressions - module or module type expression syntax
 data BigExpr =

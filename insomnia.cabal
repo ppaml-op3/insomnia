@@ -46,6 +46,7 @@ library
                        Insomnia.Main.SaveFinalProductStage
                        --
                        Insomnia.SurfaceSyntax.Syntax
+                       Insomnia.SurfaceSyntax.SourcePos
                        Insomnia.SurfaceSyntax.FixityParser
                        Insomnia.SurfaceSyntax.Parse
                        Insomnia.SurfaceSyntax.ToastMonad

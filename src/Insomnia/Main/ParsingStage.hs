@@ -27,7 +27,7 @@ parseAndToast :: FilePath -> InsomniaMain Toplevel
 parseAndToast fp = do
   do
     surfaceAst <- parseInsomniaFile fp
-    ToAST.toAST surfaceAst importHandler
+    ToAST.toAST surfaceAst (showErrorAndDie "resolving names" . show) importHandler
 
 parseInsomniaFile :: FilePath -> InsomniaMain Surface.Toplevel
 parseInsomniaFile fp = do

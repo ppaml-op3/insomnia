@@ -34,7 +34,7 @@ moduleType txt = do
   syn <- case okOrErr of
    Left err -> fail (docToString $ format err)
    Right ok -> return ok
-  modTy <- ToAST.feedTA (ToAST.expectBigExprSignature syn) interactiveImportHandler ToAST.toASTbaseCtx
+  modTy <- ToAST.feedTA (ToAST.expectBigExprSignature syn) (error . show) interactiveImportHandler ToAST.toASTbaseCtx
   let abstr = ToF.runToFM $ ToF.moduleType modTy
   return abstr
 
@@ -49,7 +49,7 @@ moduleExpr txt = do
   syn <- case okOrErr of
     Left err -> fail (docToString $ format err)
     Right ok -> return ok
-  modExpr <- ToAST.feedTA (ToAST.expectBigExprModule syn) interactiveImportHandler ToAST.toASTbaseCtx
+  modExpr <- ToAST.feedTA (ToAST.expectBigExprModule syn) (error . show) interactiveImportHandler ToAST.toASTbaseCtx
   let tc = TC.runTC $ TC.inferModuleExpr (IdP $ U.s2n "M") modExpr (\modExpr' _ -> return modExpr')
   modExpr' <- case tc of
     Left err -> fail (docToString $ format err)

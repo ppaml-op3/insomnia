@@ -2,6 +2,7 @@
 --
 {-# LANGUAGE RankNTypes,
       MultiParamTypeClasses,
+      FlexibleContexts,
       ScopedTypeVariables,
       TemplateHaskell
   #-}
@@ -10,6 +11,8 @@ module Insomnia.SurfaceSyntax.ToastMonad (
   Ctx(..)
   , declaredFixity
   , currentModuleKind
+  , toastPositioned
+  , toastPositionedC
     -- * Structure/Signature Name resolution
   , bigIdentSort
   , BigIdentSort(..)
@@ -22,6 +25,9 @@ module Insomnia.SurfaceSyntax.ToastMonad (
   , TA
   , YTA
   , CTA (..)
+  , ToastError
+  , throwToastError
+  , throwToastErrorC
     -- * Suspended computation state
   , Suspended
   , ImportFileError (..)
@@ -41,6 +47,8 @@ module Insomnia.SurfaceSyntax.ToastMonad (
 
 import Control.Applicative
 import Control.Lens
+import Control.Monad.Error.Class
+import Control.Monad.Except
 import Control.Monad.Reader.Class
 import Control.Monad.Reader
 import Control.Monad.State.Class
@@ -57,6 +65,7 @@ import qualified Insomnia.Identifier as I
 import qualified Insomnia.Toplevel as I
 
 import Insomnia.SurfaceSyntax.Syntax
+import Insomnia.SurfaceSyntax.SourcePos
 import Insomnia.SurfaceSyntax.FixityParser
 
 -- | A "BigIdentSort" classifies "big" idents as to whether they stand
@@ -69,6 +78,7 @@ data BigIdentSort =
 data Ctx = Ctx {_declaredFixity :: M.Map QualifiedIdent Fixity
                , _currentModuleKind :: ModuleKind
                , _bigIdentSort :: M.Map Ident BigIdentSort
+               , _currentNearbyPosition :: First SourcePos
                }
          deriving (Show)
 
@@ -89,11 +99,20 @@ instance Monoid ToastState where
 -- (the freshness monad is used to make new Toprefs)
 type TA = ReaderT Ctx (StateT ToastState (U.FreshMT YTA))
 
+data ToastError =
+  ToastErrorMsg !String !(First SourcePos)
+
+instance Show (ToastError) where
+  showsPrec p (ToastErrorMsg msg (First Nothing)) = showsPrec p msg
+  showsPrec _ (ToastErrorMsg msg (First (Just posn))) =
+    showsPrec 0 posn . showString ": " . showsPrec 0 msg
+
 -- ... except that we can yield mid-computation and ask for an imported file.
 --
 -- this is a coroutine monad.
 data YTA a = 
   DoneTA a
+  | FailTA ToastError
   | YieldTA Suspended ImportFileSpec (Either ImportFileError Toplevel -> TA a)
 
 type Suspended = (Ctx, ToastState, Integer)
@@ -102,18 +121,35 @@ newtype ImportFileError = ImportFileError { importFileErrorMsg :: String }
 
 instance Functor YTA where
   fmap f (DoneTA x) = DoneTA (f x)
+  fmap _ (FailTA e) = FailTA e
   fmap f (YieldTA susp want k) = YieldTA susp want (fmap f . k)
 
 instance Applicative YTA where
   pure = DoneTA 
   (DoneTA f) <*> (DoneTA x) = DoneTA (f x)
+  (DoneTA _) <*> (FailTA e) = FailTA e
   (DoneTA f) <*> (YieldTA susp want k) = YieldTA susp want (fmap f . k)
-  (YieldTA susp want f) <*> m = YieldTA susp want (\i -> f i <*> (lift . lift . lift) m)
+  (FailTA e) <*> _ = FailTA e
+  (YieldTA susp want f) <*> m = YieldTA susp want (\i -> f i <*> (lift . lift . lift ) m)
 
 instance Monad YTA where
    return = pure
+   fail msg = FailTA (ToastErrorMsg msg mempty)
    DoneTA x >>= k = k x
+   FailTA e >>= _ = FailTA e
    YieldTA susp want k >>= k' = YieldTA susp want (\i -> k i >>= (lift . lift . lift . k'))
+
+instance MonadError ToastError YTA where
+  throwError = FailTA
+  comp `catchError` handler =
+    case comp of
+    FailTA err -> handler err
+    DoneTA ans -> return ans
+    YieldTA susp want k -> YieldTA susp want $ \ans -> do
+      lOrR <- (Right <$> k ans) `catchError` (return . Left)
+      case lOrR of
+        Right ans -> return ans
+        Left e -> lift . lift . lift $ handler e
 
 -- the CPS version of TA
 newtype CTA a = CTA { runCTA :: forall r . (a -> TA r) -> TA r }
@@ -137,20 +173,30 @@ instance MonadState Ctx CTA where
     let (x, ctx') = xform ctx
     local (const ctx') $ k x
 
+instance MonadError ToastError CTA where
+  throwError e = CTA $ \_k -> throwError e
+  catchError comp handler = CTA $ \k -> do
+    lOrR <- runCTA comp (return . Right) `catchError` (return . Left)
+    case lOrR of
+      Left err -> runCTA (handler err) k
+      Right ans -> k ans
+
 -- | given a To AST computation and a monadic handler for import requests and an initial context,
 -- repeatedly call the handler whenever the To AST computation yields with a request until it returns a final answer.
 -- Return that final answer.
 feedTA :: forall m a .
           Monad m
           => TA a
+          -> (ToastError -> m a)
           -> (ImportFileSpec -> m (Either ImportFileError Toplevel))
           -> Ctx -> m a
-feedTA comp onImport =
+feedTA comp onError onImport =
   let
     go :: Suspended -> TA a -> m a
     go (ctx, st, freshness) c =
       case U.contFreshMT (evalStateT (runReaderT c ctx) st) freshness of
        DoneTA ans -> return ans
+       FailTA err -> onError err
        YieldTA susp' wanted resume -> do
          reply <- onImport wanted
          go susp' (resume reply)
@@ -161,10 +207,11 @@ await want = do
   ctx <- ask
   st <- lift get
   freshness <- lift $ lift (U.FreshMT get)
-  lift $ lift $ lift (YieldTA (ctx,st, freshness) want $ \got ->
-                       case got of
-                       Left err -> fail (importFileErrorMsg err)
-                       Right it -> return it)
+  lift $ lift $ lift
+               $ (YieldTA (ctx,st, freshness) want $ \got ->
+                    case got of
+                    Left err -> fail (importFileErrorMsg err)
+                    Right it -> return it)
 
 tellToplevel :: FilePath -> I.TopRef -> I.Toplevel -> TA ()
 tellToplevel fp tr tl =
@@ -235,3 +282,22 @@ addSignatureVarC ident x =
 
 lookupBigIdent :: Ident -> TA (Maybe BigIdentSort)
 lookupBigIdent ident = view (bigIdentSort . at ident)
+
+toastPositioned :: (a -> TA b) -> Positioned a -> TA b
+toastPositioned f p =
+  local (currentNearbyPosition .~ (First $ Just $ view positionedSourcePos p)) $ f (view positioned p)
+
+toastPositionedC :: (a -> CTA b) -> Positioned a -> CTA b
+toastPositionedC f p = do
+  oldPos <- currentNearbyPosition <<.= (First $ Just $ view positionedSourcePos p)
+  x <- f (view positioned p)
+  currentNearbyPosition .= oldPos
+  return x
+
+throwToastError :: String -> TA a
+throwToastError msg = do
+  p <- view currentNearbyPosition
+  throwError (ToastErrorMsg msg p)
+
+throwToastErrorC :: String -> CTA a
+throwToastErrorC = liftCTA . throwToastError
