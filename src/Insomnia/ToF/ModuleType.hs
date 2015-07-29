@@ -93,7 +93,7 @@ withFunctorArgument :: ToF m
                        => FunctorArgument ModuleType
                        -> (ExposedAbstractSig F.Var -> m r)
                        -> m r
-withFunctorArgument (FunctorArgument argId _modK (U.unembed -> modTy)) kont =
+withFunctorArgument (FunctorArgument argId (U.unembed -> modTy)) kont =
   withFreshName (U.name2String argId) $ \modVar -> do
     (F.AbstractSig bnd) <- moduleType modTy
     U.lunbind bnd $ \(abstrs, modSig) ->

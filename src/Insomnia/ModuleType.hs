@@ -46,7 +46,7 @@ data WhereClause =
   deriving (Show, Typeable, Generic)
 
 data FunctorArgument t =
-  FunctorArgument !Identifier !(Embed ModuleKind) !(Embed t)
+  FunctorArgument !Identifier !(Embed t)
   deriving (Show, Typeable, Generic)
 
 data Signature =
@@ -88,7 +88,7 @@ instance Foldable FunctorArgument where
   foldMap = foldMapDefault
 
 instance Traversable FunctorArgument where
-  traverse f (FunctorArgument x modK (Embed t)) = (FunctorArgument x modK . Embed) <$> f t
+  traverse f (FunctorArgument x (Embed t)) = (FunctorArgument x . Embed) <$> f t
 
 moduleTypeNormalFormEmbed :: ModuleTypeNF -> ModuleType
 moduleTypeNormalFormEmbed (SigMTNF s) = SigMT s

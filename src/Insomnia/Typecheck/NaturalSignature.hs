@@ -145,7 +145,7 @@ naturalSignatureFunctorArgument :: U.Subst Path s
                                    -> (s -> TC r)
                                    -> TC r
 naturalSignatureFunctorArgument fa parg rest kont =
-  let (FunctorArgument idParam _modK _paramTy) = fa
+  let (FunctorArgument idParam _paramTy) = fa
       rest' = U.subst idParam parg rest
   in kont rest'
 

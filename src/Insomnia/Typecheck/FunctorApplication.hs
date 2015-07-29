@@ -68,7 +68,7 @@ checkFunctorArgument :: U.Subst Path s
                         -> s
                         -> (s -> TC r)
                         -> TC r
-checkFunctorArgument (FunctorArgument paramIdent _embMK embNF) parg argNF rest_ kont = do
+checkFunctorArgument (FunctorArgument paramIdent embNF) parg argNF rest_ kont = do
   let -- paramMK = U.unembed embMK
       paramNF = U.unembed embNF
   _sigEnv <- mayAscribeNF argNF paramNF

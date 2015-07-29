@@ -524,8 +524,8 @@ instance Pretty ModuleTypeNF where
     in fsep [parens (fsep $ ppTelescope pp tele), indent rightArrow (pp body)]
 
 instance Pretty a => Pretty (FunctorArgument a) where
-  pp (FunctorArgument ident (U.unembed -> modK) (U.unembed -> t)) =
-    fsep [pp modK, pp ident, indent classify (pp t)]
+  pp (FunctorArgument ident (U.unembed -> t)) =
+    fsep [pp ident, indent classify (pp t)]
 
 instance Pretty a => Pretty (SigV a) where
   pp (SigV x modK) = fsep [pp modK, "{", pp x, "}" ]

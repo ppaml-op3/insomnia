@@ -120,7 +120,7 @@ checkFunctorArgument :: FunctorArgument ModuleTypeNF
                         -> FunctorArgument ModuleTypeNF
                         -> TC r
                         -> TC r
-checkFunctorArgument (FunctorArgument argId _modK1 emb1) (FunctorArgument _argId _modK2 emb2) kont = do
+checkFunctorArgument (FunctorArgument argId emb1) (FunctorArgument _argId emb2) kont = do
   let
     argTy1 = U.unembed emb1
     argTy2 = U.unembed emb2

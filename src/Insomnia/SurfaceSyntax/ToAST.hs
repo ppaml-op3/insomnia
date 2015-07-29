@@ -265,7 +265,7 @@ functorArgument :: (ModuleKind, Ident, BigExpr)
 functorArgument (modK, ident, be) kont = do
   ident' <- modIdentifier ident
   mt' <- local (currentModuleKind .~ modK) (expectBigExprSignature be)
-  addModuleVar ident ident' $ kont $ I.FunctorArgument ident' (U.embed modK) (U.embed mt')
+  addModuleVar ident ident' $ kont $ I.FunctorArgument ident' (U.embed mt')
                        
 
 signature :: Signature -> TA I.Signature

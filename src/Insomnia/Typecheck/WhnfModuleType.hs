@@ -201,9 +201,9 @@ whnfTelescope tele =
 whnfFunctorArgument :: FunctorArgument ModuleType
                        -> (FunctorArgument ModuleTypeNF -> TC a)
                        -> TC a
-whnfFunctorArgument (FunctorArgument argId modK (U.unembed -> mt)) k = do
+whnfFunctorArgument (FunctorArgument argId (U.unembed -> mt)) k = do
   mtnf <- whnfModuleType mt
-  k $ FunctorArgument argId modK $ U.embed mtnf
+  k $ FunctorArgument argId $ U.embed mtnf
 
 
 projectToplevelModuleTypeField :: Path -> ToplevelSummary -> Field -> TC ModuleTypeNF

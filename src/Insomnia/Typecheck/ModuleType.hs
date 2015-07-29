@@ -64,10 +64,10 @@ extendModuleCtxFunctorArg :: FunctorArgument ModuleType
                               -> FunctorArgument ModuleTypeNF
                               -> TC a)
                           -> TC a
-extendModuleCtxFunctorArg (FunctorArgument ident modK (U.unembed -> modTy)) kont = do
+extendModuleCtxFunctorArg (FunctorArgument ident (U.unembed -> modTy)) kont = do
   (modTy', nf) <- checkModuleType modTy
   extendModuleCtxNF (IdP ident) nf
-    $ kont (FunctorArgument ident modK (U.embed modTy')) (FunctorArgument ident modK (U.embed nf))
+    $ kont (FunctorArgument ident (U.embed modTy')) (FunctorArgument ident (U.embed nf))
 
 checkSigV :: Maybe Path -> SigV Signature -> TC (SigV Signature)
 checkSigV mpath (SigV msig modK) = flip SigV modK <$> checkSignature mpath modK msig
