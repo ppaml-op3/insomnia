@@ -59,7 +59,7 @@ toAST tl onErr onImport =
   feedTA (toplevel tl) onErr onImport toASTbaseCtx
 
 
-updateWithFixity :: QualifiedIdent -> Fixity -> TA a -> TA a
+updateWithFixity :: Monad m => QualifiedIdent -> Fixity -> TA m a -> TA m a
 updateWithFixity qid f =
   local (declaredFixity . at qid ?~ f)
 
@@ -91,29 +91,29 @@ stochasticityForModule :: ModuleKind -> Stochasticity
 stochasticityForModule ModuleMK = DeterministicParam
 stochasticityForModule ModelMK = RandomVariable
 
-contextualStochasticity :: Maybe Stochasticity -> TA Stochasticity
+contextualStochasticity :: Monad m => Maybe Stochasticity -> TA m Stochasticity
 contextualStochasticity (Just stoch) = return stoch
 contextualStochasticity Nothing =
   views currentModuleKind stochasticityForModule
 
-toplevel :: Toplevel -> TA I.Toplevel
+toplevel :: Monad m => Toplevel -> TA m I.Toplevel
 toplevel (Toplevel items) = do
   let comp = mapM toplevelItem items
   (its, imps) <- listenToplevels (runCTA comp return)
   return $ I.Toplevel $ imps ++ concat its
 
-nestedToplevel :: Toplevel -> CTA I.Toplevel
+nestedToplevel :: Monad m => Toplevel -> CTA m I.Toplevel
 nestedToplevel (Toplevel items) = do
   I.Toplevel . concat <$> mapM toplevelItem items
 
 singleton :: a -> [a]
 singleton x = [x]
 
-toplevelItem :: ToplevelItem -> CTA [I.ToplevelItem]
+toplevelItem :: Monad m => ToplevelItem -> CTA m [I.ToplevelItem]
 toplevelItem =
   toastPositionedC toplevelItem_
 
-toplevelItem_ :: ToplevelItem_ -> CTA [I.ToplevelItem]
+toplevelItem_ :: Monad m => ToplevelItem_ -> CTA m [I.ToplevelItem]
 toplevelItem_ (ToplevelQuery qe) =
   singleton . I.ToplevelQuery <$> liftCTA (queryExpr qe)
 toplevelItem_ (ToplevelImport filespec impspec) =
@@ -134,10 +134,10 @@ data BigValue =
   ModuleBV I.ModuleExpr
   | SignatureBV I.ModuleType
 
-inferBigExpr :: BigExpr -> TA BigValue
+inferBigExpr :: Monad m => BigExpr -> TA m BigValue
 inferBigExpr = toastPositioned inferBigExpr_
 
-inferBigExpr_ :: BigExpr_ -> TA BigValue
+inferBigExpr_ :: Monad m => BigExpr_ -> TA m BigValue
 inferBigExpr_ (LiteralBE mk m) =
   let f = case mk of
         ModuleMK -> I.ModuleStruct
@@ -178,14 +178,14 @@ inferBigExpr_ (LocalBE m beMod beSig) = do
 inferBigExpr_ (AssumeBE be) =
   (ModuleBV . I.ModuleAssume) <$> expectBigExprSignature be
 
-expectBigExprModule :: BigExpr -> TA I.ModuleExpr
+expectBigExprModule :: Monad m => BigExpr -> TA m I.ModuleExpr
 expectBigExprModule be = do
   bv <- inferBigExpr be
   case bv of
     ModuleBV me -> return me
     SignatureBV sig -> toastNear be $ throwToastError $ "toasting expected a module but got a signature" ++ show sig
 
-expectBigExprSignature :: BigExpr -> TA I.ModuleType
+expectBigExprSignature :: Monad m => BigExpr -> TA m I.ModuleType
 expectBigExprSignature be = do
   bv <- inferBigExpr be
   case bv of
@@ -199,7 +199,7 @@ expectBigExprSignature be = do
 --   toplevel ^foo "foo.ism"
 --   module type T = ^foo:T
 --   module M = ^foo:N
-toplevelImport :: ImportFileSpec -> [ImportSpecItem] -> CTA [I.ToplevelItem]
+toplevelImport :: Monad m => ImportFileSpec -> [ImportSpecItem] -> CTA m [I.ToplevelItem]
 toplevelImport filespec importSpecs = do
   let fp = importFileSpecPath filespec
   a <- withTopRefForC_ fp $ \a -> do
@@ -209,7 +209,7 @@ toplevelImport filespec importSpecs = do
   its <- mapM (toplevelImportSpec a) importSpecs
   return its
 
-toplevelImportSpec :: I.TopRef -> ImportSpecItem -> CTA I.ToplevelItem
+toplevelImportSpec :: Monad m => I.TopRef -> ImportSpecItem -> CTA m I.ToplevelItem
 toplevelImportSpec it (ImportModuleSpecItem modId fld) = do
   ident' <- liftCTA (modIdentifier modId)
   let p = I.ProjP (I.TopRefP it) fld
@@ -229,57 +229,59 @@ toplevelImportSpec it (ImportModuleTypeSpecItem sigId) = do
   addSignatureVarC sigId sigId'
   return $ I.ToplevelModuleType sigId' (I.IdentMT $ I.SigTopRefP it sigId)
 
-modIdentifier :: Ident -> TA I.Identifier
+modIdentifier :: Monad m => Ident -> TA m I.Identifier
 modIdentifier s = return $ U.s2n s
 
-sigIdentifier :: Ident -> TA I.SigIdentifier
+sigIdentifier :: Monad m => Ident -> TA m I.SigIdentifier
 sigIdentifier s = return $ U.s2n s
 
-valueField :: Ident -> TA I.Field
+valueField :: Monad m => Ident -> TA m I.Field
 valueField ident = return ident
 
-moduleField :: Ident -> TA (I.Field, I.Identifier)
+moduleField :: Monad m => Ident -> TA m (I.Field, I.Identifier)
 moduleField ident = do
   ident' <- modIdentifier ident
   let f = ident
   return (f, ident')
 
-typeField :: Ident -> TA (I.Field, I.TyConName)
+typeField :: Monad m => Ident -> TA m (I.Field, I.TyConName)
 typeField ident = return (ident, U.s2n ident)
 
 
-whereClause :: WhereClause -> TA I.WhereClause
+whereClause :: Monad m => WhereClause -> TA m I.WhereClause
 whereClause (WhereTypeCls con rhs) = do
   p <- whereClausePath (unCon con)
   rhs' <- type' rhs
   return $ I.WhereTypeCls p rhs'
 
-whereClausePath :: QualifiedIdent -> TA (U.Bind I.Identifier I.TypePath)
+whereClausePath :: Monad m => QualifiedIdent -> TA m (U.Bind I.Identifier I.TypePath)
 whereClausePath (QId pfx fld) =
   let
     modId =  U.s2n "<mod>"
     path = I.headSkelFormToPath (Right modId, pfx)
   in return $ U.bind modId $ I.TypePath path fld
 
-functorArguments :: [(Ident, BigExpr)]
-                    -> (Telescope (I.FunctorArgument I.ModuleType) -> TA a)
-                    -> TA a
+functorArguments :: Monad m
+                    => [(Ident, BigExpr)]
+                    -> (Telescope (I.FunctorArgument I.ModuleType) -> TA m a)
+                    -> TA m a
 functorArguments [] kont = kont NilT
 functorArguments (arg:args) kont =
   functorArgument arg $ \arg' ->
   functorArguments args $ \args' ->
   kont (ConsT $ U.rebind arg' args')
 
-functorArgument :: (Ident, BigExpr)
-                   -> (I.FunctorArgument I.ModuleType -> TA a)
-                   -> TA a
+functorArgument :: Monad m
+                   => (Ident, BigExpr)
+                   -> (I.FunctorArgument I.ModuleType -> TA m a)
+                   -> TA m a
 functorArgument (ident, be) kont = do
   ident' <- modIdentifier ident
   mt' <- expectBigExprSignature be
   addModuleVar ident ident' $ kont $ I.FunctorArgument ident' (U.embed mt')
                        
 
-signature :: Signature -> TA I.Signature
+signature :: Monad m => Signature -> TA m I.Signature
 signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
   where
     go dcl kont =
@@ -314,14 +316,14 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
          rest <- kont
          return $ I.SubmoduleSig f (U.bind (ident', U.embed mt') rest)
 
-module' :: Module -> CTA I.Module 
+module' :: Monad m => Module -> CTA m I.Module 
 module' (Module decls) =
   (I.Module . concat) <$> mapM declC decls
   where
-    declC :: Decl -> CTA [I.Decl]
+    declC :: Monad m => Decl -> CTA m [I.Decl]
     declC d = CTA (decl d)
 
-decl :: Decl -> ([I.Decl] -> TA res) -> TA res
+decl :: Monad m => Decl -> ([I.Decl] -> TA m res) -> TA m res
 decl d kont =
   case d of
    ValueDecl ident vd -> do
@@ -355,46 +357,46 @@ decl d kont =
      (f, ident') <- moduleField ident
      addModuleVar ident ident' $ kont [I.SampleModuleDefn f me']
 
-typeSigDecl :: TypeSigDecl -> TA I.TypeSigDecl
+typeSigDecl :: Monad m => TypeSigDecl -> TA m I.TypeSigDecl
 typeSigDecl (AbstractTypeSigDecl k) = I.AbstractTypeSigDecl <$> kind k
 typeSigDecl (ManifestTypeSigDecl td) = do
   (td', _) <- typeDefn td
   return (I.ManifestTypeSigDecl td')
 typeSigDecl (AliasTypeSigDecl alias) = I.AliasTypeSigDecl <$> typeAlias alias
 
-typeAlias :: TypeAlias -> TA I.TypeAlias
+typeAlias :: Monad m => TypeAlias -> TA m I.TypeAlias
 typeAlias (TypeAlias tvks ty) = do
   tvks' <- forM tvks $ \(tv, k) -> (,) <$> tyvar tv <*> kind k 
   ty' <- type' ty
   return $ I.ManifestTypeAlias (U.bind tvks' ty')
 
-typeDefn :: TypeDefn -> TA (I.TypeDefn, [Ident])
+typeDefn :: Monad m => TypeDefn -> TA m (I.TypeDefn, [Ident])
 typeDefn (DataTD dD) = do
   (dd, idents) <- dataDefn dD
   return (I.DataDefn dd, idents)
 typeDefn (EnumTD n) = return (I.EnumDefn n, [])
 
-dataDefn :: DataDefn -> TA (I.DataDefn, [Ident])
+dataDefn :: Monad m => DataDefn -> TA m (I.DataDefn, [Ident])
 dataDefn (DataDefn tvks constrs) = do
   tvks' <- forM tvks $ \(tv, k) -> (,) <$> tyvar tv <*> kind k
   constrs' <- mapM constructorDef constrs
   let idents = map (\(ConstructorDef ident _) -> ident) constrs
   return (U.bind tvks' constrs', idents)
 
-constructorDef :: ConstructorDef -> TA I.ConstructorDef
+constructorDef :: Monad m => ConstructorDef -> TA m I.ConstructorDef
 constructorDef (ConstructorDef ident args) = do
   let c = U.string2Name ident
   args' <- mapM type' args
   return $ I.ConstructorDef c args'
 
-kind :: Kind -> TA I.Kind
+kind :: Monad m => Kind -> TA m I.Kind
 kind KType = return I.KType
 kind (KArr k1 k2) = I.KArr <$> kind k1 <*> kind k2
 
-tyvar :: TyVar -> TA I.TyVar
+tyvar :: Monad m => TyVar -> TA m I.TyVar
 tyvar (TyVar ident) = return $ U.s2n ident
 
-type' :: Type -> TA I.Type
+type' :: Monad m => Type -> TA m I.Type
 type' (TForall tv k ty) = do
   tv' <- tyvar tv
   k' <- kind k
@@ -411,13 +413,13 @@ type' (TPhrase atms) = do
                 (TC (InfixN c)) -> [(c, Fixity AssocNone 5)]
                 _ -> [])
 
-typeConstructor :: Con -> TA I.TypeConstructor
+typeConstructor :: Monad m => Con -> TA m I.TypeConstructor
 typeConstructor (Con (QId [] f)) = return $ I.TCLocal $ U.s2n f
 typeConstructor (Con (QId (h:ps) f)) = return $ I.TCGlobal (I.TypePath path f)
   where
     path = I.headSkelFormToPath (Right (U.s2n h),ps)
 
-typeAtom :: TypeAtom -> TA I.Type
+typeAtom :: Monad m => TypeAtom -> TA m I.Type
 typeAtom (TC (PrefixN c)) = I.TC <$> typeConstructor c
 typeAtom (TC (InfixN _)) = fail "ToAST.typeAtom InfixN can't happen"
 typeAtom (TV tv) = I.TV <$> tyvar tv
@@ -430,13 +432,13 @@ typeAtom (TEnclosed ty mk) = do
      k' <- kind k
      return $ I.TAnn ty' k'
 
-row :: Row -> TA I.Row
+row :: Monad m => Row -> TA m I.Row
 row (Row lts) = I.Row <$> mapM labeledType lts
   where
     labeledType (l, ty) = (,) <$> pure (label l) <*> type' ty
     label = I.Label . labelName
 
-valueDecl :: ValueDecl -> TA I.ValueDecl
+valueDecl :: Monad m => ValueDecl -> TA m I.ValueDecl
 valueDecl (FunDecl e) = I.FunDecl <$> function e
 valueDecl (ValDecl mstoch e) = do
   stoch <- contextualStochasticity mstoch
@@ -448,19 +450,19 @@ valueDecl (SigDecl mstoch ty) = do
   stoch <- contextualStochasticity mstoch
   I.SigDecl stoch <$> type' ty
 
-queryExpr :: QueryExpr -> TA I.QueryExpr
+queryExpr :: Monad m => QueryExpr -> TA m I.QueryExpr
 queryExpr (GenSamplesQE qid params) =
   return $ I.GenSamplesQE (qualifiedIdPath qid) params
 
 
-annot :: Maybe Type -> TA I.Annot
+annot :: Monad m => Maybe Type -> TA m I.Annot
 annot Nothing = return $ I.Annot Nothing
 annot (Just ty) = (I.Annot . Just) <$> type' ty
 
-function :: Expr -> TA I.Function
+function :: Monad m => Expr -> TA m I.Function
 function = fmap (I.Function . Left) . expr
 
-expr :: Expr -> TA I.Expr
+expr :: Monad m => Expr -> TA m I.Expr
 expr (Lam ident mty e) = do
   let v = U.s2n ident
   ann <- annot mty
@@ -487,21 +489,21 @@ expr (Phrase atms) = do
                 (C (InfixN (Con qid))) -> [(qid, Fixity AssocNone 5)]
                 _ -> [])
 
-valueConstructor :: Con -> TA I.ValueConstructor
+valueConstructor :: Monad m => Con -> TA m I.ValueConstructor
 valueConstructor con = do
   let qid = unCon con
   return $ qualifiedIdValueConstructor qid
    
-unqualifiedVar :: Ident -> TA I.Var
+unqualifiedVar :: Monad m => Ident -> TA m I.Var
 unqualifiedVar ident = return $ U.s2n ident
 
-variableExpr :: Var -> TA I.Expr
+variableExpr :: Monad m => Var -> TA m I.Expr
 variableExpr (Var qid) =
   case qid of
    (QId [] ident) -> I.V <$> unqualifiedVar ident
    _ -> return $ I.Q $ qualifiedIdQVar qid
 
-exprAtom :: ExprAtom -> TA I.Expr
+exprAtom :: Monad m => ExprAtom -> TA m I.Expr
 exprAtom (V (PrefixN v)) = variableExpr v
 exprAtom (C (PrefixN c)) = I.C <$> valueConstructor c
 exprAtom (V (InfixN _)) = fail "ToAST.exprAtom V InfixN can't happen"
@@ -521,10 +523,10 @@ exprAtom (Record les) = do
 exprAtom (L lit) = I.L <$> literal lit
 exprAtom (Return eatm) = I.Return <$> exprAtom eatm
 
-literal :: Literal -> TA Literal
+literal :: Monad m => Literal -> TA m Literal
 literal = return
 
-clause :: Clause -> TA I.Clause
+clause :: Monad m => Clause -> TA m I.Clause
 clause (Clause pat e) = 
   runCTA (pattern pat) $ \pat' -> do
     e' <- expr e
@@ -544,7 +546,7 @@ completePP :: PartialPattern -> I.Pattern
 completePP (CompletePP pat) = pat
 completePP (PartialPP patf) = patf []
 
-patternAtom :: PatternAtom -> CTA PartialPattern
+patternAtom :: Monad m => PatternAtom -> CTA m PartialPattern
 patternAtom (VarP ident) = (CompletePP . I.VarP) <$> liftCTA (unqualifiedVar ident)
 patternAtom (ConP ncon) = do
   let con = dropNotation ncon
@@ -562,7 +564,7 @@ patternAtom (RecordP lps) = do
   return (CompletePP $ I.RecordP lps')
 patternAtom (EnclosedP p) = CompletePP <$> pattern p
 
-pattern :: Pattern -> CTA I.Pattern
+pattern :: Monad m => Pattern -> CTA m I.Pattern
 pattern (PhraseP atms) = do
   ops <- use declaredFixity
   let
@@ -577,7 +579,7 @@ pattern (PhraseP atms) = do
                 _ -> [])
 
 
-bindings :: [Binding] -> (I.Bindings -> TA a) -> TA a
+bindings :: Monad m => [Binding] -> (I.Bindings -> TA m a) -> TA m a
 bindings bnds_ kont = go bnds_ (kont . I.Bindings)
   where
     go [] k = k NilT
@@ -588,7 +590,7 @@ bindings bnds_ kont = go bnds_ (kont . I.Bindings)
     prependBindings [] ys = ys
     prependBindings (x:xs) ys = ConsT $ U.rebind x (prependBindings xs ys)
 
-binding :: Binding -> ([I.Binding] -> TA a) -> TA a
+binding :: Monad m => Binding -> ([I.Binding] -> TA m a) -> TA m a
 binding (SigB _ident _ty) kont = kont []
 binding (ValB ident e) kont = do
   let v = U.s2n ident
@@ -604,7 +606,7 @@ binding (TabB tabD) kont =
   in tabulatedDecl tabD mkB kont
 
 
-tabulatedDecl :: TabulatedDecl -> (Ident -> I.TabulatedFun -> b) -> ([b] -> TA a) -> TA a
+tabulatedDecl :: Monad m => TabulatedDecl -> (Ident -> I.TabulatedFun -> b) -> ([b] -> TA m a) -> TA m a
 tabulatedDecl (TabulatedDecl idtys tfs) mkB kont = do
   -- this one is a bit tricky because the surface syntax allows
   -- multiple tabulated functions to be defined within a single "for"
@@ -619,18 +621,18 @@ tabulatedDecl (TabulatedDecl idtys tfs) mkB kont = do
         unzip $ map (\(name, tf) -> (name, mkB name tf)) namedtfs'
   kont bnds
 
-tabulatedFun :: [I.AnnVar] -> TabulatedFun -> TA (Ident, I.TabulatedFun)
+tabulatedFun :: Monad m => [I.AnnVar] -> TabulatedFun -> TA m (Ident, I.TabulatedFun)
 tabulatedFun annvs (TabulatedFun ident ts) = do
   ts' <- tabSample ts
   return (ident, I.TabulatedFun $ U.bind annvs ts')
 
-tabSample :: TabSample -> TA I.TabSample
+tabSample :: Monad m => TabSample -> TA m I.TabSample
 tabSample (TabSample selectors e) = do
   selectors' <- traverse tabSelector selectors
   e' <- expr e
   return $ I.TabSample selectors' e' (I.Annot Nothing)
 
-tabSelector :: TabSelector -> TA I.TabSelector
+tabSelector :: Monad m => TabSelector -> TA m I.TabSelector
 tabSelector (TabIndex ident) = return (I.TabIndex $ U.s2n ident)
 
 ---------------------------------------- Infix parsing
@@ -643,7 +645,7 @@ leftWithRightVals =
   M.mergeWithKey (\_k _x y -> Just y) id (const M.empty)
 
 
-instance FixityParseable TypeAtom Con TA I.Type where
+instance Monad m => FixityParseable TypeAtom Con (TA m) I.Type where
   term = do
     t <- P.tokenPrim show (\pos _tok _toks -> pos) notInfix
     lift $ typeAtom t
@@ -660,7 +662,7 @@ instance FixityParseable TypeAtom Con TA I.Type where
     tOp <- lift (I.TC <$> typeConstructor con)
     return $ \t1 t2 -> I.tApps tOp [t1, t2]
 
-instance FixityParseable ExprAtom QualifiedIdent TA I.Expr where
+instance Monad m => FixityParseable ExprAtom QualifiedIdent (TA m) I.Expr where
   term = do
     ctx <- ask
     t <- P.tokenPrim show (\pos _tok _toks -> pos) (notInfix ctx)
@@ -683,7 +685,7 @@ instance FixityParseable ExprAtom QualifiedIdent TA I.Expr where
     v <- lift $ m
     return $ \e1 e2 -> I.App (I.App v e1) e2
 
-instance FixityParseable PatternAtom Con CTA PartialPattern where
+instance Monad m => FixityParseable PatternAtom Con (CTA m) PartialPattern where
    term = do
      ctx <- get
      t <- P.tokenPrim show (\pos _tok _toks -> pos) (notInfix ctx)
