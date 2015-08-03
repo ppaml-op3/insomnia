@@ -10,10 +10,21 @@ data SourcePos = SourcePos {
   _sourcePosName :: String
   , _sourcePosLine :: !Int
   , _sourcePosColumn :: !Int
-  } deriving (Show)
+  }
 
 data Positioned a = Positioned !SourcePos !a
-                  deriving (Show)
+
+instance Functor Positioned where
+  fmap f (Positioned p x) = Positioned p $ f x
+
+instance Show a => Show (Positioned a) where
+  showsPrec _ (Positioned p x) = prettySourcePos p . showsPrec 10 x
+  
+prettySourcePos :: SourcePos -> ShowS
+prettySourcePos (SourcePos f l c) =
+  showString f . showString ":"
+  . shows l . showString ":"
+  . shows c . showString ":"
 
 makeLenses ''SourcePos
 

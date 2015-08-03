@@ -83,7 +83,6 @@ data Ctx = Ctx {_declaredFixity :: M.Map QualifiedIdent Fixity
                , _bigIdentSort :: M.Map Ident BigIdentSort
                , _currentNearbyPosition :: First SourcePos
                }
-         deriving (Show)
 
 $(makeLenses ''Ctx)
 
@@ -111,7 +110,7 @@ data ToastError =
 instance Show (ToastError) where
   showsPrec p (ToastErrorMsg msg (First Nothing)) = showsPrec p msg
   showsPrec _ (ToastErrorMsg msg (First (Just posn))) =
-    showsPrec 0 posn . showString ": " . showsPrec 0 msg
+    prettySourcePos posn . showsPrec 0 msg
 
 newtype ImportFileError = ImportFileError { importFileErrorMsg :: String }
 
