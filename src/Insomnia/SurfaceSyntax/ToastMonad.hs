@@ -171,8 +171,8 @@ feedTA comp onError onImport ctx =
             $ runExceptP 
             $ Pipes.Lift.evalStateP mempty
             $ Pipes.Lift.runReaderP ctx comp
-    handler comp = do
-      x <- comp
+    handler c = do
+      x <- c
       case x of
         Right ans -> return ans
         Left err -> onError err

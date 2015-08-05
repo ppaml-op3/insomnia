@@ -16,7 +16,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.Stochasticity
 import Insomnia.Common.ModuleKind
-import Insomnia.Identifier (TopRef, Path(..), Field)
+import Insomnia.Identifier (Path(..), Field)
 import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
                        TyVar, Type(..),
                        freshUVarT,

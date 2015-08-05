@@ -5,14 +5,12 @@ module Insomnia.SurfaceSyntax.ToAST where
 
 import Prelude hiding (foldr)
 import Control.Applicative (Applicative (..), (<$>))
-import Control.Lens
+import Control.Lens hiding (cons)
 import Control.Monad (forM)
 import Control.Monad.Trans.Class (MonadTrans(..))
-import Control.Monad.State.Class (MonadState (..))
 
 import Data.Foldable (Foldable(..))
 import qualified Data.Map as M
-import Data.Monoid (Monoid(..))
 
 import qualified Text.Parsec.Prim as P
 
@@ -34,7 +32,6 @@ import qualified Insomnia.Query       as I
 import qualified Insomnia.Toplevel    as I
 
 import Insomnia.SurfaceSyntax.Syntax
-import Insomnia.SurfaceSyntax.SourcePos (Positioned, positioned)
 import Insomnia.SurfaceSyntax.FixityParser
 
 import Insomnia.SurfaceSyntax.ToastMonad
@@ -299,7 +296,6 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
          updateWithFixity (QId [] ident) fixity kont
        TypeSig ident tsd -> do
          (f, tycon) <- typeField ident
-         let con = Con $ QId [] ident
          tsd' <- typeSigDecl tsd
          rest <- kont
          return $ I.TypeSig f (U.bind (tycon, U.embed tsd') rest)
@@ -324,13 +320,11 @@ decl d =
      return [I.ImportDecl $  qualifiedIdPath qid]
    TypeDefn ident td -> do
      (f, _) <- liftCTA $ typeField ident
-     let con = Con $ QId [] ident
-     (td', idents) <- liftCTA $ typeDefn td
+     (td', _idents) <- liftCTA $ typeDefn td
      return [I.TypeDefn f td']
    TypeAliasDefn ident alias -> do
      (f, _) <- liftCTA $ typeField ident
      alias' <- liftCTA $ typeAlias alias
-     let con = Con $ QId [] ident
      return [I.TypeAliasDefn f alias']
    FixityDecl ident fixity -> do
      updateWithFixityC (QId [] ident) fixity
@@ -613,8 +607,7 @@ tabulatedDecl (TabulatedDecl idtys tfs) mkB = do
     mty' <- liftCTA $ traverse type' mty
     return (v, U.embed $ I.Annot mty')
   namedtfs' <- liftCTA $ traverse (tabulatedFun annvs) tfs
-  let (names, bnds) =
-        unzip $ map (\(name, tf) -> (name, mkB name tf)) namedtfs'
+  let bnds = map (\(name, tf) -> mkB name tf) namedtfs'
   return bnds
 
 tabulatedFun :: Monad m => [I.AnnVar] -> TabulatedFun -> TA m (Ident, I.TabulatedFun)
@@ -648,7 +641,7 @@ instance Monad m => FixityParseable TypeAtom Con (TA m) I.Type where
     where
       notInfix t =
         case t of
-         TC (InfixN con) -> Nothing
+         TC (InfixN _con) -> Nothing
          _ -> Just t 
   juxt = pure I.TApp
   infx con = do
@@ -723,6 +716,7 @@ disfix atms precs = do
 
 ---------------------------------------- Examples/Tests
 
+runInfixResolutionTest :: TA Identity a -> Ctx -> a
 runInfixResolutionTest comp ctx = runIdentity $ feedTA comp onErr handler ctx
   where
     onErr = fail . show

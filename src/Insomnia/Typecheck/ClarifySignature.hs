@@ -23,12 +23,13 @@ import Insomnia.Typecheck.WhnfModuleType (whnfModuleType)
 
 
 -- | Clarify a signature by making its abstract types be manifestly equal to
--- the projections from the corresponding fields of the given module path.
--- But note that for /model/-types we do not do this: a model signature does not refer to a
--- module until it has been sampled.
+-- the projections from the corresponding fields of the given module
+-- path.  But note that for /model/-types and functor signatures we do
+-- not do this: a model signature does not refer to a module until it
+-- has been sampled, nor a functor until it is applied.
 clarifySignatureNF :: Path -> ModuleTypeNF -> TC ModuleTypeNF
 clarifySignatureNF pmod (SigMTNF s) = SigMTNF <$> clarifySignatureV pmod s
-clarifySignatureNF _pmod fn@(FunMTNF bnd) = return fn
+clarifySignatureNF _pmod fn@(FunMTNF {}) = return fn
 
 clarifySignatureV :: Path -> SigV Signature -> TC (SigV Signature)
 clarifySignatureV pmod (SigV msig ModuleMK) = do

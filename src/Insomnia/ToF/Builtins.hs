@@ -32,8 +32,8 @@ looksLikeBuiltin (Just p) (SigMT (SigV sig ModuleMK)) =
 looksLikeBuiltin _ _ = Nothing
 
 looksLikeBuiltinSig :: Path -> Signature -> Maybe [(F.Field, BuiltinsModuleBinding)]
-looksLikeBuiltinSig p UnitSig = return []
-looksLikeBuiltinSig p (TypeSig {}) = mzero
+looksLikeBuiltinSig _p UnitSig = return []
+looksLikeBuiltinSig _p (TypeSig {}) = mzero
 looksLikeBuiltinSig p (SubmoduleSig f bnd) = do
   let ((_ident, U.unembed -> modTy), rest) = UU.unsafeUnbind bnd
   subMod <- looksLikeBuiltin (Just $ ProjP p f) modTy
@@ -56,6 +56,7 @@ builtinNameFromQVar (QVar p f) =
   where
     p2s (IdP nm) = U.name2String nm
     p2s (ProjP p' f') = p2s p' ++ "." ++ f'
+    p2s (TopRefP {}) = error "did not expect builtinNameFromQVar to be called on a topref qualified-identifier"
 
 makeBuiltinsModule :: ToF m
                       => [(F.Field, BuiltinsModuleBinding)]

@@ -495,11 +495,11 @@ instance Pretty ModelExpr where
 instance Pretty ToplevelSummary where
   pp UnitTS = mempty
   pp (ModuleTS fld bnd) =
-    let ((ident, U.unembed -> modTy), rest) = UU.unsafeUnbind bnd
+    let ((_ident, U.unembed -> modTy), rest) = UU.unsafeUnbind bnd
     in fsep ["module", pp fld, classify , pp modTy]
        $$ pp rest
   pp (SignatureTS fld bnd) =
-    let ((ident, U.unembed -> modTy), rest) = UU.unsafeUnbind bnd
+    let ((_ident, U.unembed -> modTy), rest) = UU.unsafeUnbind bnd
     in fsep ["module", "type", pp fld, "=", pp modTy]
        $$ pp rest
 

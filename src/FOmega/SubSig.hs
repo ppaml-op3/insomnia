@@ -87,7 +87,8 @@ sigSemTerm a = do
   return $ Record [(FSig, coercionTerm $ IdCoer t)]
 
 termSubtyping :: LFresh m => Type -> Type -> m Coercion
-termSubtyping lhs rhs = do
+termSubtyping lhs _rhs = do
+  -- TODO:
   --  eq <- tyEquiv lhs rhs KType
   -- guard eq
   return $ IdCoer lhs
@@ -99,7 +100,8 @@ sigSubtyping lhs rhs = do
    (ValSem tl, ValSem tr) -> do
      f <- termSubtyping tl tr
      coercion lhsTy $ \x -> return $ valSemTerm (applyCoercion f (x `Proj` FVal))
-   (TypeSem tl kl, TypeSem tr kr) -> do
+   (TypeSem _tl _kl, TypeSem _tr _kr) -> do
+     -- TODO:
      -- eq <- tyEquiv tl tr kl
      -- guard eq
      return $ IdCoer lhsTy
@@ -179,10 +181,10 @@ functorSubtyping bndl bndr =
       withFreshNames (argNames :: [String]) $ \argYs -> 
       let
         -- χ = χbody (f [τs] (χ1 y1) ... (χn yn))
-        coercion =
+        chi =
           applyCoercion coerBody ((inFunc `pApps` taus) `apps` (zipWith applyCoercion coerArgs $ map V argYs))
         -- Λ α's . λ ys : Σ's . χ
-        resultFn = pLams' tvksr $ lams (zip argYs rhsArgTys) coercion
+        resultFn = pLams' tvksr $ lams (zip argYs rhsArgTys) chi
        in return resultFn
           
 -- |  ⊢ model Ξ ≤ model Ξ' ⇝ f'

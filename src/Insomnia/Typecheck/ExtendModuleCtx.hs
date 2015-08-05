@@ -47,13 +47,13 @@ extendModuleCtxNF pmod mtnf =
 -- | Add the datatypes of the given toplevel to the context with their
 -- names selfified with respect to the given topref.
 extendToplevelDeclCtx :: TopRef -> ToplevelSummary -> TC a -> TC a
-extendToplevelDeclCtx tr UnitTS kont = kont
+extendToplevelDeclCtx _tr UnitTS kont = kont
 extendToplevelDeclCtx tr (ModuleTS fld bnd) kont =
-  U.lunbind bnd $ \((modIdent, U.unembed -> mtnf), rest) ->
+  U.lunbind bnd $ \((_modIdent, U.unembed -> mtnf), rest) ->
   extendModuleCtxNF (ProjP (TopRefP tr) fld) mtnf
   . extendToplevelDeclCtx tr rest
   $ kont
-extendToplevelDeclCtx tr (SignatureTS fld bnd) kont =
+extendToplevelDeclCtx tr (SignatureTS _fld bnd) kont =
   U.lunbind bnd $ \(_sig, rest) ->
   extendToplevelDeclCtx tr rest kont
 

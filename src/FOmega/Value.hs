@@ -143,8 +143,8 @@ instance Pretty Closure where
   pp (PrimitiveClz p) = pp p
 
 instance Pretty PrimitiveClosure where
-  pp (PrimitiveClosure h n sp) =
-    doubleAngles $ fsep $ [pp h] ++ appEndo (ppSpine sp) (replicate n "_")
+  pp (PrimitiveClosure h n sp_) =
+    doubleAngles $ fsep $ [pp h] ++ appEndo (ppSpine sp_) (replicate n "_")
     where
       doubleAngles p = "≪" <> p <> "≫"
       ppCons p = Endo ((:) p)

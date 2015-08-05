@@ -14,7 +14,7 @@ import Data.Monoid ((<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
-import Insomnia.Types (Nat, TypePath(..), TypeConstructor(..),
+import Insomnia.Types (Nat, TypeConstructor(..),
                        Kind(..), TyVar, kArrs)
 import Insomnia.TypeDefn
 
@@ -66,12 +66,12 @@ extendTypeDefnCtx dcon td kont = do
     $ kont
 
 extendTypeAliasCtx :: TypeConstructor -> TypeAlias -> TC a -> TC a
-extendTypeAliasCtx dcon alias@(ManifestTypeAlias bnd) comp = do
+extendTypeAliasCtx dcon alias@(ManifestTypeAlias {}) comp = do
   (alias', aliasInfo) <- checkTypeAlias alias
   env <- ask
   extendDConCtx dcon (AliasTyCon aliasInfo $ TypeAliasClosure env alias')
     $ comp
-extendTypeAliasCtx dcon alias@(DataCopyTypeAlias tp defn) comp = do
+extendTypeAliasCtx dcon alias@(DataCopyTypeAlias _tp defn) comp = do
   (alias', aliasInfo) <- checkTypeAlias alias
   -- if this alias is a datatype copy, also add the constructors to
   -- the env, o.w. nothing

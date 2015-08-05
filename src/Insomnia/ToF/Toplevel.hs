@@ -78,7 +78,7 @@ toplevelModule ident me kont = do
 
 toplevelModuleType :: ToF m => SigIdentifier -> ModuleType -> (TopSummary -> m ans) -> m ans
 toplevelModuleType sigIdent modTy kont = do
-  absSig@(F.AbstractSig bnd) <- moduleType modTy
+  absSig <- moduleType modTy
   absTy <- F.embedAbstractSig absSig
   let semSig = F.SigSem absSig
   let nm = U.name2String sigIdent

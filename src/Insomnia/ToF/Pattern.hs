@@ -93,7 +93,7 @@ optimizeJob :: Job -> Job
 optimizeJob j =
   case j of
    FailJ {} -> j
-   TryTaskJ (SplitTk v1 co1 io1 tasks1) (TryTaskJ (SplitTk v2 co2 io2 tasks2) jrest)
+   TryTaskJ (SplitTk v1 co1 io1 tasks1) (TryTaskJ (SplitTk v2 _co2 io2 tasks2) jrest)
      | v1 `U.aeq` v2, io1 `U.aeq` io2, Just jointTask <- meshSplitTasks v1 co1 io1 (tasks1 ++ tasks2) ->
          optimizeJob (TryTaskJ jointTask jrest)
    TryTaskJ j1 jrest -> TryTaskJ j1 (optimizeJob jrest)

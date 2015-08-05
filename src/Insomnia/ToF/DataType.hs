@@ -41,7 +41,7 @@ datatypeDefinition f selfTc bnd kont =
             let fcon = F.FCon (U.name2String cname)
             return ((cname, (dataTyModV, fcon)), (fcon, tDoms'))
         let
-          dtsem = let tveks = map (\(tv,k) -> (tv, U.embed k)) tvks'
+          dtsem = let tveks = map (\(tv,k_) -> (tv, U.embed k_)) tvks'
                   in F.DataTypeSem (U.bind tveks constructorFields)
           dataSem = F.DataSem dtv dtsem k
           conEnv  = M.fromList conVs
@@ -90,7 +90,6 @@ buildDatatypeModule dtv dtsem@(F.DataTypeSem bnd) k = do
     return $ F.Record injectors
   let injections = U.subst dtv fixPtTy injections_
   projection <- withFreshName "γ" $ \gamma ->
-    U.lunbind bnd $ \(tveks, constructorFields) ->
     withFreshName "x" $ \x -> do
       unrollCtx <- withFreshName "ε" $ \eps ->
         return $ U.bind eps (F.TV gamma `F.TApp` F.TV eps)

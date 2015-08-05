@@ -243,8 +243,8 @@ instUnconstrained klass = do
 represent :: Monad m => UVar w u -> UnificationT w u m (Rep (UVar w u))
 represent u = UnificationT $ do
   eqc <- use equivalenceClasses
-  let r = representative' u eqc
-  case r of
+  let r_ = representative' u eqc
+  case r_ of
    Just r -> return r
    Nothing -> do
      let r = Rep u
@@ -369,7 +369,7 @@ unite' x y eqs =
     -- go :: Ord b => b -> a -> b -> EquivalenceClass a
     go canonical other =
       let others = representedBy other eqs
-      in eqs & equivReps %~ (appEndo $ mconcat $ map (\y -> Endo (M.insert y canonical)) $ S.toList others)
+      in eqs & equivReps %~ (appEndo $ mconcat $ map (\w -> Endo (M.insert w canonical)) $ S.toList others)
          & equivSiblings %~ (M.insert canonical (S.union (representedBy canonical eqs) others)
                              . M.delete other)
 

@@ -6,8 +6,8 @@
 -- 2007. (2011).
 module Insomnia.Typecheck.Polymorphism where
 
-import Insomnia.Expr
+import Insomnia.Expr ()
 
-import Insomnia.Typecheck.Env
+import Insomnia.Typecheck.Env ()
 
 

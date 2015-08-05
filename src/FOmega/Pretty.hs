@@ -75,8 +75,8 @@ withLowestPrec :: PM Doc -> PM Doc
 withLowestPrec = withPrec 0 AssocNone . Left
 
 ppExists :: ExistPack -> PM Doc
-ppExists bnd =
-  let (vks, pbody) = ppExists' bnd
+ppExists bnd_ =
+  let (vks, pbody) = ppExists' bnd_
   in precParens 1
      $ fsep ([onUnicode "∃" "exist"]
              ++ punctuate "," vks

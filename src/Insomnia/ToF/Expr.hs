@@ -1,7 +1,7 @@
 {-# LANGUAGE ViewPatterns, FlexibleContexts #-}
 module Insomnia.ToF.Expr where
 
-import Control.Lens
+import Control.Lens hiding (indices)
 import Control.Monad.Reader
 import qualified Data.Map as M
 
@@ -102,9 +102,9 @@ letBinding :: ToF m
                 -> m F.Term
 letBinding bnding kont =
   case bnding of
-   ValB (x, U.unembed -> ann) (U.unembed -> e) ->
+   ValB (x, _ann) (U.unembed -> e) ->
      letSimple F.Let x e kont
-   SampleB (x, U.unembed -> ann) (U.unembed -> e) -> 
+   SampleB (x, _ann) (U.unembed -> e) ->
      letSimple F.LetSample x e kont
    TabB x (U.unembed -> tabFun) ->
      letTabFun x tabFun $ \_v' f -> do
@@ -152,7 +152,7 @@ letTabFun v (TabulatedFun bnd) kont =
       let its = zip (map fst indices) (zip is tys)
       withLocalVar v $ \ v' -> do
         recBindings <- tabulatedSampleRec v' its tabSample
-        let body = F.lams (map (\(x,yz) -> yz) its)
+        let body = F.lams (map snd its)
                    $ F.App (F.V v') (F.tuple $ map F.V is)
             sampl = F.LetSample $ U.bind (v', U.embed $ F.V v') (F.Return body)
         kont v' (F.LetSample . U.bind (v', U.embed $ F.LetRec $ U.bind recBindings sampl))
@@ -225,7 +225,7 @@ valueConstructor (VCGlobal (Left _)) =
 -- and apply it to the subject.
 -- (In practice we go ahead and beta reduce)
 instantiationCoercion :: ToF m => InstantiationCoercion -> F.Term -> m F.Term
-instantiationCoercion (InstantiationSynthesisCoercion scheme args _result) subject = do
+instantiationCoercion (InstantiationSynthesisCoercion _scheme args _result) subject = do
 -- notionally, so something like:
 --  (scheme', _) <- type' scheme
 --  x <- U.lfresh $ U.s2n "x"

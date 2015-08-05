@@ -4,7 +4,7 @@
 module Insomnia.Typecheck.Type where
 
 import Control.Lens
-import Control.Monad (zipWithM_, when, forM)
+import Control.Monad (zipWithM_, forM)
 import Control.Monad.Reader.Class (MonadReader(..))
 
 import Data.List (intersperse)
@@ -125,7 +125,7 @@ expandAliasApplication t targs =
           k' <- inferGenerativeType gt
           reconstructApplication (t,k') targs
         AliasTyCon aliasInfo aliasClosure -> do
-          m <- checkAliasInfoArgs dcon aliasInfo targs
+          m <- checkAliasInfoArgs aliasInfo targs
           case m of
            Left (_wantMoreArgs, kt) -> reconstructApplication (t, kt) targs
            Right (tsubArgs, tAppArgs) -> do
@@ -148,9 +148,9 @@ type RequiredArgsCount = Int
 -- split up the arguments into the set that's required by the alias,
 -- and the rest to which the RHS of the alias will be applied.
 -- Also check that the mandatory args are of the correct kind.
-checkAliasInfoArgs :: TypeConstructor -> TypeAliasInfo -> [Type] -> TC (Either (RequiredArgsCount, Kind)
+checkAliasInfoArgs :: TypeAliasInfo -> [Type] -> TC (Either (RequiredArgsCount, Kind)
                                                                         ([Type], [Type]))
-checkAliasInfoArgs dcon (TypeAliasInfo kargs kRHS) targs = do
+checkAliasInfoArgs (TypeAliasInfo kargs kRHS) targs = do
   let
     n = length kargs
   if (length targs < n)

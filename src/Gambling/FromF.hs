@@ -119,7 +119,7 @@ instance Gamble Term where
   gamble (Inj c m _sumTy) = do
     e <- gamble m
     s <- case c of
-     FCon c -> return $ R.QuoteSymbol c
+     FCon c' -> return $ R.QuoteSymbol c'
     return $ gambleCons s e
   gamble (Case subj clauses defaultClause) = do
     subj' <- gamble subj

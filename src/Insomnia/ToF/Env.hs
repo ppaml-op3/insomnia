@@ -16,7 +16,7 @@ module Insomnia.ToF.Env (
   , TermVarProvenance(..)
   , emptyToFEnv
   , ToFM
-  , ToF (..)
+  , ToF
   , runToFM
   , followUserPathAnything
   , Control.Monad.Except.throwError
@@ -105,7 +105,7 @@ followUserPathAnything rootLookup (ProjP path f) = do
       Nothing -> throwError ("unexpected failure in followUserPathAnything: field "
                              ++ show f ++ " not found in " ++ show path)
    _ -> throwError "unexpected failure in followUserPathAnything: not a module record"
-followUserPathAnything rootLookup (TopRefP topref) = do
+followUserPathAnything _rootLookup (TopRefP topref) = do
   m <- view (toplevelEnv . at topref)
   case m of
    Just (sig, x) -> return (sig, F.V x)

@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards, NamedFieldPuns #-}
 module FOmega.Parse where
 
+import Data.Functor.Identity (Identity)
 import Data.Monoid (Monoid(..))
 import Control.Applicative 
 import Data.Text (Text)
@@ -9,9 +10,9 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Text.Parsec hiding ((<|>), many)
 import Text.Parsec.Expr (Assoc(..), Operator(..), buildExpressionParser)
-import Text.Parsec.Text hiding (Parser)
+import Text.Parsec.Text ()
 import qualified Text.Parsec.Token as Tok
-import Text.Parsec.Token (GenLanguageDef(..), GenTokenParser)
+import Text.Parsec.Token (GenLanguageDef(..))
 
 import Insomnia.Common.Literal
 
@@ -19,6 +20,7 @@ import FOmega.Syntax
 
 type Parser = Parsec Text ()
 
+fomegaLang :: GenLanguageDef Text u Identity
 fomegaLang = LanguageDef {
   commentStart = "{-"
   , commentEnd = "-}"

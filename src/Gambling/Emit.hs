@@ -11,7 +11,7 @@ import qualified Control.Monad.State.Lazy as LazySt
 
 import Unbound.Generics.LocallyNameless.LFresh
 import Unbound.Generics.LocallyNameless.Operations (lunbind, unrec, unembed, unrebind)
-import Unbound.Generics.LocallyNameless (Name, name2String)
+import Unbound.Generics.LocallyNameless (Name)
 
 import Insomnia.Common.Literal
 

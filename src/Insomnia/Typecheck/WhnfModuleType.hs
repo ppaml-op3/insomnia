@@ -37,7 +37,7 @@ pathToDig = go Here
   where go d (IdP _dontCare) = d
         go d (ProjP p fldLast) =
           go (There fldLast d) p
-        go d (TopRefP _) =
+        go _d (TopRefP _) =
           error "WhnfModuleType.pathToDig: impossible TopRef at head of 'where type' path"
   
 typePathToDig :: TypePath -> DigType
@@ -214,7 +214,7 @@ projectToplevelModuleTypeField path (ModuleTS fld' bnd) fld =
   let rest' = U.subst modId (ProjP path fld') rest
   in projectToplevelModuleTypeField path rest fld
 projectToplevelModuleTypeField path (SignatureTS fld' bnd) fld =
-  U.lunbind bnd $ \((sigId, U.unembed -> sigMT), rest) ->
+  U.lunbind bnd $ \((_sigId, U.unembed -> sigMT), rest) ->
   if fld == fld'
   then return sigMT
   else projectToplevelModuleTypeField path rest fld

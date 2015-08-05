@@ -271,7 +271,7 @@ declarations modPath mk (d:ds) kont = let
           throwError "internal error: ToF.declarations SampleModuleDecl in a module"
         sampleModuleDefn f me kont1
       TypeAliasDefn f al -> typeAliasDefn mk f al kont1
-      ImportDecl p ->
+      ImportDecl {} ->
         throwError "internal error: ToF.declarations ImportDecl should have been desugared by the Insomnia typechecker"
         {- importDecl p kont1 -}
       TypeDefn f td -> typeDefn f (U.s2n f) td kont1
@@ -298,7 +298,7 @@ typeAliasDefn _mk f (ManifestTypeAlias bnd) kont =
                  mhole)
     local (tyConEnv %~ M.insert tc tsig) $
       kont thisOne
-typeAliasDefn _mk f (DataCopyTypeAlias tp@(TypePath pdefn fdefn) defn) kont = do
+typeAliasDefn _mk f (DataCopyTypeAlias (TypePath pdefn fdefn) defn) kont = do
   -- Add a new name for an existing generative type.  Since the
   -- abstract type variable is already in scope (since it was lifted
   -- out to scope over all the modules where the type is visible), we
@@ -326,7 +326,7 @@ typeAliasDefn _mk f (DataCopyTypeAlias tp@(TypePath pdefn fdefn) defn) kont = do
   conVs <- case defn of
    EnumDefn {} -> return mempty
    DataDefn bnd ->
-     U.lunbind bnd $ \(tvks, cdefs) -> 
+     U.lunbind bnd $ \(_tvks, cdefs) ->
        return $ flip map cdefs $ \(ConstructorDef cname _) ->
          let fcon = F.FCon (U.name2String cname)
          in  (cname, (xc, fcon))
@@ -393,7 +393,6 @@ valueDecl mk f vd kont =
      (ty', _k) <- type' ty
      let vsig = F.ValSem ty'
          xv = U.s2n f :: F.Var
-     tr <- F.embedSemanticSig vsig
      let thisOne = ((mempty, [(F.FUser f, vsig)]),
                     mempty,
                     mempty)
@@ -405,7 +404,7 @@ valueDecl mk f vd kont =
        Left {} -> throwError "internal error: expected annotated function"
        Right g -> return g
      mt <- view (valEnv . at v)
-     (xv, semTy, ty) <- case mt of
+     (xv, semTy, _ty) <- case mt of
        Just (xv, StructureTermVar sem) -> do
          semTy <- F.embedSemanticSig sem
          ty <- matchSemValRecord sem
@@ -430,7 +429,7 @@ valueDecl mk f vd kont =
      when (mk /= ModuleMK) $
        throwError "internal error: ToF.valueDecl ParameterDecl in a model"
      simpleValueBinding F.Let f v e kont
-   ValDecl e -> throwError ("internal error: unexpected ValDecl in ToF.valueDecl;"
+   ValDecl {} -> throwError ("internal error: unexpected ValDecl in ToF.valueDecl;"
                       ++" Insomnia typechecker should have converted into a SampleDecl or a ParameterDecl")
    TabulatedSampleDecl tabfun -> do
      when (mk /= ModelMK) $

@@ -113,6 +113,7 @@ checkExpr e_ t_ = case e_ of
     t1 <- unifyDistT t_
     e1 <- checkExpr e1_ t1
     return (Return e1)
+  Instantiate {} -> typeError ("internal error: did not expect to see an explicit polymorphic instantiation in source language: " <> formatErr e_)
 
 type PatternMatch = [(Var, Type)]
 

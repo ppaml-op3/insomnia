@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module Insomnia.SurfaceSyntax.ExtraInstances where
 
 import Control.Monad.Morph
