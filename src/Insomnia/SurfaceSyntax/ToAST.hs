@@ -41,13 +41,9 @@ import Insomnia.SurfaceSyntax.ToastMonad
 
 -- TODO: these really ought to be imported from somewhere, not built in.
 toASTbaseCtx :: Ctx
-toASTbaseCtx = Ctx (M.fromList
-                    [
-                      (QId [] "->", Fixity AssocRight 5)
-                    ])
-               ModuleMK
-               mempty
-               mempty
+toASTbaseCtx = makeCtxSimple [
+  (QId [] "->", Fixity AssocRight 5)
+  ]
 
 -- main function
 toAST :: Monad m
@@ -400,7 +396,7 @@ type' (TForall tv k ty) = do
   ty' <- type' ty
   return $ I.TForall (U.bind (tv', k') ty')
 type' (TPhrase atms) = do
-  ops <- view declaredFixity
+  ops <- getDeclaredFixity
   let presentOps =
         (M.fromList $ defaultInfix atms) `leftWithRightVals` (M.mapKeysMonotonic Con ops)
   disfix atms presentOps
@@ -475,7 +471,7 @@ expr (Let bnds e) =
     e' <- liftCTA $ expr e
     return $ I.Let $ U.bind bnds' e'
 expr (Phrase atms) = do
-    ops <- view declaredFixity
+    ops <- getDeclaredFixity
     -- for any operators without a fixity, assume a default.
     let presentOps =
           (M.fromList $ defaultInfix atms) `leftWithRightVals` ops
@@ -566,7 +562,7 @@ patternAtom (EnclosedP p) = CompletePP <$> pattern p
 
 pattern :: Monad m => Pattern -> CTA m I.Pattern
 pattern (PhraseP atms) = do
-  ops <- use declaredFixity
+  ops <- getDeclaredFixityC
   let
     presentOps =
       (M.fromList $ defaultInfix atms) `leftWithRightVals` (M.mapKeysMonotonic Con ops)
@@ -687,11 +683,10 @@ instance Monad m => FixityParseable ExprAtom QualifiedIdent (TA m) I.Expr where
 
 instance Monad m => FixityParseable PatternAtom Con (CTA m) PartialPattern where
    term = do
-     ctx <- get
-     t <- P.tokenPrim show (\pos _tok _toks -> pos) (notInfix ctx)
+     t <- P.tokenPrim show (\pos _tok _toks -> pos) notInfix
      lift $ patternAtom t
      where
-       notInfix _ctx pa =
+       notInfix pa =
          case pa of
           ConP (InfixN _con) -> Nothing
           _ -> Just pa
@@ -743,16 +738,10 @@ example1 () = runInfixResolutionTest (type' y) c
     -- parsed as ((a * a) * a) -> (a * a)
     x = TPhrase [a, times, a, times, a, arrow, a, times, a]
     y = TForall (TyVar "a") KType x
-    c = Ctx
-        (M.fromList
-         [
-           (QId [] "->", Fixity AssocRight 5)
-         , (QId [] "*", Fixity AssocLeft 6)
-         ]
-        )
-        ModuleMK
-        mempty
-        mempty
+    c = makeCtxSimple
+        [ (QId [] "->", Fixity AssocRight 5)
+        , (QId [] "*", Fixity AssocLeft 6)
+        ]
     
 example1_expected :: I.Type
 example1_expected =
@@ -778,16 +767,10 @@ example2 () = runInfixResolutionTest (expr e) ctx
     y = V (PrefixN $ Var $ QId [] "y")
     e = Phrase [x, plus, y, plus, x, c, y, plus, x, c, n]
 
-    ctx = Ctx
-          (M.fromList
-           [
-             (QId [] "Cons", Fixity AssocRight 3)
-           , (QId [] "+", Fixity AssocLeft 7)
-           ]
-          )
-          ModuleMK
-          mempty
-          mempty
+    ctx = makeCtxSimple
+          [  (QId [] "Cons", Fixity AssocRight 3)
+          , (QId [] "+", Fixity AssocLeft 7)
+          ]
     
 example2_expected :: I.Expr
 example2_expected =
@@ -816,14 +799,9 @@ example3 () = runInfixResolutionTest (clause cls) ctx
     p = PhraseP [xp, cp, yp, cp, np]
     e = Phrase [y, c, x, c, n]
     cls = Clause p e
-    ctx = Ctx
-          (M.fromList
-           [
-             (QId [] "Cons", Fixity AssocRight 3)
-           ])
-          ModuleMK
-          mempty
-          mempty
+    ctx = makeCtxSimple
+          [ (QId [] "Cons", Fixity AssocRight 3)
+          ]
     
 example3_expected :: I.Clause
 example3_expected =
@@ -853,11 +831,7 @@ example4 () = runInfixResolutionTest (clause cls) ctx
     
     (xp, x) = let q = "x"
               in (VarP q, V $ PrefixN $ Var $ QId [] q)
-    ctx = Ctx
-          mempty
-          ModuleMK
-          mempty
-          mempty
+    ctx = makeCtxSimple []
     
 example4_expected :: I.Clause
 example4_expected =

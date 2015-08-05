@@ -4,13 +4,16 @@
       MultiParamTypeClasses,
       FlexibleContexts,
       ScopedTypeVariables,
+      GeneralizedNewtypeDeriving,
       TemplateHaskell
   #-}
 module Insomnia.SurfaceSyntax.ToastMonad (
   -- * Translation Context
-  Ctx(..)
-  , declaredFixity
+  Ctx
+  , makeCtxSimple
   , currentModuleKind
+  , getDeclaredFixity
+  , getDeclaredFixityC
   , toastPositioned
   , toastPositionedC
   , toastNear
@@ -54,7 +57,6 @@ import Control.Monad.Reader.Class
 import Control.Monad.Reader
 import Control.Monad.State.Class
 import Control.Monad.State.Strict
-import qualified Control.Monad.Cont as Cont
 
 import qualified Pipes.Core as Pipes
 import qualified Pipes.Lift
@@ -104,9 +106,17 @@ instance Monoid ToastState where
 -- "To AST" monad is just a reader of some contextual info...
 -- (the freshness monad is used to make new Toprefs)
 -- and it may request that the upstream client import a file.
-type TA m = Pipes.Client ImportFileSpec (Either ImportFileError Toplevel) (ToastStackT m)
+type TA m = ToastPipe (ToastStackT m)
 
-type ToastStackT m = ReaderT Ctx (StateT ToastState (ExceptT ToastError (U.FreshMT m)))
+-- we can request an ImportFileSpec and get a response of (Either ImportFileError Toplevel)
+type ToastPipe = Pipes.Client ImportFileSpec (Either ImportFileError Toplevel)
+
+type ToastStackBaseT m = ExceptT ToastError (U.FreshMT m)
+-- this is the "normal" "to ast" monad stack where some information is contextual.
+type ToastStackT m = ReaderT Ctx (StateT ToastState (ToastStackBaseT m))
+-- this is the "incremental" "to ast" monad stack for situations where we need to statefully
+-- build up the context  (for example if we're collecting information about names in a module).
+type IncrToastStackT m = StateT (Ctx, ToastState) (ToastStackBaseT m)
 
 data ToastError =
   ToastErrorMsg !String !(First SourcePos)
@@ -118,38 +128,33 @@ instance Show (ToastError) where
 
 newtype ImportFileError = ImportFileError { importFileErrorMsg :: String }
 
--- the CPS version of TA
-newtype CTA m a = CTA { unCTA :: forall r . Cont.ContT r (TA m) a }
+-- the version of TA that assembles a Ctx incrementally (using state)
+newtype CTA m a = CTA { unCTA :: ToastPipe (IncrToastStackT m) a }
+                  deriving (Monad, Applicative, Functor, MonadError ToastError)
+
+lowerCTA :: Monad m => CTA m a -> TA m a
+lowerCTA comp =
+  Pipes.Lift.readerP $ \ctx -> Pipes.Lift.stateP $ \s -> do
+    (a, (_, s')) <- Pipes.Lift.runStateP (ctx, s) $ unCTA comp
+    return (a, s')
+
+liftCTA :: Monad m => TA m a -> CTA m a
+liftCTA comp = CTA $ Pipes.Lift.stateP $ \(ctx, s) -> do
+  (a, s') <- Pipes.Lift.runStateP s $ Pipes.Lift.runReaderP ctx comp
+  return (a, (ctx, s'))
+
+-- | Run the given CTA subcomputation, but restrict all changes to the 'Ctx' to
+-- the extent of the given subcomputation.
+scopeCTA :: Monad m => CTA m a -> CTA m a
+scopeCTA = liftCTA . lowerCTA
+
 
 runCTA :: Monad m => CTA m a -> TA m a
-runCTA comp = Cont.runContT (unCTA comp) return
+runCTA = lowerCTA
 
-instance Monad (CTA m) where
-  return x = CTA (return x)
-  m >>= f = CTA $ unCTA m >>= (unCTA . f)
-
-instance Applicative (CTA m) where
-  pure = return
-  mf <*> mx = CTA $ unCTA mf <*> unCTA mx
-
-instance Functor (CTA m) where
-  fmap f m = CTA $ fmap f $ unCTA m
-
--- in the CPS version of TA, the Ctx is a state that persists
--- within the continuation.
-instance Monad m => MonadState Ctx (CTA m) where
-  state xform = CTA $ Cont.ContT $ \k -> do
-    ctx <- ask
-    let (x, ctx') = xform ctx
-    local (const ctx') $ k x
-
-instance Monad m => MonadError ToastError (CTA m) where
-  throwError e = CTA $ Cont.ContT $ \_k -> throwError e
-  catchError comp handler = CTA $ Cont.ContT $ \k -> do
-    lOrR <- Cont.runContT (unCTA comp) (return . Right) `catchError` (return . Left)
-    case lOrR of
-      Left err -> Cont.runContT (unCTA $ handler err) k
-      Right ans -> k ans
+-- | Construct a context from a list of predeclared infix operators
+makeCtxSimple :: [(QualifiedIdent, Fixity)] -> Ctx
+makeCtxSimple fixities = Ctx (M.fromList fixities) ModuleMK mempty mempty
 
 -- | given a To AST computation and a monadic handler for import requests and an initial context,
 -- repeatedly call the handler whenever the To AST computation yields with a request until it returns a final answer.
@@ -198,33 +203,35 @@ listenToplevels comp = do
 -- just return it.  Otherwise, run the given computation passing it a
 -- fresh 'I.TopRef', and then return the result
 withTopRefFor_ :: Monad m => FilePath -> (I.TopRef -> TA m ()) -> TA m I.TopRef
-withTopRefFor_ fp compNew = do
-  mref <- use (toprefMapSt . at fp)
-  case mref of
-   Nothing -> do
-     a <- freshTopRef fp
-     toprefMapSt . at fp ?= a
-     compNew a
-     return a
-   Just a -> return a
+withTopRefFor_ fp onNew =  allocTopRef (toprefMapSt) fp onNew
 
 withTopRefForC_ :: Monad m => FilePath -> (I.TopRef -> CTA m ()) -> CTA m I.TopRef
-withTopRefForC_ fp compNew =
-  CTA $ Cont.ContT $ \k -> do
-    r <- withTopRefFor_ fp $ \r ->
-      Cont.runContT (unCTA $ compNew r) return
-    k r
+withTopRefForC_ fp onNew = CTA $ allocTopRef (_2 . toprefMapSt) fp (unCTA . onNew)
 
-freshTopRef :: Monad m => FilePath -> TA m I.TopRef
+-- | Check whether the state has a topref for the given filepath and allocate if it doesn't.
+-- Just return the existing value, or run the 'onNew' computation if
+-- new return @Left existing@ or @Right newlyAllocated@
+allocTopRef :: forall st m .
+               (U.Fresh m, MonadState st m)
+               => ALens' st (M.Map FilePath I.TopRef)
+               -> FilePath
+               -> (I.TopRef -> m ())
+               -> m I.TopRef
+allocTopRef topRefMap fp onNew = do
+  let
+    l :: Lens' st (Maybe I.TopRef)
+    l = (cloneLens topRefMap . at fp)
+  mref <- use l
+  case mref of
+    Nothing -> do
+      a <- freshTopRef fp
+      l ?= a
+      onNew a
+      return a
+    Just a -> return a
+
+freshTopRef :: U.Fresh m => FilePath -> m I.TopRef
 freshTopRef fp = U.fresh (U.s2n $ "^" ++ fp)
-
-liftCTA :: Monad m => TA m a -> CTA m a
-liftCTA comp = CTA $ Cont.ContT $ \k -> comp >>= k
-
--- | Run the given CTA subcomputation, but restrict all changes to the 'Ctx' to
--- the extent of the given subcomputation.
-scopeCTA :: Monad m => CTA m a -> CTA m a
-scopeCTA comp = liftCTA (Cont.runContT (unCTA comp) return)
 
 updateWithFixity :: Monad m => QualifiedIdent -> Fixity -> TA m a -> TA m a
 updateWithFixity qid f =
@@ -232,19 +239,23 @@ updateWithFixity qid f =
 
 updateWithFixityC :: Monad m => QualifiedIdent -> Fixity -> CTA m ()
 updateWithFixityC qid f =
-  declaredFixity . at qid ?= f
-
-addModuleVarC :: Monad m => Ident -> I.Identifier -> CTA m ()
-addModuleVarC ident x =
-  CTA $ Cont.ContT $ \k -> addModuleVar ident x (k ())
-
-addModuleVar :: Monad m => Ident -> I.Identifier -> TA m a -> TA m a
-addModuleVar ident x =
-  insertBigIdent ident (StructureBIS x)
+  CTA $ _1 . declaredFixity . at qid ?= f
 
 insertBigIdent :: Monad m => Ident -> BigIdentSort -> TA m a -> TA m a
 insertBigIdent ident sort =
   local (bigIdentSort %~ M.insert ident sort)
+
+insertBigIdentC :: Monad m => Ident -> BigIdentSort -> CTA m ()
+insertBigIdentC ident sort =
+  CTA $ _1 . bigIdentSort %= M.insert ident sort
+
+addModuleVarC :: Monad m => Ident -> I.Identifier -> CTA m ()
+addModuleVarC ident x =
+  insertBigIdentC ident (StructureBIS x)
+
+addModuleVar :: Monad m => Ident -> I.Identifier -> TA m a -> TA m a
+addModuleVar ident x =
+  insertBigIdent ident (StructureBIS x)
 
 addSignatureVar :: Monad m => Ident -> I.SigIdentifier -> TA m a -> TA m a
 addSignatureVar ident x =
@@ -252,20 +263,26 @@ addSignatureVar ident x =
 
 addSignatureVarC :: Monad m => Ident -> I.SigIdentifier -> CTA m ()
 addSignatureVarC ident x =
-  CTA $ Cont.ContT $ \k -> addSignatureVar ident x (k ())
+  insertBigIdentC ident (SignatureBIS x)
 
 lookupBigIdent :: Monad m => Ident -> TA m (Maybe BigIdentSort)
 lookupBigIdent ident = view (bigIdentSort . at ident)
+
+getDeclaredFixity :: Monad m => TA m (M.Map QualifiedIdent Fixity)
+getDeclaredFixity = view declaredFixity
+
+getDeclaredFixityC :: Monad m => CTA m (M.Map QualifiedIdent Fixity)
+getDeclaredFixityC = CTA $ use (_1 . declaredFixity)
 
 toastPositioned :: Monad m => (a -> TA m b) -> Positioned a -> TA m b
 toastPositioned f p =
   local (currentNearbyPosition .~ (First $ Just $ view positionedSourcePos p)) $ f (view positioned p)
 
 toastPositionedC :: Monad m => (a -> CTA m b) -> Positioned a -> CTA m b
-toastPositionedC f p = do
-  oldPos <- currentNearbyPosition <<.= (First $ Just $ view positionedSourcePos p)
-  x <- f (view positioned p)
-  currentNearbyPosition .= oldPos
+toastPositionedC f p = CTA $ do
+  oldPos <- _1 . currentNearbyPosition <<.= (First $ Just $ view positionedSourcePos p)
+  x <- unCTA $ f (view positioned p)
+  _1 . currentNearbyPosition .= oldPos
   return x
 
 throwToastError :: Monad m => String -> TA m a
