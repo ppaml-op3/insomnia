@@ -22,9 +22,12 @@ module Insomnia.SurfaceSyntax.ToastMonad (
   , addSignatureVar
   , addSignatureVarC
   , lookupBigIdent
+  , updateWithFixity
+  , updateWithFixityC
     -- * Translation monads
   , TA
-  , CTA (..)
+  , CTA
+  , runCTA
   , ToastError
   , throwToastError
   , throwToastErrorC
@@ -51,6 +54,7 @@ import Control.Monad.Reader.Class
 import Control.Monad.Reader
 import Control.Monad.State.Class
 import Control.Monad.State.Strict
+import qualified Control.Monad.Cont as Cont
 
 import qualified Pipes.Core as Pipes
 import qualified Pipes.Lift
@@ -115,33 +119,36 @@ instance Show (ToastError) where
 newtype ImportFileError = ImportFileError { importFileErrorMsg :: String }
 
 -- the CPS version of TA
-newtype CTA m a = CTA { runCTA :: forall r . (a -> TA m r) -> TA m r }
+newtype CTA m a = CTA { unCTA :: forall r . Cont.ContT r (TA m) a }
+
+runCTA :: Monad m => CTA m a -> TA m a
+runCTA comp = Cont.runContT (unCTA comp) return
 
 instance Monad (CTA m) where
-  return x = CTA $ \k -> k x
-  m >>= f = CTA $ \k -> runCTA m $ \x -> runCTA (f x) k
+  return x = CTA (return x)
+  m >>= f = CTA $ unCTA m >>= (unCTA . f)
 
 instance Applicative (CTA m) where
   pure = return
-  mf <*> mx = CTA $ \k -> runCTA mf $ \f -> runCTA mx $ \x -> k (f x)
+  mf <*> mx = CTA $ unCTA mf <*> unCTA mx
 
 instance Functor (CTA m) where
-  fmap f mx = CTA $ \k -> runCTA mx $ \x -> k (f x)
+  fmap f m = CTA $ fmap f $ unCTA m
 
 -- in the CPS version of TA, the Ctx is a state that persists
 -- within the continuation.
 instance Monad m => MonadState Ctx (CTA m) where
-  state xform = CTA $ \k -> do
+  state xform = CTA $ Cont.ContT $ \k -> do
     ctx <- ask
     let (x, ctx') = xform ctx
     local (const ctx') $ k x
 
-instance MonadError ToastError m => MonadError ToastError (CTA m) where
-  throwError e = CTA $ \_k -> throwError e
-  catchError comp handler = CTA $ \k -> do
-    lOrR <- runCTA comp (return . Right) `catchError` (return . Left)
+instance Monad m => MonadError ToastError (CTA m) where
+  throwError e = CTA $ Cont.ContT $ \_k -> throwError e
+  catchError comp handler = CTA $ Cont.ContT $ \k -> do
+    lOrR <- Cont.runContT (unCTA comp) (return . Right) `catchError` (return . Left)
     case lOrR of
-      Left err -> runCTA (handler err) k
+      Left err -> Cont.runContT (unCTA $ handler err) k
       Right ans -> k ans
 
 -- | given a To AST computation and a monadic handler for import requests and an initial context,
@@ -203,25 +210,33 @@ withTopRefFor_ fp compNew = do
 
 withTopRefForC_ :: Monad m => FilePath -> (I.TopRef -> CTA m ()) -> CTA m I.TopRef
 withTopRefForC_ fp compNew =
-  CTA $ \k -> do
+  CTA $ Cont.ContT $ \k -> do
     r <- withTopRefFor_ fp $ \r ->
-      runCTA (compNew r) return
+      Cont.runContT (unCTA $ compNew r) return
     k r
 
 freshTopRef :: Monad m => FilePath -> TA m I.TopRef
 freshTopRef fp = U.fresh (U.s2n $ "^" ++ fp)
 
 liftCTA :: Monad m => TA m a -> CTA m a
-liftCTA comp = CTA $ \k -> comp >>= k
+liftCTA comp = CTA $ Cont.ContT $ \k -> comp >>= k
 
 -- | Run the given CTA subcomputation, but restrict all changes to the 'Ctx' to
 -- the extent of the given subcomputation.
 scopeCTA :: Monad m => CTA m a -> CTA m a
-scopeCTA comp = liftCTA (runCTA comp return)
+scopeCTA comp = liftCTA (Cont.runContT (unCTA comp) return)
+
+updateWithFixity :: Monad m => QualifiedIdent -> Fixity -> TA m a -> TA m a
+updateWithFixity qid f =
+  local (declaredFixity . at qid ?~ f)
+
+updateWithFixityC :: Monad m => QualifiedIdent -> Fixity -> CTA m ()
+updateWithFixityC qid f =
+  declaredFixity . at qid ?= f
 
 addModuleVarC :: Monad m => Ident -> I.Identifier -> CTA m ()
 addModuleVarC ident x =
-  CTA $ \k -> addModuleVar ident x (k ())
+  CTA $ Cont.ContT $ \k -> addModuleVar ident x (k ())
 
 addModuleVar :: Monad m => Ident -> I.Identifier -> TA m a -> TA m a
 addModuleVar ident x =
@@ -237,7 +252,7 @@ addSignatureVar ident x =
 
 addSignatureVarC :: Monad m => Ident -> I.SigIdentifier -> CTA m ()
 addSignatureVarC ident x =
-  CTA $ \k -> addSignatureVar ident x (k ())
+  CTA $ Cont.ContT $ \k -> addSignatureVar ident x (k ())
 
 lookupBigIdent :: Monad m => Ident -> TA m (Maybe BigIdentSort)
 lookupBigIdent ident = view (bigIdentSort . at ident)

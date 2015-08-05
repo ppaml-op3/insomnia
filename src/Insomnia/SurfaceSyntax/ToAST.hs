@@ -59,10 +59,6 @@ toAST tl onErr onImport =
   feedTA (toplevel tl) onErr onImport toASTbaseCtx
 
 
-updateWithFixity :: Monad m => QualifiedIdent -> Fixity -> TA m a -> TA m a
-updateWithFixity qid f =
-  local (declaredFixity . at qid ?~ f)
-
 hasNoQualification :: QualifiedIdent -> Maybe Ident
 hasNoQualification (QId [] ident) = Just ident
 hasNoQualification _ = Nothing
@@ -99,7 +95,7 @@ contextualStochasticity Nothing =
 toplevel :: Monad m => Toplevel -> TA m I.Toplevel
 toplevel (Toplevel items) = do
   let comp = mapM toplevelItem items
-  (its, imps) <- listenToplevels (runCTA comp return)
+  (its, imps) <- listenToplevels (runCTA comp)
   return $ I.Toplevel $ imps ++ concat its
 
 nestedToplevel :: Monad m => Toplevel -> CTA m I.Toplevel
@@ -142,7 +138,7 @@ inferBigExpr_ (LiteralBE mk m) =
   let f = case mk of
         ModuleMK -> I.ModuleStruct
         ModelMK -> I.ModuleModel . I.ModelStruct
-  in ModuleBV . f <$> local (currentModuleKind .~ mk) (runCTA (module' m) return)
+  in ModuleBV . f <$> local (currentModuleKind .~ mk) (runCTA (module' m))
 inferBigExpr_ (ClassifierBE mk sig) =
   SignatureBV . I.SigMT . flip I.SigV mk  <$> signature sig
 inferBigExpr_ (AppBE qid qids) =
@@ -158,8 +154,9 @@ inferBigExpr_ (VarBE qid) =
 inferBigExpr_ (SealBE mbe sbe) =
   ModuleBV <$> (I.ModuleSeal <$> expectBigExprModule mbe <*> expectBigExprSignature sbe)
 inferBigExpr_ (AbsBE args be) =
-  functorArguments args $ \args' -> do
-    mv <- inferBigExpr be
+  runCTA $ do
+    args' <- functorArguments args
+    mv <- liftCTA $ inferBigExpr be
     case mv of
       ModuleBV me' -> return $ ModuleBV $ I.ModuleFun $ U.bind args' me'
       SignatureBV msig' -> return $ SignatureBV $ I.FunMT $ U.bind args' msig'
@@ -174,7 +171,7 @@ inferBigExpr_ (LocalBE m beMod beSig) = do
           I.ModuleModel body -> return body
           _ -> throwToastErrorC $ "local with a body that isn't a model: " ++ show bodyMdl'
         return $ ModuleBV $ I.ModuleModel $ I.ModelLocal hiddenMod' body' mt'
-  runCTA comp return
+  runCTA comp
 inferBigExpr_ (AssumeBE be) =
   (ModuleBV . I.ModuleAssume) <$> expectBigExprSignature be
 
@@ -263,27 +260,27 @@ whereClausePath (QId pfx fld) =
 
 functorArguments :: Monad m
                     => [(Ident, BigExpr)]
-                    -> (Telescope (I.FunctorArgument I.ModuleType) -> TA m a)
-                    -> TA m a
-functorArguments [] kont = kont NilT
-functorArguments (arg:args) kont =
-  functorArgument arg $ \arg' ->
-  functorArguments args $ \args' ->
-  kont (ConsT $ U.rebind arg' args')
+                    -> CTA m (Telescope (I.FunctorArgument I.ModuleType))
+functorArguments [] = return NilT
+functorArguments (arg:args) = do
+  arg' <- functorArgument arg
+  args' <- functorArguments args
+  return (ConsT $ U.rebind arg' args')
 
 functorArgument :: Monad m
                    => (Ident, BigExpr)
-                   -> (I.FunctorArgument I.ModuleType -> TA m a)
-                   -> TA m a
-functorArgument (ident, be) kont = do
-  ident' <- modIdentifier ident
-  mt' <- expectBigExprSignature be
-  addModuleVar ident ident' $ kont $ I.FunctorArgument ident' (U.embed mt')
+                   -> CTA m (I.FunctorArgument I.ModuleType)
+functorArgument (ident, be) = do
+  ident' <- liftCTA $ modIdentifier ident
+  mt' <- liftCTA $ expectBigExprSignature be
+  addModuleVarC ident ident'
+  return $ I.FunctorArgument ident' (U.embed mt')
                        
 
 signature :: Monad m => Signature -> TA m I.Signature
 signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
   where
+    go :: Monad m => SigDecl -> TA m I.Signature -> TA m I.Signature
     go dcl kont =
       case dcl of
        ValueSig _mstoch ident ty -> do
@@ -318,44 +315,44 @@ signature (Sig sigDecls) = foldr go (return I.UnitSig) sigDecls
 
 module' :: Monad m => Module -> CTA m I.Module 
 module' (Module decls) =
-  (I.Module . concat) <$> mapM declC decls
-  where
-    declC :: Monad m => Decl -> CTA m [I.Decl]
-    declC d = CTA (decl d)
+  (I.Module . concat) <$> mapM decl decls
 
-decl :: Monad m => Decl -> ([I.Decl] -> TA m res) -> TA m res
-decl d kont =
+decl :: Monad m => Decl -> CTA m [I.Decl]
+decl d =
   case d of
    ValueDecl ident vd -> do
-     f <- valueField ident
-     vd' <- valueDecl vd
-     kont [I.ValueDecl f vd']
+     f <- liftCTA $ valueField ident
+     vd' <- liftCTA $ valueDecl vd
+     return [I.ValueDecl f vd']
    ImportDecl qid -> do
-     kont [I.ImportDecl $  qualifiedIdPath qid]
+     return [I.ImportDecl $  qualifiedIdPath qid]
    TypeDefn ident td -> do
-     (f, _) <- typeField ident
+     (f, _) <- liftCTA $ typeField ident
      let con = Con $ QId [] ident
-     (td', idents) <- typeDefn td
-     kont [I.TypeDefn f td']
+     (td', idents) <- liftCTA $ typeDefn td
+     return [I.TypeDefn f td']
    TypeAliasDefn ident alias -> do
-     (f, _) <- typeField ident
-     alias' <- typeAlias alias
+     (f, _) <- liftCTA $ typeField ident
+     alias' <- liftCTA $ typeAlias alias
      let con = Con $ QId [] ident
-     kont [I.TypeAliasDefn f alias']
-   FixityDecl ident fixity ->
-     updateWithFixity (QId [] ident) fixity $ kont []
+     return [I.TypeAliasDefn f alias']
+   FixityDecl ident fixity -> do
+     updateWithFixityC (QId [] ident) fixity
+     return []
    TabulatedSampleDecl tabD -> do
      let
        mkD f tf = I.ValueDecl f $ I.TabulatedSampleDecl tf
-     tabulatedDecl tabD mkD kont
+     tabulatedDecl tabD mkD
    BigSubmoduleDefn ident be -> do
-     me' <- expectBigExprModule be
-     (f, ident') <- moduleField ident
-     addModuleVar ident ident' $ kont [I.SubmoduleDefn f me']
+     me' <- liftCTA $ expectBigExprModule be
+     (f, ident') <- liftCTA $ moduleField ident
+     addModuleVarC ident ident'
+     return [I.SubmoduleDefn f me']
    BigSampleDefn ident be -> do
-     me' <- expectBigExprModule be
-     (f, ident') <- moduleField ident
-     addModuleVar ident ident' $ kont [I.SampleModuleDefn f me']
+     me' <- liftCTA $ expectBigExprModule be
+     (f, ident') <- liftCTA $ moduleField ident
+     addModuleVarC ident ident'
+     return [I.SampleModuleDefn f me']
 
 typeSigDecl :: Monad m => TypeSigDecl -> TA m I.TypeSigDecl
 typeSigDecl (AbstractTypeSigDecl k) = I.AbstractTypeSigDecl <$> kind k
@@ -473,8 +470,9 @@ expr (Case e clauses) = do
   clauses' <- traverse clause clauses
   return $ I.Case e' clauses' (I.Annot Nothing)
 expr (Let bnds e) = 
-  bindings bnds $ \bnds' -> do
-    e' <- expr e
+  runCTA $ do
+    bnds' <- bindings bnds
+    e' <- liftCTA $ expr e
     return $ I.Let $ U.bind bnds' e'
 expr (Phrase atms) = do
     ops <- view declaredFixity
@@ -528,9 +526,11 @@ literal = return
 
 clause :: Monad m => Clause -> TA m I.Clause
 clause (Clause pat e) = 
-  runCTA (pattern pat) $ \pat' -> do
-    e' <- expr e
-    return $ I.Clause $ U.bind pat' e'
+  let comp = do
+        pat' <- pattern pat
+        e' <- liftCTA (expr e)
+        return $ I.Clause $ U.bind pat' e'
+  in runCTA comp
 
 -- | When we see an unqualified name "P" the surface syntax doesn't
 -- tell us if "P" is a data type constructor or a variable.  If it's a
@@ -579,47 +579,47 @@ pattern (PhraseP atms) = do
                 _ -> [])
 
 
-bindings :: Monad m => [Binding] -> (I.Bindings -> TA m a) -> TA m a
-bindings bnds_ kont = go bnds_ (kont . I.Bindings)
+bindings :: Monad m => [Binding] -> CTA m I.Bindings
+bindings bnds_ = I.Bindings <$> go bnds_
   where
-    go [] k = k NilT
-    go (bnd:bnds) k =
-      binding bnd $ \bnd' ->
-      go bnds $ \bnds' ->
-      k (prependBindings bnd' bnds')
+    go [] = return NilT
+    go (bnd:bnds) = do
+      bnd' <- binding bnd
+      bnds' <- go bnds
+      return (prependBindings bnd' bnds')
     prependBindings [] ys = ys
     prependBindings (x:xs) ys = ConsT $ U.rebind x (prependBindings xs ys)
 
-binding :: Monad m => Binding -> ([I.Binding] -> TA m a) -> TA m a
-binding (SigB _ident _ty) kont = kont []
-binding (ValB ident e) kont = do
+binding :: Monad m => Binding -> CTA m [I.Binding]
+binding (SigB _ident _ty) = return []
+binding (ValB ident e) = do
   let v = U.s2n ident
-  e' <- expr e
-  kont [I.ValB (v, U.embed $ I.Annot Nothing) (U.embed e')]
-binding (SampleB ident e) kont = do
+  e' <- liftCTA $ expr e
+  return [I.ValB (v, U.embed $ I.Annot Nothing) (U.embed e')]
+binding (SampleB ident e) = do
   let v = U.s2n ident
-  e' <- expr e
-  kont [I.SampleB (v, U.embed $ I.Annot Nothing)
+  e' <- liftCTA $ expr e
+  return [I.SampleB (v, U.embed $ I.Annot Nothing)
                                      (U.embed e')]
-binding (TabB tabD) kont = 
+binding (TabB tabD) = 
   let mkB name tf = I.TabB (U.s2n name) (U.embed tf)
-  in tabulatedDecl tabD mkB kont
+  in tabulatedDecl tabD mkB
 
 
-tabulatedDecl :: Monad m => TabulatedDecl -> (Ident -> I.TabulatedFun -> b) -> ([b] -> TA m a) -> TA m a
-tabulatedDecl (TabulatedDecl idtys tfs) mkB kont = do
+tabulatedDecl :: Monad m => TabulatedDecl -> (Ident -> I.TabulatedFun -> b) -> CTA m [b]
+tabulatedDecl (TabulatedDecl idtys tfs) mkB = do
   -- this one is a bit tricky because the surface syntax allows
   -- multiple tabulated functions to be defined within a single "for"
   -- block, but internally we separate them into individual tabulated
   -- function bindings.
   annvs <- forM idtys $ \(ident, mty) -> do
     let v = U.s2n ident
-    mty' <- traverse type' mty
+    mty' <- liftCTA $ traverse type' mty
     return (v, U.embed $ I.Annot mty')
-  namedtfs' <- traverse (tabulatedFun annvs) tfs
+  namedtfs' <- liftCTA $ traverse (tabulatedFun annvs) tfs
   let (names, bnds) =
         unzip $ map (\(name, tf) -> (name, mkB name tf)) namedtfs'
-  kont bnds
+  return bnds
 
 tabulatedFun :: Monad m => [I.AnnVar] -> TabulatedFun -> TA m (Ident, I.TabulatedFun)
 tabulatedFun annvs (TabulatedFun ident ts) = do
