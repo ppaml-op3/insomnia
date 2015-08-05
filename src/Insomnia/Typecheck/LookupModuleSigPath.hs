@@ -39,7 +39,7 @@ projectToplevelModuleField pmod (ModuleTS fld' bnd) fld =
   if fld == fld'
   then return modTy
   else let rest' = U.subst modId (ProjP pmod fld') rest
-       in projectToplevelModuleField pmod rest fld
+       in projectToplevelModuleField pmod rest' fld
 
 projectModuleField :: Path -> Field -> Signature -> TC ModuleTypeNF
 projectModuleField pmod fieldName = go
