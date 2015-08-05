@@ -15,7 +15,7 @@ import Data.Monoid ((<>))
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Types (Nat, TypePath(..), TypeConstructor(..),
-                       Kind(..), TyVar)
+                       Kind(..), TyVar, kArrs)
 import Insomnia.TypeDefn
 
 import Insomnia.Typecheck.Env
@@ -38,7 +38,7 @@ checkDataDefn dcon bnd = do
     constrs' <- extendDConCtx dcon (GenerativeTyCon $ AlgebraicType algty)
                 $ extendTyVarsCtx vks $ forM constrs checkConstructor
     return (DataDefn $ U.bind vks constrs',
-            foldr KArr KType (map snd vks))
+            kArrs (map snd vks) KType)
 
 checkEnumDefn :: TypeConstructor -> Nat -> TC (TypeDefn, Kind)
 checkEnumDefn dcon n = do
@@ -127,7 +127,20 @@ checkTypeAlias (ManifestTypeAlias bnd) =
     (ty', kcod) <- extendTyVarsCtx tvks $ inferType ty
     return (ManifestTypeAlias (U.bind tvks ty')
             , TypeAliasInfo kparams kcod)
-checkTypeAlias (DataCopyTypeAlias tp defn) =
-  -- XXX TODO: this is probably wrong for higher kinds.
+checkTypeAlias (DataCopyTypeAlias tp defn) = do
+  k <- kofTypeDefn defn
   return (DataCopyTypeAlias tp defn
-          , TypeAliasInfo [] KType)
+          , TypeAliasInfo [] k)
+
+-- | Read off the kind of a type definition.  Don't do any checking,
+-- just unpack enough of the definition to figure out the kind from
+-- the kinds of the arguments.
+kofTypeDefn :: TypeDefn -> TC Kind
+kofTypeDefn d =
+  case d of
+  DataDefn dd -> kofDataDefn dd
+  EnumDefn {} -> return KType
+
+kofDataDefn :: DataDefn -> TC Kind
+kofDataDefn bnd =
+  U.lunbind bnd $ \(tvks, _) -> return $ kArrs (map snd tvks) KType
