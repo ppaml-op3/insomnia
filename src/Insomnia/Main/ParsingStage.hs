@@ -8,6 +8,8 @@ import qualified Data.Format as F
 import Insomnia.Main.Monad
 import Insomnia.Main.Stage
 
+import qualified Pipes
+
 import qualified Insomnia.SurfaceSyntax.Syntax as Surface
 import qualified Insomnia.SurfaceSyntax.Parse as P
 import qualified Insomnia.SurfaceSyntax.ToAST as ToAST
@@ -23,22 +25,26 @@ parsingStage = Stage {
   , formatStage = F.format . ppDefault 
   }
 
-parseAndToast :: FilePath -> InsomniaMain Toplevel
-parseAndToast fp = do
-  do
-    surfaceAst <- parseInsomniaFile fp
-    ToAST.toAST surfaceAst (showErrorAndDie "resolving names" . show) importHandler
+parseAndToast :: Pipes.Pipe FilePath Toplevel InsomniaMain ()
+parseAndToast = parseInsomniaFile Pipes.>-> do
+  surfaceAst <- Pipes.await
+  x <- Pipes.lift $ Pipes.runEffect $ ToAST.toAST surfaceAst (showErrorAndDie "resolving names" . show) importHandler
+  Pipes.yield x
 
-parseInsomniaFile :: FilePath -> InsomniaMain Surface.Toplevel
-parseInsomniaFile fp = do
-  result <- lift $ P.parseFile fp
+parseInsomniaFile :: Pipes.Pipe FilePath Surface.Toplevel InsomniaMain ()
+parseInsomniaFile = do
+  fp <- Pipes.await
+  result <- Pipes.lift $ lift $ P.parseFile fp
   case result of
-   Left err -> showErrorAndDie "parsing" err
-   Right surfaceAst -> return surfaceAst
+   Left err -> Pipes.lift $ showErrorAndDie "parsing insomnia file" err
+   Right surfaceAst -> Pipes.yield surfaceAst
 
 importHandler :: Surface.ImportFileSpec
                  -> InsomniaMain (Either ToAST.ImportFileError Surface.Toplevel)
 importHandler s = do
   let fp = Surface.importFileSpecPath s
-  surfStx <- parseInsomniaFile fp
-  return (Right surfStx)
+  x <- Pipes.next (Pipes.yield fp Pipes.>-> parseInsomniaFile)
+  case x of
+    Left () -> showErrorAndDie "parsing import" ("the import was " ++ fp)
+    Right (ans, _) -> return $ Right ans
+

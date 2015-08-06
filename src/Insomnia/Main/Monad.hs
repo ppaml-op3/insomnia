@@ -10,7 +10,7 @@ import qualified Data.Format as F
 
 import Insomnia.Main.Config
 
-type InsomniaMain a = ReaderT InsomniaMainConfig IO a
+type InsomniaMain = ReaderT InsomniaMainConfig IO
 
 runInsomniaMain :: InsomniaMain a -> InsomniaMainConfig -> IO a
 runInsomniaMain = runReaderT 

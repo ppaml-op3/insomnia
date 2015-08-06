@@ -6,6 +6,8 @@ import Data.Monoid (Monoid(..), (<>))
 
 import qualified Data.Format as F
 
+import qualified Pipes
+
 import Insomnia.Main.Config
 import Insomnia.Main.Monad
 import Insomnia.Main.Stage
@@ -37,13 +39,13 @@ parseAndCheck' =
 
 parseAndCheck :: FilePath -> InsomniaMain ()
 parseAndCheck fp =
-  startingFrom fp $ 
+  Pipes.runEffect $ startingFrom fp $ 
   parseAndCheck'
   ->->- compilerDone
 
 parseAndCheckAndGamble :: FilePath -> InsomniaMain ()
 parseAndCheckAndGamble fp =
-  startingFrom fp $
+  Pipes.runEffect $ startingFrom fp $
   parseAndCheck'
   ->->- translateToGamble
   ->->- prettyPrintGamble
@@ -53,76 +55,86 @@ parseAndCheckAndGamble fp =
 desugaring :: Stage Toplevel Toplevel
 desugaring = Stage {
   bannerStage = "Desugaring"
-  , performStage = \t ->
-     let t' = IReturn.toplevel t
-     in return t'
+  , performStage = do
+    t <- Pipes.await
+    let t' = IReturn.toplevel t
+    Pipes.yield t'
   , formatStage = F.format . ppDefault
   }
 
 checking :: Stage Toplevel Toplevel
 checking = Stage {
   bannerStage = "Typechecking"
-  , performStage = \ast -> do
+  , performStage = do
+    ast <- Pipes.await
     let tc = TC.runTC $ TC.checkToplevel ast
-    (elab, unifState) <- case tc of
+    (elab, unifState) <- Pipes.lift $ case tc of
       Left err -> showErrorAndDie "typechecking" err
       Right ((elab, _tsum), unifState) -> return (elab, unifState)
-    putDebugStrLn "Typechecked OK."
-    putDebugStrLn "Unification state:"
-    putDebugDoc (F.format (ppDefault unifState)
-                 <> F.newline)
-    return elab
+    Pipes.lift $ do
+      putDebugStrLn "Typechecked OK."
+      putDebugStrLn "Unification state:"
+      putDebugDoc (F.format (ppDefault unifState)
+                   <> F.newline)
+    Pipes.yield elab
   , formatStage = F.format . ppDefault
   }
 
 toFOmega :: Stage Toplevel FOmega.Command
 toFOmega = Stage {
   bannerStage = "Convert to FΩ"
-  , performStage = \pgm ->
+  , performStage = do
+    pgm <- Pipes.await
     let (_sigSummary, tm) = ToF.runToFM $ ToF.toplevel pgm
-    in return tm
+    Pipes.yield tm
   , formatStage = F.format . ppDefault
 }
 
 checkFOmega :: Stage FOmega.Command FOmega.Command
 checkFOmega = Stage {
   bannerStage = "Typechecking FΩ"
-  , performStage = \m -> do
-    mty <- FCheck.runTC (FCheck.inferCmdTy m)
-    case mty of
+  , performStage = do
+    m <- Pipes.await
+    mty <- Pipes.lift $ FCheck.runTC (FCheck.inferCmdTy m)
+    Pipes.lift $ case mty of
       Left err -> showErrorAndDie "typechecking FOmega" (show err)
       Right ty -> do
         putDebugStrLn "FOmega type is: "
         putDebugDoc (F.format $ ppDefault ty)
         putDebugStrLn "\n"
-    return m
+    Pipes.yield m
   , formatStage = const mempty
   }
 
 runFOmega :: Stage FOmega.Command FOmega.Command
 runFOmega = Stage {
   bannerStage = "Running FΩ"
-  , performStage = \m -> do
-    mv <- FOmega.runEvalCommand m
-    case mv of
+  , performStage = do
+    m <- Pipes.await
+    mv <- Pipes.lift $ FOmega.runEvalCommand m
+    Pipes.lift $ case mv of
      Left err -> showErrorAndDie "running FOmega" (show err)
      Right v -> do
        putDebugDoc (F.format $ ppDefault v)
-    return m
+    Pipes.yield m
   , formatStage = const mempty
   }
 
 translateToGamble :: Stage  FOmega.Command Gambling.Racket.Module
 translateToGamble = Stage {
   bannerStage = "Translating to Gamble"
-  , performStage = return . ToGamble.fomegaToGamble "<unnamed>"
+  , performStage = do
+    c <- Pipes.await
+    Pipes.yield $ ToGamble.fomegaToGamble "<unnamed>" c
   , formatStage = const mempty
   }
 
 prettyPrintGamble :: Stage Gambling.Racket.Module F.Doc
 prettyPrintGamble = Stage {
   bannerStage = "Pretty-printing Gamble code"
-  , performStage = return . EmitGamble.emitIt
+  , performStage = do
+    m <- Pipes.await
+    Pipes.yield $ EmitGamble.emitIt m
   , formatStage = id
   }
 

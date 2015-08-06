@@ -109,7 +109,7 @@ instance Monoid ToastState where
 type TA m = ToastPipe (ToastStackT m)
 
 -- we can request an ImportFileSpec and get a response of (Either ImportFileError Toplevel)
-type ToastPipe = Pipes.Client ImportFileSpec (Either ImportFileError Toplevel)
+type ToastPipe = Pipes.Proxy ImportFileSpec (Either ImportFileError Toplevel) () Pipes.X
 
 type ToastStackBaseT m = ExceptT ToastError (U.FreshMT m)
 -- this is the "normal" "to ast" monad stack where some information is contextual.
@@ -164,21 +164,16 @@ feedTA :: forall m a .
           => TA m a
           -> (ToastError -> m a)
           -> (ImportFileSpec -> m (Either ImportFileError Toplevel))
-          -> Ctx -> m a
+          -> Ctx -> Pipes.Effect m a
 feedTA comp onError onImport ctx =
   let
     compL = runFreshMP
             $ runExceptP 
             $ Pipes.Lift.evalStateP mempty
             $ Pipes.Lift.runReaderP ctx comp
-    handler c = do
-      x <- c
-      case x of
-        Right ans -> return ans
-        Left err -> onError err
-    -- TODO: run the handler inside the pipeline?  We don't really
-    -- recover from errors, so it's not clear we'd gain anything.
-  in handler $ Pipes.runEffect ( (lift . onImport) Pipes.>\\ compL)
+  in (lift . onImport) Pipes.>\\ do
+    eOrA <- compL
+    either (lift . onError) return eOrA
 
 await :: Monad m => ImportFileSpec -> TA m Toplevel
 await spec = do

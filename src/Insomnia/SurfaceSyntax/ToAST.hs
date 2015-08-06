@@ -14,6 +14,7 @@ import qualified Data.Map as M
 
 import qualified Text.Parsec.Prim as P
 
+import qualified Pipes
 
 import qualified Unbound.Generics.LocallyNameless as U
 
@@ -47,7 +48,7 @@ toAST :: Monad m
          => Toplevel
          -> (ToastError -> m I.Toplevel)
          -> (ImportFileSpec -> m (Either ImportFileError Toplevel))
-         -> m I.Toplevel
+         -> Pipes.Effect m I.Toplevel
 toAST tl onErr onImport =
   feedTA (toplevel tl) onErr onImport toASTbaseCtx
 
@@ -717,7 +718,8 @@ disfix atms precs = do
 ---------------------------------------- Examples/Tests
 
 runInfixResolutionTest :: TA Identity a -> Ctx -> a
-runInfixResolutionTest comp ctx = runIdentity $ feedTA comp onErr handler ctx
+runInfixResolutionTest comp ctx =
+  runIdentity $ Pipes.runEffect $ feedTA comp onErr handler ctx
   where
     onErr = fail . show
     handler _ = return $ Left $ ImportFileError "did not expect an import"

@@ -7,6 +7,8 @@ import Data.Format (putStrDoc, docToString, Format(format))
 
 import qualified Unbound.Generics.LocallyNameless as U
 
+import qualified Pipes
+
 import FOmega.Syntax as F
 import FOmega.SemanticSig as F
 import FOmega.Check as F
@@ -34,11 +36,11 @@ moduleType txt = do
   syn <- case okOrErr of
    Left err -> fail (docToString $ format err)
    Right ok -> return ok
-  modTy <- ToAST.feedTA (ToAST.expectBigExprSignature syn) (error . show) interactiveImportHandler ToAST.toASTbaseCtx
+  modTy <- Pipes.runEffect $ ToAST.feedTA (ToAST.expectBigExprSignature syn) (error . show) interactiveImportHandler ToAST.toASTbaseCtx
   let abstr = ToF.runToFM $ ToF.moduleType modTy
   return abstr
 
-interactiveImportHandler :: a -> IO b
+interactiveImportHandler :: Monad m => a -> m b
 interactiveImportHandler _ =
   fail "did not expect the import handler to be called"
 
@@ -49,7 +51,7 @@ moduleExpr txt = do
   syn <- case okOrErr of
     Left err -> fail (docToString $ format err)
     Right ok -> return ok
-  modExpr <- ToAST.feedTA (ToAST.expectBigExprModule syn) (error . show) interactiveImportHandler ToAST.toASTbaseCtx
+  modExpr <- Pipes.runEffect $ ToAST.feedTA (ToAST.expectBigExprModule syn) (error . show) interactiveImportHandler ToAST.toASTbaseCtx
   let tc = TC.runTC $ TC.inferModuleExpr (IdP $ U.s2n "M") modExpr (\modExpr' _ -> return modExpr')
   modExpr' <- case tc of
     Left err -> fail (docToString $ format err)
