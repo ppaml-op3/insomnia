@@ -50,7 +50,13 @@ import Insomnia.ToF.Builtins
 moduleExpr :: ToF m => Maybe Path -> ModuleExpr -> m (F.AbstractSig, F.Term)
 moduleExpr modPath mdl_ =
   case mdl_ of
-   ModuleStruct mdl -> structure modPath ModuleMK mdl
+   ModuleStruct mk mdl -> do
+     ans@(sigStr, m) <- structure modPath mk mdl
+     case mk of
+       ModuleMK -> return ans
+       ModelMK -> let sig = F.ModelSem sigStr
+                      s = F.AbstractSig $ U.bind [] sig
+                  in return (s, m)
    ModuleSeal me mt -> sealing me mt
    ModuleAssume mty -> moduleAssume modPath mty
    ModuleId p -> do
@@ -60,20 +66,6 @@ moduleExpr modPath mdl_ =
      U.lunbind bnd $ \(tele, bodyMe) ->
      moduleFunctor tele bodyMe
    ModuleApp pfun pargs -> moduleApp pfun pargs
-   ModuleModel mdl -> modelExpr mdl
-
-modelExpr :: ToF m => ModelExpr -> m (F.AbstractSig, F.Term)
-modelExpr mdle =
-  case mdle of
-   ModelStruct str -> do
-     (sigStr, m) <- structure Nothing ModelMK str
-     let
-       sig = F.ModelSem sigStr
-       s = F.AbstractSig $ U.bind [] sig
-     return (s, m)
-   ModelId p -> do
-     (sig, m) <- modulePath p
-     return (F.AbstractSig $ U.bind [] sig, m)
    ModelLocal lcl bdy mt -> do
      (sig, m) <- modelLocal lcl bdy mt
      return (sig, m)
@@ -126,12 +118,12 @@ structure modPath mk (Module decls) = do
 -- The big picture is: we have two "monads", the distribution monad
 -- and the existential packing "monad", so we use the elim forms to
 -- take them both apart, and then return/pack the resulting modules.
-modelLocal :: ToF m => Module -> ModelExpr -> ModuleType -> m (F.AbstractSig, F.Term)
+modelLocal :: ToF m => Module -> ModuleExpr -> ModuleType -> m (F.AbstractSig, F.Term)
 modelLocal lcl_ body_ mt_ = do
   ascribedSig <- moduleType mt_
   let (Module lclDecls) = lcl_
   declarations Nothing ModelMK lclDecls $ \(_lclSummary, _lclFields, lclTermHole) -> do
-    (F.AbstractSig bodySigBnd, bodyTerm) <- modelExpr body_
+    (F.AbstractSig bodySigBnd, bodyTerm) <- moduleExpr Nothing body_
     U.lunbind bodySigBnd $ \(gammas,bodySig) -> do
       (taus, coer) <- do
         (sig2, taus) <- F.matchSubst bodySig ascribedSig

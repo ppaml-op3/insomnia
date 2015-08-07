@@ -7,6 +7,8 @@ import GHC.Generics (Generic)
 
 import Unbound.Generics.LocallyNameless
 
+import Insomnia.Common.ModuleKind
+
 -- | In Insomnia, we have two sorts of term-level definitions:
 -- deterministicc parameters and random variables.
 data Stochasticity = DeterministicParam | RandomVariable
@@ -20,3 +22,8 @@ instance Alpha Stochasticity
 instance Subst a Stochasticity where
   subst _ _ = id
   substs _ = id
+
+stochasticityForModule :: ModuleKind -> Stochasticity
+stochasticityForModule ModuleMK = DeterministicParam
+stochasticityForModule ModelMK = RandomVariable
+

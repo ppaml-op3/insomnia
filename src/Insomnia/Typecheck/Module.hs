@@ -58,15 +58,11 @@ import Insomnia.Typecheck.FunctorApplication (checkFunctorApplication)
 
 -- | Infer the signature of the given module expression
 inferModuleExpr :: Path -> ModuleExpr -> (ModuleExpr -> ModuleTypeNF -> TC a) -> TC a
-inferModuleExpr pmod (ModuleStruct mdl) kont = do
-  mdl' <- checkModule pmod DeterministicParam mdl return
-            <??@ "while checking module " <> formatErr pmod
+inferModuleExpr pmod (ModuleStruct mk mdl) kont = do
+  mdl' <- checkModule pmod (stochasticityForModule mk) mdl return
+            <??@ "while checking " <> formatErr mk <> " " <> formatErr pmod
   msig <- naturalSignature mdl'
-  kont (ModuleStruct mdl') (SigMTNF (SigV msig ModuleMK))
-inferModuleExpr pmod (ModuleModel mdl) kont = do
-  (mdl', msig) <- checkModelExpr pmod mdl
-          <??@ "while checking model " <> formatErr pmod
-  kont (ModuleModel mdl') (SigMTNF (SigV msig ModelMK))
+  kont (ModuleStruct mk mdl') (SigMTNF (SigV msig mk))
 inferModuleExpr pmod (ModuleSeal mdl mtypeSealed) kont = do
   inferModuleExpr pmod mdl $ \mdl' mtnfInferred -> do
     (mtypeSealed', mtnfSealed) <-
@@ -97,40 +93,26 @@ inferModuleExpr pmod (ModuleFun bnd) kont =
     (inferModuleExpr (IdP bodyName) body $ \body' bodyNF ->
       kont (ModuleFun $ U.bind teleArgs' body') (FunMTNF $ U.bind teleArgsNF bodyNF))
       <??@ ("while checking the body of functor " <> formatErr pmod)
-  
-checkModelExpr :: Path -> ModelExpr -> TC (ModelExpr, Signature)
-checkModelExpr pmod mexpr =
-  case mexpr of
-   ModelId p -> do
-     sigv <- lookupModuleSigPath p
-     case sigv of
-      (SigMTNF (SigV msig ModuleMK)) -> return (ModelId p, msig)
-      (SigMTNF (SigV _msig ModelMK)) -> typeError ("model path " <> formatErr p
-                                         <> " cannot be used in a model expression.")
-      (FunMTNF {}) -> typeError ("functor path " <> formatErr p
-                                 <> " cannot be used in a model expression.")
-   ModelStruct mdl -> do
-     mdl' <- checkModule pmod RandomVariable mdl return
-             <??@ "while checking model " <> formatErr pmod
-     msig <- naturalSignature mdl'
-     return (ModelStruct mdl', msig)
-   ModelLocal modHidden body mty -> do
+inferModuleExpr pmod (ModelLocal modHidden body mty) kont = do
      --TODO: proper error message if this is a functor
      (mty', mtnfAscribed) <- checkModuleType mty
-     checkModule pmod RandomVariable modHidden $ \modHidden' -> do
-       (body', sigInferred) <- checkModelExpr pmod body
-       let mtnfInferred = SigMTNF (SigV sigInferred ModelMK)
+     (mdl, sig) <- checkModule pmod RandomVariable modHidden $ \modHidden' -> do
+       (body', mtnfInferred) <-
+         inferModuleExpr pmod body (\body' mtnfInferred -> return (body', mtnfInferred))
+         <??@ ("while checking the body of local model "<> formatErr pmod)
        mtnfAscribed' <- mayAscribeNF mtnfInferred mtnfAscribed
                       <??@ ("while checking validity of signature ascription to body of local model in "
                             <> formatErr pmod)
-       let sigAscribed = case mtnfAscribed' of
-                          SigMTNF (SigV s ModelMK) -> s
-                          _ -> error ("internal error: mtnfInferred may be ascribed mtnfAscribed,"
-                                      ++ " but the ascribed module type isn't a model sig.")
-       return (ModelLocal modHidden' body' mty', sigAscribed)
-
-
-
+       sigAscribed <- case mtnfAscribed' of
+                      SigMTNF (SigV s ModelMK) -> return s
+                      SigMTNF (SigV s ModuleMK) ->
+                        typeError ("local model " <> formatErr pmod
+                                   <> " is ascribed a module type " <> formatErr s
+                                   <> ", not a model type")
+                      FunMTNF {} -> typeError ("local model " <> formatErr pmod
+                                               <> " is ascribed a functor type ")
+       return (ModelLocal modHidden' body' mty', (SigMTNF (SigV sigAscribed ModelMK)))
+     kont mdl sig
 -- | After checking a declaration we get one or more declarations out
 -- (for example if we inferred a signature for a value binding that did not have one).
 type CheckedDecl = Endo [Decl]

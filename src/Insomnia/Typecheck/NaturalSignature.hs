@@ -17,8 +17,6 @@
 module Insomnia.Typecheck.NaturalSignature (naturalSignature,
                                             naturalSignatureModuleExpr) where
 
-import Control.Lens
-import Control.Applicative ((<$>))
 import Data.Monoid ((<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
@@ -95,13 +93,12 @@ naturalSignature = go . moduleDecls
               
 
 naturalSignatureModuleExpr :: ModuleExpr -> TC ModuleTypeNF
-naturalSignatureModuleExpr (ModuleStruct mdl) = do
+naturalSignatureModuleExpr (ModuleStruct mk mdl) = do
   modSig <- naturalSignature mdl
-  return (SigMTNF (SigV modSig ModuleMK))
+  return (SigMTNF (SigV modSig mk))
 naturalSignatureModuleExpr (ModuleSeal _ mt) = whnfModuleType mt
 naturalSignatureModuleExpr (ModuleAssume mt) = whnfModuleType mt
 naturalSignatureModuleExpr (ModuleId path) = lookupModuleSigPath path
-naturalSignatureModuleExpr (ModuleModel mdl) = SigMTNF <$> naturalSignatureModelExpr mdl
 naturalSignatureModuleExpr (ModuleFun bnd) =
   U.lunbind bnd $ \(tele, body) ->
   extendModuleCtxFunctorArgs tele $ \ _tele teleSig -> do
@@ -109,6 +106,11 @@ naturalSignatureModuleExpr (ModuleFun bnd) =
     return (FunMTNF $ U.bind teleSig bodySig)
 naturalSignatureModuleExpr (ModuleApp pfun pargs) =
   naturalSignatureFunctorApplication pfun pargs
+naturalSignatureModuleExpr (ModelLocal _ _ mt) = do
+  nf <- whnfModuleType mt
+  case nf of
+   SigMTNF sigv -> return (SigMTNF sigv)
+   FunMTNF {} -> typeError ("model is ascribed a functor type " <> formatErr mt)
 
 naturalSignatureFunctorApplication :: Path -> [Path] -> TC ModuleTypeNF
 naturalSignatureFunctorApplication pfun pargs = do
@@ -149,18 +151,3 @@ naturalSignatureFunctorArgument fa parg rest kont =
       rest' = U.subst idParam parg rest
   in kont rest'
 
-naturalSignatureModelExpr :: ModelExpr -> TC (SigV Signature)
-naturalSignatureModelExpr (ModelId p) = do
-  -- TODO: proper error message
-  nf <- lookupModuleSigPath p
-  case nf of
-   (SigMTNF sigv) -> return (sigv & sigVKind .~ ModelMK)
-   (FunMTNF {}) -> error ("internal error: naturalSignatureModelExpr got a functor path")
-naturalSignatureModelExpr (ModelStruct mdl) = do
-  modSig <- naturalSignature mdl
-  return (SigV modSig ModelMK)
-naturalSignatureModelExpr (ModelLocal _ _ mt) = do
-  nf <- whnfModuleType mt
-  case nf of
-   SigMTNF sigv -> return sigv
-   FunMTNF {} -> typeError ("model is ascribed a functor type " <> formatErr mt)

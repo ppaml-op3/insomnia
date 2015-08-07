@@ -48,8 +48,7 @@ toplevelItem (ToplevelImported fp it tl) = ToplevelImported fp it (toplevel tl)
 toplevelItem t@(ToplevelQuery {}) = t
 
 moduleExpr :: ModuleExpr -> ModuleExpr
-moduleExpr (ModuleStruct mdl) = ModuleStruct (module' mdl)
-moduleExpr (ModuleModel mdl) = ModuleModel (modelExpr mdl)
+moduleExpr (ModuleStruct mk mdl) = ModuleStruct mk (module' mdl)
 moduleExpr (ModuleSeal me mt) = ModuleSeal (moduleExpr me) mt
 moduleExpr (ModuleFun bnd) =
   let (tele, body) = UU.unsafeUnbind bnd
@@ -57,11 +56,8 @@ moduleExpr (ModuleFun bnd) =
 moduleExpr me@(ModuleAssume {}) = me
 moduleExpr me@(ModuleId {}) = me
 moduleExpr m@(ModuleApp {}) = m -- p (p1, ..., pK) - there is nothing to recurse into
+moduleExpr (ModelLocal m me mt) = ModelLocal (module' m) (moduleExpr me) mt
 
-modelExpr :: ModelExpr -> ModelExpr
-modelExpr (ModelStruct mdl) = ModelStruct (module' mdl)
-modelExpr m@(ModelId {}) = m
-modelExpr (ModelLocal m me mt) = ModelLocal (module' m) (modelExpr me) mt
 
 module' :: Module -> Module
 module' (Module ds) = Module (map decl ds)

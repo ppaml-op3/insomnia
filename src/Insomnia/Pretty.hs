@@ -464,8 +464,7 @@ instance Pretty ToplevelItem where
     fsep ["query", pp qe]
 
 instance Pretty ModuleExpr where
-  pp (ModuleStruct mdl) = "module" <+> pp mdl
-  pp (ModuleModel mdl) = "model" <+> pp mdl
+  pp (ModuleStruct mk mdl) = pp mk <+> pp mdl
   pp (ModuleSeal mdl moduleSig) =
     parens (fsep [pp mdl, indent classify (pp moduleSig)])
   pp (ModuleAssume mtype) = fsep ["assume", nesting (pp mtype)]
@@ -473,6 +472,11 @@ instance Pretty ModuleExpr where
   pp (ModuleFun bnd) = ppFunctor rightArrow bnd
   pp (ModuleApp pfun args) =
     fsep [pp pfun, parens $ fsep $ punctuate "," $ map pp args]
+  pp (ModelLocal (Module hid) body ty) =
+    fsep ["local",
+          nesting (fsep $ map pp hid),
+          "in",
+          nesting (fsep [pp body, indent classify (pp ty)])]
 
 ppFunctor :: (U.Alpha a, Pretty a)
              => PM Doc
@@ -482,15 +486,6 @@ ppFunctor sym bnd =
     let (argsTele, body) = UU.unsafeUnbind bnd
     in fsep [parens (fsep $ ppTelescope pp argsTele), indent sym (pp body)]
   
-
-instance Pretty ModelExpr where
-  pp (ModelId p) = pp p
-  pp (ModelStruct mdl) = pp mdl
-  pp (ModelLocal (Module hid) body ty) =
-    fsep ["local",
-          nesting (fsep $ map pp hid),
-          "in",
-          nesting (fsep [pp body, indent classify (pp ty)])]
 
 instance Pretty ToplevelSummary where
   pp UnitTS = mempty

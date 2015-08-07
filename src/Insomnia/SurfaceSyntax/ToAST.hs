@@ -77,10 +77,6 @@ qualifiedIdValueConstructor (QId modPath fld) =
   then I.VCLocal $ U.string2Name fld
   else I.VCGlobal (Left $ I.ValConPath (submoduleIdentPath modPath) fld)
 
-stochasticityForModule :: ModuleKind -> Stochasticity
-stochasticityForModule ModuleMK = DeterministicParam
-stochasticityForModule ModelMK = RandomVariable
-
 contextualStochasticity :: Monad m => Maybe Stochasticity -> TA m Stochasticity
 contextualStochasticity (Just stoch) = return stoch
 contextualStochasticity Nothing =
@@ -129,10 +125,7 @@ inferBigExpr = toastPositioned inferBigExpr_
 
 inferBigExpr_ :: Monad m => BigExpr_ -> TA m BigValue
 inferBigExpr_ (LiteralBE mk m) =
-  let f = case mk of
-        ModuleMK -> I.ModuleStruct
-        ModelMK -> I.ModuleModel . I.ModelStruct
-  in ModuleBV . f <$> local (currentModuleKind .~ mk) (runCTA (module' m))
+  ModuleBV . I.ModuleStruct mk <$> local (currentModuleKind .~ mk) (runCTA (module' m))
 inferBigExpr_ (ClassifierBE mk sig) =
   SignatureBV . I.SigMT . flip I.SigV mk  <$> signature sig
 inferBigExpr_ (AppBE qid qids) =
@@ -161,10 +154,7 @@ inferBigExpr_ (LocalBE m beMod beSig) = do
   let comp = do
         hiddenMod' <- module' m
         bodyMdl' <- liftCTA $ expectBigExprModule beMod
-        body' <- case bodyMdl' of
-          I.ModuleModel body -> return body
-          _ -> throwToastErrorC $ "local with a body that isn't a model: " ++ show bodyMdl'
-        return $ ModuleBV $ I.ModuleModel $ I.ModelLocal hiddenMod' body' mt'
+        return $ ModuleBV $ I.ModelLocal hiddenMod' bodyMdl' mt'
   runCTA comp
 inferBigExpr_ (AssumeBE be) =
   (ModuleBV . I.ModuleAssume) <$> expectBigExprSignature be
@@ -212,7 +202,7 @@ toplevelImportSpec it (ImportModuleSpecItem modId fld) = do
       -- is because we want to copy all the datatypes from POther into P, rather than
       -- merely alias them.
       reimportingModule =
-        I.ModuleStruct $ I.Module [I.ImportDecl p]
+        I.ModuleStruct ModuleMK $ I.Module [I.ImportDecl p]
   addModuleVarC modId ident'
   return $ I.ToplevelModule ident' reimportingModule
 toplevelImportSpec it (ImportModuleTypeSpecItem sigId) = do
