@@ -15,7 +15,7 @@ import Data.Ratio ((%))
 
 import System.IO (Handle)
 import Text.Parsec.Char (char, letter, alphaNum, oneOf, noneOf)
-import Text.Parsec.Combinator (eof, sepBy1, between, manyTill, chainl1)
+import Text.Parsec.Combinator (eof, sepBy1, between, many1, manyTill, chainl1)
 import Text.Parsec.Error (ParseError)
 import qualified Text.Parsec.Token as Tok hiding (makeTokenParser)
 import qualified Text.Parsec.Indentation.Token as Tok
@@ -64,6 +64,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
   , reservedNames = ["model", "module", "local",
                      "import", "using",
+                     "observe", "is",
                      "query",
                      "where",
                      "forall", "∀",
@@ -269,6 +270,7 @@ atomicBigExpr =
   <|> (literalBigExpr <?> "literal model or module structure")
   <|> (applicationOrVarBigExpr <?> "functor application")
   <|> (localBigExpr <?> "model local declaration")
+  <|> (observeBigExpr <?> "model observation")
   <|> parens bigExpr
 
 classifierBigExpr :: Parser BigExpr
@@ -310,6 +312,14 @@ localBigExpr =
                    <*> atomicBigExpr
                    <* classify
                    <*> bigExpr)
+
+observeBigExpr :: Parser BigExpr
+observeBigExpr =
+  parsePositioned (ObserveBE <$ reserved "observe"
+                   <*> atomicBigExpr
+                   <*> many1 observationClause)
+
+
 
 moduleKind :: Parser ModuleKind
 moduleKind =
@@ -447,6 +457,13 @@ whereTypeClause =
   <* reservedOp "="
   <*> typeExpr
 
+observationClause :: Parser ObservationClause
+observationClause =
+  ObservationClause
+  <$ reserved "where"
+  <*> modelIdentifier
+  <* reserved "is"
+  <*> atomicBigExpr
 
 functorArguments :: Parser [(Ident, BigExpr)]
 functorArguments =

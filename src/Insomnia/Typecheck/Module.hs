@@ -113,6 +113,10 @@ inferModuleExpr pmod (ModelLocal modHidden body mty) kont = do
                                                <> " is ascribed a functor type ")
        return (ModelLocal modHidden' body' mty', (SigMTNF (SigV sigAscribed ModelMK)))
      kont mdl sig
+inferModuleExpr pmod (mo@ModelObserve {}) kont = do
+  typeError ("unimplemented observation for " <> formatErr pmod <> " " <> formatErr mo)
+
+
 -- | After checking a declaration we get one or more declarations out
 -- (for example if we inferred a signature for a value binding that did not have one).
 type CheckedDecl = Endo [Decl]

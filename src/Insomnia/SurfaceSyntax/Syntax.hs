@@ -53,6 +53,7 @@ data BigExpr_ =
   | SealBE !BigExpr !BigExpr -- M : S
   | WhereTypeBE !BigExpr !WhereClause -- S where type t = P.t'
   | AssumeBE !BigExpr -- assume S
+  | ObserveBE !BigExpr ![ObservationClause]
     deriving (Show)
 
 type BigExpr = Positioned BigExpr_
@@ -72,6 +73,11 @@ data QueryExpr =
 data WhereClause =
   WhereTypeCls !Con !Type
     deriving (Show)
+
+data ObservationClause =
+  ObservationClause !Ident !BigExpr
+    deriving (Show)
+
 
 data Signature = Sig ![SigDecl]
                deriving (Show)

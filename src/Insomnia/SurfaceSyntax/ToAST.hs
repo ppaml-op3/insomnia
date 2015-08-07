@@ -156,6 +156,10 @@ inferBigExpr_ (LocalBE m beMod beSig) = do
         bodyMdl' <- liftCTA $ expectBigExprModule beMod
         return $ ModuleBV $ I.ModelLocal hiddenMod' bodyMdl' mt'
   runCTA comp
+inferBigExpr_ (ObserveBE beMdl obss) = do
+  mdl <- expectBigExprModule beMdl
+  obss' <- mapM observationClause obss
+  return $ ModuleBV $ I.ModelObserve mdl obss'
 inferBigExpr_ (AssumeBE be) =
   (ModuleBV . I.ModuleAssume) <$> expectBigExprSignature be
 
@@ -241,6 +245,13 @@ whereClausePath (QId pfx fld) =
     modId =  U.s2n "<mod>"
     path = I.headSkelFormToPath (Right modId, pfx)
   in return $ U.bind modId $ I.TypePath path fld
+
+observationClause :: Monad m => ObservationClause -> TA m I.ObservationClause
+observationClause (ObservationClause ident be) = do
+  let f = ident
+  m <- expectBigExprModule be
+  return $ I.ObservationClause f m
+
 
 functorArguments :: Monad m
                     => [(Ident, BigExpr)]

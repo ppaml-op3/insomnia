@@ -69,6 +69,8 @@ moduleExpr modPath mdl_ =
    ModelLocal lcl bdy mt -> do
      (sig, m) <- modelLocal lcl bdy mt
      return (sig, m)
+   ModelObserve {} -> throwError "unimplemented: ToF.Module for ModelObserve"
+
 
 moduleAssume :: ToF m
                 => Maybe Path

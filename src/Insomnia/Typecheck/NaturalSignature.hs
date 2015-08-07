@@ -111,6 +111,8 @@ naturalSignatureModuleExpr (ModelLocal _ _ mt) = do
   case nf of
    SigMTNF sigv -> return (SigMTNF sigv)
    FunMTNF {} -> typeError ("model is ascribed a functor type " <> formatErr mt)
+naturalSignatureModuleExpr mo@(ModelObserve _m _obss) =
+  typeError ("unimplemented natural signature for model observation" <> formatErr mo)
 
 naturalSignatureFunctorApplication :: Path -> [Path] -> TC ModuleTypeNF
 naturalSignatureFunctorApplication pfun pargs = do

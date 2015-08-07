@@ -21,13 +21,15 @@
   (define-generic-mode 'insomnia-mode
     '(("--" . nil))
     '("module" "model"
+      "import" "using"
       "query"
+      "observe" "is"
       "type" "sig" "where"
       "fun" "val"
       "let" "in" "end"
       "forall" "∀"
       "infix" "infixl" "infixr"
-      "import" "local"
+      "local"
       "data" "enum"
       "parameter" "random"
       "return"

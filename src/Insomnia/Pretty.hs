@@ -477,6 +477,10 @@ instance Pretty ModuleExpr where
           nesting (fsep $ map pp hid),
           "in",
           nesting (fsep [pp body, indent classify (pp ty)])]
+  pp (ModelObserve mdl clauses) =
+    fsep ["observe",
+          pp mdl,
+          nesting (fsep $ map pp clauses)]
 
 ppFunctor :: (U.Alpha a, Pretty a)
              => PM Doc
@@ -486,6 +490,10 @@ ppFunctor sym bnd =
     let (argsTele, body) = UU.unsafeUnbind bnd
     in fsep [parens (fsep $ ppTelescope pp argsTele), indent sym (pp body)]
   
+instance Pretty ObservationClause where
+  pp (ObservationClause f m) =
+    fsep ["where", pp f,
+          indent "is" (pp m)]
 
 instance Pretty ToplevelSummary where
   pp UnitTS = mempty

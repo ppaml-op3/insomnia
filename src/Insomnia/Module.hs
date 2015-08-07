@@ -33,6 +33,12 @@ data ModuleExpr =
     -- if X is mentioned, but in general there does not exist a most
     -- general signature for M' that doesn't mention X.
   | ModelLocal !Module !ModuleExpr !ModuleType -- must annotate with sig.
+    -- | observe O where M is M'
+  | ModelObserve !ModuleExpr ![ObservationClause]
+  deriving (Show, Typeable, Generic)
+
+data ObservationClause =
+  ObservationClause !Field !ModuleExpr
   deriving (Show, Typeable, Generic)
 
 -- A single module.
@@ -60,21 +66,25 @@ data ValueDecl =
 
 instance Alpha ModuleExpr
 instance Alpha Module
+instance Alpha ObservationClause
 instance Alpha Decl
 instance Alpha ValueDecl
 
 instance Subst Path ModuleExpr
 instance Subst Path Module
+instance Subst Path ObservationClause
 instance Subst Path Decl
 instance Subst Path ValueDecl
 
 instance Subst TypeConstructor ModuleExpr
 instance Subst TypeConstructor Module
+instance Subst TypeConstructor ObservationClause
 instance Subst TypeConstructor Decl
 instance Subst TypeConstructor ValueDecl
 
 instance Subst ValueConstructor ModuleExpr
 instance Subst ValueConstructor Module
+instance Subst ValueConstructor ObservationClause
 instance Subst ValueConstructor Decl
 instance Subst ValueConstructor ValueDecl
 

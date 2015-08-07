@@ -1,0 +1,14 @@
+
+X = module {
+  Y = module {
+    Z = module {
+      val x = 1
+    }
+  }
+}
+
+P = module {
+  import X
+  H = Y.Z
+}
+

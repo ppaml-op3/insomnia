@@ -57,7 +57,11 @@ moduleExpr me@(ModuleAssume {}) = me
 moduleExpr me@(ModuleId {}) = me
 moduleExpr m@(ModuleApp {}) = m -- p (p1, ..., pK) - there is nothing to recurse into
 moduleExpr (ModelLocal m me mt) = ModelLocal (module' m) (moduleExpr me) mt
+moduleExpr (ModelObserve mdl obss) = ModelObserve (moduleExpr mdl) (map observationClause obss)
 
+observationClause :: ObservationClause -> ObservationClause
+observationClause (ObservationClause f me) =
+  ObservationClause f (moduleExpr me)
 
 module' :: Module -> Module
 module' (Module ds) = Module (map decl ds)
