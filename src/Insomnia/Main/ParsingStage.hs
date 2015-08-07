@@ -2,6 +2,8 @@
 module Insomnia.Main.ParsingStage where
 
 import Control.Monad.Trans
+import qualified System.IO as IO
+import qualified System.IO.Error as IOE
 
 import qualified Data.Format as F
 
@@ -34,10 +36,17 @@ parseAndToast = parseInsomniaFile Pipes.>-> do
 parseInsomniaFile :: Pipes.Pipe FilePath Surface.Toplevel InsomniaMain ()
 parseInsomniaFile = do
   fp <- Pipes.await
-  result <- Pipes.lift $ lift $ P.parseFile fp
+  result <- Pipes.lift $ lift $ do
+    (Right `fmap` IO.withFile fp IO.ReadMode (P.parseHandle fp))
+      `IOE.catchIOError`
+      (\ioe -> if IOE.isDoesNotExistError ioe
+                  || IOE.isPermissionError ioe
+               then return $ Left ioe
+               else IOE.ioError ioe)
   case result of
-   Left err -> Pipes.lift $ showErrorAndDie "parsing insomnia file" err
-   Right surfaceAst -> Pipes.yield surfaceAst
+   Left ioe -> Pipes.lift $ showErrorAndDie "parsing insomnia file" (F.WrapShow ioe)
+   Right (Left err) -> Pipes.lift $ showErrorAndDie "parsing insomnia file" err
+   Right (Right surfaceAst) -> Pipes.yield surfaceAst
 
 importHandler :: Surface.ImportFileSpec
                  -> InsomniaMain (Either ToAST.ImportFileError Surface.Toplevel)

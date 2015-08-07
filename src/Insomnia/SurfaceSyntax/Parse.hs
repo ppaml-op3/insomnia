@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards, OverloadedStrings, NamedFieldPuns #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
-module Insomnia.SurfaceSyntax.Parse (parseFile, parseText, bigExpr, toplevel) where
+module Insomnia.SurfaceSyntax.Parse (parseHandle, parseText, bigExpr, toplevel) where
 
 import Control.Applicative
 import Control.Monad (guard)
@@ -13,6 +13,7 @@ import Data.Text (Text)
 import qualified Data.Text.IO as T
 import Data.Ratio ((%))
 
+import System.IO (Handle)
 import Text.Parsec.Char (char, letter, alphaNum, oneOf, noneOf)
 import Text.Parsec.Combinator (eof, sepBy1, between, manyTill, chainl1)
 import Text.Parsec.Error (ParseError)
@@ -206,13 +207,12 @@ modelId = (mkQId <$> qualifiedName modelIdentifier)
 
 ----------------------------------------
     
-parseFile :: FilePath -> IO (Either FormatParseError Toplevel)
-parseFile fp = do
-  txt <- T.readFile fp
-  return $ parseText fp txt toplevel
+parseHandle :: FilePath -> Handle -> IO (Either FormatParseError Toplevel)
+parseHandle fp h =
+  parseText fp toplevel <$> T.hGetContents h
 
-parseText :: FilePath -> Text -> Parser a -> Either FormatParseError a
-parseText fp txt p = 
+parseText :: FilePath -> Parser a -> Text -> Either FormatParseError a
+parseText fp p txt =
   let s = mkIndentStream 0 infIndentation True Gt $ mkCharIndentStream txt
   in either (Left . FormatParseError) Right $ parse p fp s
 ----------------------------------------

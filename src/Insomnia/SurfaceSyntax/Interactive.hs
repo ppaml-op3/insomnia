@@ -32,7 +32,7 @@ import Insomnia.Pretty (ppDefault)
 -- AbstractSig (<[(T,{KType})]> ModSem [(FUser "T",TypeSem (TV 0@0) KType),(FUser "x",ValSem (TApp (TApp (TLam (<(α,{KType})> TLam (<(β,{KType})> TArr (TV 1@0) (TV 0@0)))) (TV 0@0)) (TV 0@0)))])
 moduleType :: T.Text -> IO F.AbstractSig
 moduleType txt = do
-  let okOrErr = P.parseText "-" txt P.bigExpr
+  let okOrErr = P.parseText "-" P.bigExpr txt
   syn <- case okOrErr of
    Left err -> fail (docToString $ format err)
    Right ok -> return ok
@@ -47,7 +47,7 @@ interactiveImportHandler _ =
 -- | >>> moduleExpr "{ module X :: {\n type T :: *\n sig t :: T -> T\n } {\n type T = Int\n sig t :: T -> T\n fun t x = x } }"
 moduleExpr :: T.Text -> IO (F.AbstractSig, F.Term)
 moduleExpr txt = do
-  let okOrErr = P.parseText "-" txt P.bigExpr
+  let okOrErr = P.parseText "-" P.bigExpr txt
   syn <- case okOrErr of
     Left err -> fail (docToString $ format err)
     Right ok -> return ok
