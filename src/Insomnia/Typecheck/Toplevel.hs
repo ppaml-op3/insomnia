@@ -30,15 +30,14 @@ checkToplevel (Toplevel items_) = do
 checkToplevelItem :: ToplevelItem -> (ToplevelItem -> Endo ToplevelSummary -> TC a) -> TC a
 checkToplevelItem item kont =
   case item of
-    ToplevelModule moduleIdent me ->
+    ToplevelModule moduleIdent me -> do
       let pmod = IdP moduleIdent
-      in (inferModuleExpr pmod me
-          .??@ ("while infering the module type of " <> formatErr pmod))
-         $ \me' sigNF ->
-            (extendModuleCtxNF pmod sigNF
-             .??@ ("while extending the context with module type of " <> formatErr pmod))
-            $ let updSum = ModuleTS (U.name2String moduleIdent) . U.bind (moduleIdent, U.embed sigNF)
-              in kont (ToplevelModule moduleIdent me') (Endo updSum)
+      (me', sigNF) <- inferModuleExpr pmod me
+                      <??@ ("while infering the module type of " <> formatErr pmod)
+      ((extendModuleCtxNF pmod sigNF
+        .??@ ("while extending the context with module type of " <> formatErr pmod))
+       $ let updSum = ModuleTS (U.name2String moduleIdent) . U.bind (moduleIdent, U.embed sigNF)
+         in kont (ToplevelModule moduleIdent me') (Endo updSum))
     ToplevelModuleType modTypeIdent modType -> do
       (modType', sigV) <- checkModuleType modType
                           <??@ ("while checking module type "

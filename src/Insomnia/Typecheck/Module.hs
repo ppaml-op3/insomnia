@@ -25,7 +25,6 @@ import Insomnia.Types (Kind(..), TypeConstructor(..), TypePath(..),
 import Insomnia.Expr (Var, Expr, TabulatedFun, TraverseExprs(..),
                       Function(..), Generalization(..), PrenexCoercion(..))
 import Insomnia.ModuleType (ModuleTypeNF(..),
-                            Signature(..),
                             SigV(..))
 import Insomnia.Module
 import Insomnia.Pretty (Pretty, PrettyShort(..))
@@ -57,49 +56,47 @@ import Insomnia.Typecheck.NaturalSignature (naturalSignature, naturalSignatureMo
 import Insomnia.Typecheck.FunctorApplication (checkFunctorApplication)
 
 -- | Infer the signature of the given module expression
-inferModuleExpr :: Path -> ModuleExpr -> (ModuleExpr -> ModuleTypeNF -> TC a) -> TC a
-inferModuleExpr pmod (ModuleStruct mk mdl) kont = do
+inferModuleExpr :: Path -> ModuleExpr -> TC (ModuleExpr, ModuleTypeNF)
+inferModuleExpr pmod (ModuleStruct mk mdl) = do
   mdl' <- checkModule pmod (stochasticityForModule mk) mdl return
             <??@ "while checking " <> formatErr mk <> " " <> formatErr pmod
   msig <- naturalSignature mdl'
-  kont (ModuleStruct mk mdl') (SigMTNF (SigV msig mk))
-inferModuleExpr pmod (ModuleSeal mdl mtypeSealed) kont = do
-  inferModuleExpr pmod mdl $ \mdl' mtnfInferred -> do
-    (mtypeSealed', mtnfSealed) <-
-      checkModuleType mtypeSealed
-      <??@ ("while checking sealing signature of " <> formatErr pmod)
-    mtnfSealed' <- mayAscribeNF mtnfInferred mtnfSealed
-                   <??@ ("while checking validity of signature sealing to "
-                         <> formatErr pmod)
-    kont (ModuleSeal mdl' mtypeSealed') mtnfSealed'
-inferModuleExpr pmod (ModuleAssume moduleType) kont = do
+  return (ModuleStruct mk mdl', SigMTNF (SigV msig mk))
+inferModuleExpr pmod (ModuleSeal mdl mtypeSealed) = do
+  (mdl', mtnfInferred) <- inferModuleExpr pmod mdl
+  (mtypeSealed', mtnfSealed) <- checkModuleType mtypeSealed
+                                <??@ ("while checking sealing signature of " <> formatErr pmod)
+  mtnfSealed' <- mayAscribeNF mtnfInferred mtnfSealed
+                 <??@ ("while checking validity of signature sealing to "
+                       <> formatErr pmod)
+  return (ModuleSeal mdl' mtypeSealed', mtnfSealed')
+inferModuleExpr pmod (ModuleAssume moduleType) = do
   (moduleType', sigV) <- checkModuleType moduleType
                          <??@ ("while checking postulated signature of "
                                <> formatErr pmod)
-  kont (ModuleAssume moduleType') sigV
-inferModuleExpr pmod (ModuleId modPathRHS) kont = do
+  return (ModuleAssume moduleType', sigV)
+inferModuleExpr pmod (ModuleId modPathRHS) = do
   sigV <- lookupModuleSigPath modPathRHS
           <??@ ("while checking the definition of " <> formatErr pmod)
   sigV' <- clarifySignatureNF modPathRHS sigV
-  kont (ModuleId modPathRHS) sigV'
-inferModuleExpr pmod (ModuleApp pfun pargs) kont = do
+  return (ModuleId modPathRHS, sigV')
+inferModuleExpr pmod (ModuleApp pfun pargs) = do
   sigNF <- checkFunctorApplication pfun pargs
            <??@ ("while checking functor application definiing " <> formatErr pmod)
-  kont (ModuleApp pfun pargs) sigNF
-inferModuleExpr pmod (ModuleFun bnd) kont =
+  return (ModuleApp pfun pargs, sigNF)
+inferModuleExpr pmod (ModuleFun bnd) =
   U.lunbind bnd $ \(teleArgs, body) ->
   extendModuleCtxFunctorArgs teleArgs $ \teleArgs' teleArgsNF -> do
     bodyName <- U.lfresh (U.s2n "<functor body>")
-    (inferModuleExpr (IdP bodyName) body $ \body' bodyNF ->
-      kont (ModuleFun $ U.bind teleArgs' body') (FunMTNF $ U.bind teleArgsNF bodyNF))
-      <??@ ("while checking the body of functor " <> formatErr pmod)
-inferModuleExpr pmod (ModelLocal modHidden body mty) kont = do
-     --TODO: proper error message if this is a functor
+    (body', bodyNF) <- inferModuleExpr (IdP bodyName) body
+                       <??@ ("while checking the body of functor " <> formatErr pmod)
+    return (ModuleFun $ U.bind teleArgs' body',
+            FunMTNF $ U.bind teleArgsNF bodyNF)
+inferModuleExpr pmod (ModelLocal modHidden body mty) = do
      (mty', mtnfAscribed) <- checkModuleType mty
      (mdl, sig) <- checkModule pmod RandomVariable modHidden $ \modHidden' -> do
-       (body', mtnfInferred) <-
-         inferModuleExpr pmod body (\body' mtnfInferred -> return (body', mtnfInferred))
-         <??@ ("while checking the body of local model "<> formatErr pmod)
+       (body', mtnfInferred) <- inferModuleExpr pmod body 
+                                <??@ ("while checking the body of local model "<> formatErr pmod)
        mtnfAscribed' <- mayAscribeNF mtnfInferred mtnfAscribed
                       <??@ ("while checking validity of signature ascription to body of local model in "
                             <> formatErr pmod)
@@ -112,8 +109,8 @@ inferModuleExpr pmod (ModelLocal modHidden body mty) kont = do
                       FunMTNF {} -> typeError ("local model " <> formatErr pmod
                                                <> " is ascribed a functor type ")
        return (ModelLocal modHidden' body' mty', (SigMTNF (SigV sigAscribed ModelMK)))
-     kont mdl sig
-inferModuleExpr pmod (mo@ModelObserve {}) kont = do
+     return (mdl, sig)
+inferModuleExpr pmod (mo@ModelObserve {}) = do
   typeError ("unimplemented observation for " <> formatErr pmod <> " " <> formatErr mo)
 
 
@@ -167,22 +164,20 @@ checkDecl' pmod stoch d =
       let v = U.s2n fld
       in checkedValueDecl fld <$> checkValueDecl fld v vd
     SubmoduleDefn fld moduleExpr -> do
-      moduleExpr' <- inferModuleExpr (ProjP pmod fld) moduleExpr
-                     (\moduleExpr' _sigV -> return moduleExpr')
+      (moduleExpr', _sig) <- inferModuleExpr (ProjP pmod fld) moduleExpr
       return $ singleCheckedDecl $ SubmoduleDefn fld moduleExpr'
     SampleModuleDefn fld moduleExpr -> do
       modExprId <- U.lfresh (U.s2n "<sampled model>")
       let modExprPath = IdP modExprId
-      moduleExpr' <- inferModuleExpr modExprPath moduleExpr
-                     (\moduleExpr' sigV ->
-                       case sigV of
-                        (SigMTNF (SigV _sig ModelMK)) -> return moduleExpr'
-                        (SigMTNF (SigV _sig ModuleMK)) ->
-                          typeError ("submodule " <> formatErr (ProjP pmod fld)
-                                     <> " is sampled from a module, not a model")
-                        (FunMTNF {}) ->
-                          typeError ("submodule " <> formatErr (ProjP pmod fld)
-                                     <> " is sampled from a functor, not a model"))
+      (moduleExpr', sigV) <- inferModuleExpr modExprPath moduleExpr
+      case sigV of
+        (SigMTNF (SigV _sig ModelMK)) -> return ()
+        (SigMTNF (SigV _sig ModuleMK)) ->
+          typeError ("submodule " <> formatErr (ProjP pmod fld)
+                     <> " is sampled from a module, not a model")
+        (FunMTNF {}) ->
+          typeError ("submodule " <> formatErr (ProjP pmod fld)
+                     <> " is sampled from a functor, not a model")
       return $ singleCheckedDecl $ SampleModuleDefn fld moduleExpr'
 
 type CheckedValueDecl = Endo [ValueDecl]

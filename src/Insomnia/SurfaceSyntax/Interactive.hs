@@ -52,10 +52,10 @@ moduleExpr txt = do
     Left err -> fail (docToString $ format err)
     Right ok -> return ok
   modExpr <- Pipes.runEffect $ ToAST.feedTA (ToAST.expectBigExprModule syn) (error . show) interactiveImportHandler ToAST.toASTbaseCtx
-  let tc = TC.runTC $ TC.inferModuleExpr (IdP $ U.s2n "M") modExpr (\modExpr' _ -> return modExpr')
+  let tc = TC.runTC $ TC.inferModuleExpr (IdP $ U.s2n "M") modExpr
   modExpr' <- case tc of
     Left err -> fail (docToString $ format err)
-    Right (ok, _) -> return ok
+    Right ((ok, _), _) -> return ok
   putStrDoc (format $ ppDefault modExpr')
   putStrLn "\n-----"
   let z@(_, tm) = ToF.runToFM $ ToF.moduleExpr Nothing modExpr'
