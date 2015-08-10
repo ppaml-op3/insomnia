@@ -54,6 +54,7 @@ import Insomnia.Typecheck.ConstructImportDefinitions (constructImportDefinitions
 import Insomnia.Typecheck.MayAscribe (mayAscribeNF)
 import Insomnia.Typecheck.NaturalSignature (naturalSignature, naturalSignatureModuleExpr)
 import Insomnia.Typecheck.FunctorApplication (checkFunctorApplication)
+import {-# SOURCE #-} Insomnia.Typecheck.ObservationClause (checkObservationClauses)
 
 -- | Infer the signature of the given module expression
 inferModuleExpr :: Path -> ModuleExpr -> TC (ModuleExpr, ModuleTypeNF)
@@ -110,8 +111,17 @@ inferModuleExpr pmod (ModelLocal modHidden body mty) = do
                                                <> " is ascribed a functor type ")
        return (ModelLocal modHidden' body' mty', (SigMTNF (SigV sigAscribed ModelMK)))
      return (mdl, sig)
-inferModuleExpr pmod (mo@ModelObserve {}) = do
-  typeError ("unimplemented observation for " <> formatErr pmod <> " " <> formatErr mo)
+inferModuleExpr pmod (ModelObserve mdle obss) = do
+  (mdle', mtnf) <- inferModuleExpr pmod mdle
+                   <??@ "while checking model of observation " <> formatErr pmod
+  mdlSig <- case mtnf of
+    FunMTNF {} -> typeError ("expected a model, but got a functor when "
+                             <> "checking an observation " <> formatErr pmod)
+    (SigMTNF (SigV mdlSig ModelMK)) -> return mdlSig
+    (SigMTNF (SigV _ ModuleMK)) -> typeError ("expected a model, but got a module when"
+                                              <> "checking an observation " <> formatErr pmod)
+  obss' <- checkObservationClauses pmod mdlSig obss
+  return (ModelObserve mdle' obss', mtnf)
 
 
 -- | After checking a declaration we get one or more declarations out

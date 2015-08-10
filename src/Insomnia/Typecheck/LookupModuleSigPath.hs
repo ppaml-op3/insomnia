@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns #-}
-module Insomnia.Typecheck.LookupModuleSigPath (lookupModuleSigPath) where
+module Insomnia.Typecheck.LookupModuleSigPath (lookupModuleSigPath, projectModuleField) where
 
 import Data.Monoid ((<>))
 

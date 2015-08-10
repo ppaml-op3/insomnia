@@ -105,6 +105,7 @@ library
                        --
                        Insomnia.Typecheck.NaturalSignature
                        Insomnia.Typecheck.FunctorApplication
+                       Insomnia.Typecheck.ObservationClause
                        Insomnia.Typecheck.Module
                        Insomnia.Typecheck.Query
                        Insomnia.Typecheck.Toplevel
