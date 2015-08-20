@@ -280,6 +280,13 @@ packs taus_ m_ (tvks_, tbody_) =
       in Pack tau m' (bind tvk t')
     go _ _ _ _ = error "expected lists of equal length"
 
+-- | unpacksM αs x defined as
+-- unpacksM ·      x  ≙  (m.n. let x = m in n, ·)
+-- unpacksM (α,αs) x  ≙  (m.n. let ⟨α,x′⟩ = m in h (x′) in n, (x′,xs′))
+--        where (h,xs′) = unpacksM αs x
+-- That is, it returns a pair of a term with a hole for the subject and the body,
+-- and the set of locally fresh variables derived from x that stand for the intermediate
+-- terms.
 unpacksM :: LFresh m => [TyVar] -> Var -> m ((Term -> Term -> Term), [AnyName])
 unpacksM [] x = return ((\e1 ebody -> Let $ bind (x, embed e1) ebody),
                         [])
@@ -306,11 +313,34 @@ unpacks tvs x e1 ebody = do
   (rest, _) <- unpacksM tvs x
   return $ rest e1 ebody
 
+-- | @workUnderExists (∃αs:κs.τ) m h@ returns the term
+-- let
+--   ⟨αs,x⟩ = m
+-- in
+--   pack ⟨αs, n⟩ as ∃αs:κs.σ
+-- where  (n, σ) = h αs τ
+workUnderExists :: LFresh m
+                   => Bind [(TyVar, Embed Kind)] Type
+                   -> Term
+                   -> ([(TyVar, Embed Kind)] -> Type -> m (Term, Type))
+                   -> m Term
+workUnderExists bnd subj h =
+  lunbind bnd $ \(tvks, tp) -> do
+    let tvs = map fst tvks
+    x <- lfresh (s2n "x")
+
+    (unpacker, _) <- unpacksM tvs x
+    (body, sigma) <- h tvks tp
+    return $ unpacker subj $ packs (map TV tvs) body (tvks, sigma)
+
+-- | lets · m ≙ m
+-- | lets x=m, bs ≙ let x = m in lets bs m 
 lets :: [(Var, Term)] -> Term -> Term
 lets [] = id
 lets ((v,m):vs) = Let . bind (v, embed m) . lets vs
 
 
+-- | tuple [m0, …, mk] = { #0 = m0, …, #k = mk }
 tuple :: [Term] -> Term
 tuple ms = 
   let ims = zipWith (\m i -> (FTuple i, m)) ms [0..]
@@ -385,3 +415,11 @@ consListVal =
      $ Roll (listT `TApp` e) inj ctx
     
     
+-- | Given a list of fields and a single field, return it
+selectField :: [(Field, a)] -> Field -> Maybe a
+selectField fvs_ f = (go fvs_)
+  where
+    go [] = Nothing
+    go ((f',v):fvs) | f == f' = return v
+                    | otherwise = go fvs
+

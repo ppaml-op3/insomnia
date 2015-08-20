@@ -17,9 +17,12 @@ primitives =
           , primitive "__BOOT.realAdd" 0 2
           , primitive "__BOOT.realMul" 0 2
           , primitive "__BOOT.ifRealLt" 1 4
+          , primitive "__BOOT.posterior" 2 3
           ]
   where
     mkTable l = M.fromList (mconcat l)
+    -- | primitive "h" x y is a primitive operation called "h" with
+    -- x type arguments and y term arguments
     primitive :: PrimitiveClosureHead -> Int -> Int -> [(Var, Value)]
     primitive h pn n =
       let

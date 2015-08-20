@@ -31,3 +31,9 @@
 
 (define (((__BOOT.Distribution.normal μ) σ²))
   (normal μ σ²))
+
+(define (((((__BOOT.posterior)) kern) obs) prior)
+  (lambda ()
+    (define x (prior))
+    (observe/fail ((kern x)) obs)
+    x))

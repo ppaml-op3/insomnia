@@ -22,7 +22,8 @@ import Insomnia.Pretty (ppDefault)
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
-import FOmega.Syntax
+import FOmega.Syntax hiding (selectField)
+import qualified FOmega.Syntax as Stx
 import FOmega.Value
 import qualified FOmega.Primitives as Primitives
 
@@ -87,6 +88,7 @@ primitiveEvalMap =
              , primitive "__BOOT.Distribution.choose" distChooseImpl
              , primitive "__BOOT.Distribution.uniform" distUniformImpl
              , primitive "__BOOT.Distribution.normal" distNormalImpl
+             , primitive "__BOOT.posterior" posteriorImpl
              ]
   where
     primitive h c = (h, c)
@@ -164,6 +166,13 @@ distNormalImpl (NilPCS
   return $ DistV $ DistClosure emptyEnv $ PrimitiveTh $ NormalPD mu sigma2
 distNormalImpl _ = evaluationError "__BOOT.Distribution.uniform incorrect arguments"
 
+-- posteriorImpl :: forall st obs . (st -> Dist obs) -> obs -> Dist st -> Dist st
+posteriorImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+posteriorImpl (NilPCS
+               `AppPCS` kernel
+               `AppPCS` obs
+               `AppPCS` prior) = return prior -- TODO
+posteriorImpl _ = evaluationError "__BOOT.posterior incorrect arguments"
 
 extendEnv :: Var -> Value -> Env -> Env
 extendEnv x v e =
@@ -324,12 +333,10 @@ mkDistClosureMemo m = mkDistClosure (MemoTh m)
 mkDistClosure :: DistThunk -> Env -> Value
 mkDistClosure cmp env = DistV $ DistClosure env cmp
 
-selectField :: MonadEval m => [(Field, Value)] -> Field -> m Value
-selectField fvs_ f = (go fvs_)
-  where
-    go [] = evaluationError "selected a field that isn't present in the record"
-    go ((f',v):fvs) | f == f' = return v
-                    | otherwise = go fvs
+selectField :: MonadEval m => [(Field, a)] -> Field -> m a
+selectField fvs f = case Stx.selectField fvs f of
+  Nothing -> evaluationError "selected a field that isn't present in the record"
+  Just a -> return a
   
 
 selectClause :: MonadEval m

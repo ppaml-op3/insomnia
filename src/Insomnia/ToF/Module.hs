@@ -66,10 +66,10 @@ moduleExpr modPath mdl_ =
      U.lunbind bnd $ \(tele, bodyMe) ->
      moduleFunctor tele bodyMe
    ModuleApp pfun pargs -> moduleApp pfun pargs
-   ModelLocal lcl bdy mt -> do
-     (sig, m) <- modelLocal lcl bdy mt
-     return (sig, m)
-   ModelObserve {} -> throwError "unimplemented: ToF.Module for ModelObserve"
+   ModelLocal lcl bdy mt ->
+     modelLocal lcl bdy mt
+   ModelObserve mdl obss ->
+     modelObserve mdl obss
 
 
 moduleAssume :: ToF m
@@ -225,6 +225,72 @@ moduleApp pfn pargs = do
          s = U.substs (zip alphas taus) sigResult
        return (s, m)
    _ -> throwError "internal failure: ToF.moduleApp expected a functor"
+
+modelObserve :: ToF m
+                => ModuleExpr
+                -> [ObservationClause]
+                -> m (F.AbstractSig, F.Term)
+modelObserve me obss = do
+  -- 〚M' = observe M where f is Q〛
+  --
+  --  Suppose 〚M〛: Dist {fs : τs} where f : {gs : σs}
+  --     and  〚Q〛: {gs : σs}
+  -- 
+  --  let
+  --    prior = 〚M〛
+  --    obs = 〚Q〛
+  --    kernel = λ x : {fs : τs} . x.f
+  --  in posterior [{fs:τs}] [{gs:σs}] kernel obs prior
+  -- 
+  (sig, prior) <- moduleExpr Nothing me
+  disttp <- F.embedAbstractSig sig
+  sigTps <- case disttp of
+    F.TExist {} -> throwError "internal error: ToF.modelObserve of an observed model with abstract types"
+    F.TDist (F.TRecord sigTps) -> return sigTps
+    _ -> throwError "internal error: ToF.modelObserve expected to see a distribution over models"
+  hole <- observationClauses sigTps obss
+  let posterior = hole prior
+  return (sig, posterior)
+    
+observationClauses :: ToF m
+                      => [(F.Field, F.Type)]
+                      -> [ObservationClause]
+                      -> m (F.Term -> F.Term)
+observationClauses _sig [] = return id
+observationClauses sigTp (obs:obss) = do
+  holeInner <- observationClause sigTp obs
+  holeOuter <- observationClauses sigTp obss
+  return (holeOuter . holeInner)
+
+-- | observationClause {fs : τs} "where f is Q" ≙ λprior . posterior kernel mobs prior
+-- where kernel = "λx:{fs:τs} . x.f"
+--   and mobs = 〚Q〛
+observationClause :: ToF m
+                     => [(F.Field, F.Type)]
+                     -> ObservationClause
+                     -> m (F.Term -> F.Term)
+observationClause sigTp (ObservationClause f obsMe) = do
+  (_, mobs) <- moduleExpr Nothing obsMe
+  let recordTp = F.TRecord sigTp
+  projTp <- case F.selectField sigTp (F.FUser f) of
+    Just (F.TDist t) -> return t
+    Just _ -> throwError ("internal error: expected the model to have a submodel " ++ show f
+                          ++ ", but it's not even a distribution")
+    Nothing -> throwError ("internal error: expected model to have a submodel " ++ show f)
+  let
+    kernel = let
+      vx = U.s2n "x"
+      x = F.V vx
+      in F.Lam $ U.bind (vx, U.embed recordTp) $
+         F.Proj x (F.FUser f)
+    term = \prior ->
+      F.apps (F.pApps (F.V $ U.s2n "__BOOT.posterior")
+              [ recordTp , projTp ])
+      [ kernel
+      , mobs
+      , prior
+      ]
+  return term
 
 -- | Translation declarations.
 -- This is a bit different from how F-ing modules does it in order to avoid producing quite so many

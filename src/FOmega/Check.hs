@@ -87,6 +87,7 @@ runTC c = runLFreshMT $ runExceptT (runReaderT c initialCtx)
       , CVal (U.s2n "__BOOT.Distribution.choose") distChooseTy
       , CVal (U.s2n "__BOOT.Distribution.uniform") distUniformTy
       , CVal (U.s2n "__BOOT.Distribution.normal") distNormalTy
+      , CVal (U.s2n "__BOOT.posterior") posteriorTy
       ]
 
 intAddTy :: Type
@@ -122,6 +123,19 @@ distUniformTy = [realT, realT] `tArrs` TDist realT
 
 distNormalTy :: Type
 distNormalTy = [realT, realT] `tArrs` TDist realT
+
+posteriorTy :: Type
+posteriorTy =
+  let vst = U.s2n "st"
+      st = TV vst
+      vobs = U.s2n "obs"
+      obs = TV vobs
+      dst = TDist st
+      kern = st `TArr` (TDist obs)
+  in
+    TForall $ U.bind (vst, U.embed KType)
+    $ TForall $ U.bind (vobs, U.embed KType)
+    $ [kern, obs, dst] `tArrs` dst
                 
           
 inferK :: MonadTC m => Type -> m Kind

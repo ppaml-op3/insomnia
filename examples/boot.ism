@@ -20,4 +20,6 @@ __BOOT = assume module type {
                  -> Dist Real
   }
 
+  sig posterior : forall (st : *) (obs : *) . (st -> Dist obs) -> obs -> Dist st -> Dist st
+
 }
