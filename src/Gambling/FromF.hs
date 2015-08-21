@@ -24,7 +24,8 @@ fomegaToGamble modName c =
       mdefns <- gamble (Outer c)
       let reqs =
             [
-              R.RequireMB $ R.RequiresAll (embed "boot.rkt")
+              R.RequireMB $ R.RequiresAll (embed $ R.RequireModulePath "racket/match")
+            , R.RequireMB $ R.RequiresAll (embed $ R.RequireFilePath "boot.rkt")
             ]
           defns = reqs ++ mdefns
       return $ R.Module (s2n modName) "gamble" $ R.ModuleDefnCtx $ bind (rec defns) R.ProvidesAll

@@ -1,6 +1,9 @@
 {-# LANGUAGE FlexibleInstances #-}
 module Gambling.Emit where
 
+import qualified Numeric
+import qualified Data.Char as Char
+
 import Data.Monoid
 
 import Data.Format
@@ -97,7 +100,7 @@ instance Emit [Char] where
 
 
 instance Emit (Name a) where
-  emit = emit . show
+  emit = emit . racketSymbolEscape . show
 
 parens, brackets :: EmitM a -> EmitM a
 parens = enclosing PP.parens
@@ -123,8 +126,8 @@ instance Emit Expr where
   emit (Literal l) = emit l
   emit (QuoteSymbol s) = parens $ do
     emit "quote"
-    emit s
-  emit (StringLit s) = emit (show s)
+    emit (racketSymbolEscape s)
+  emit (StringLit s) = emit ("\"" ++ racketStringEscape s ++ "\"")
   emit (App es) = parens $ mapM_ emit es
   emit (Lam b) = parens $ lunbind b $ \(vs, body) -> do
     emit "lambda"
@@ -211,10 +214,34 @@ instance Emit Requires where
     emit "require"
     parens $ do
       emit "only-in"
-      emit (show (unembed modPath))
+      emit (unembed modPath)
       mapM_ emit vs
   emit (RequiresAll modPath) = parens $ do
     emit "require"
-    emit (show (unembed modPath))
+    emit (unembed modPath)
+
+instance Emit RequirePath where
+  emit (RequireFilePath fp) = emit ("\"" ++ racketStringEscape fp ++ "\"")
+  emit (RequireModulePath mp) = emit mp
     
     
+racketStringEscape :: String -> String
+racketStringEscape = concat . map racketStringCharEscape
+
+racketStringCharEscape :: Char -> String
+racketStringCharEscape '\\' = "\\\\"
+racketStringCharEscape '"' = "\\\""
+racketStringCharEscape c | Char.isControl c
+                           || not (Char.isPrint c) = "\\u" ++ (unicodeCodepointHex c)
+                         | otherwise = c : []
+
+unicodeCodepointHex :: Char -> String
+unicodeCodepointHex c = Numeric.showHex (fromEnum c) ""
+
+racketSymbolEscape :: String -> String
+racketSymbolEscape = concat . map racketSymbolCharEscape
+
+racketSymbolCharEscape :: Char -> String
+racketSymbolCharEscape c | Char.isLetter c = c : []
+                         | Char.isNumber c = c : []
+                         | otherwise = '\\' : c : []

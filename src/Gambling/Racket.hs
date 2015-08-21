@@ -88,9 +88,14 @@ data ModuleBinding =
   | RequireMB Requires
   deriving (Show, Generic, Typeable)
 
+data RequirePath =
+  RequireFilePath FilePath
+  | RequireModulePath ModulePath
+    deriving (Show, Generic, Typeable)
+
 -- pattern
-data Requires = Requires (Embed ModulePath) [Var]
-              | RequiresAll (Embed ModulePath)
+data Requires = Requires (Embed RequirePath) [Var]
+              | RequiresAll (Embed RequirePath)
               deriving (Show, Generic, Typeable)
 
 -- term
@@ -106,6 +111,7 @@ instance Alpha Pattern
 instance Alpha InternalDefn
 instance Alpha Definition
 instance Alpha Provides
+instance Alpha RequirePath
 instance Alpha Requires
 instance Alpha ModuleBinding
 instance Alpha ModuleDefnCtx
