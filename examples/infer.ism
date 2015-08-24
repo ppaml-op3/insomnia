@@ -1,5 +1,5 @@
 -- insomnia test flags:
--- eval: False
+-- eval: True
 
 import "examples/Prelude.ism" (module Prelude)
 
@@ -48,3 +48,5 @@ M : OBS = module {
 }
 
 Flip3 = observe FullModel where ObservationKernel is M
+
+query sample Flip3 3

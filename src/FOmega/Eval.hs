@@ -1,14 +1,16 @@
-{-# LANGUAGE ViewPatterns, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ViewPatterns, FlexibleContexts, GeneralizedNewtypeDeriving #-}
 module FOmega.Eval where
 
 import Control.Applicative (Applicative(..))
 import Control.Lens
-import Control.Monad (forM, replicateM, unless)
+import Control.Monad (forM, replicateM, unless, zipWithM_)
 import Control.Monad.IO.Class (MonadIO(..))
 import Control.Monad.Reader (MonadReader(..), ReaderT(..), asks)
 import Control.Monad.Except (MonadError(..), ExceptT(..), runExceptT)
 import Control.Monad.State (MonadState(..), StateT(..), mapStateT, evalStateT)
 import Control.Monad.Trans (MonadTrans(..))
+import qualified Control.Monad.Trans.State as St
+import Data.Function (on)
 import qualified Data.Map as M
 import qualified System.Random as RNG
 
@@ -27,47 +29,66 @@ import qualified FOmega.Syntax as Stx
 import FOmega.Value
 import qualified FOmega.Primitives as Primitives
 
+type PrimitiveImpl m = PrimitiveClosureSpine -> m Value
+
 class (U.Fresh m) => MonadEval m where
   localEnv :: (Env -> Env) -> m a -> m a
   askEnv :: m Env
   asksEnv :: (Env -> a) -> m a
   unimplemented :: String -> m a
   evaluationError :: String -> m a
-  lookupPrimitive :: PrimitiveClosureHead -> m (PrimitiveClosureSpine -> m Value)
+  observationFailure :: m a
+  catchObservationFailure :: m a -> m a -> m a
+  lookupPrimitive :: PrimitiveClosureHead -> m (PrimitiveImpl m)
 
 type EvalTransformerStack m = ReaderT Env (ReaderT (PrimImplEnv m)
-                                           (U.FreshMT (ExceptT String m)))
+                                           (U.FreshMT (ExceptT EvaluationError m)))
 newtype EvalT m a = EvalT { unEvalT :: (EvalTransformerStack m) a }
                     deriving (Functor, Applicative, Monad, MonadIO)
 
+data EvaluationError =
+  EvaluationRuntimeError !String
+  | EvaluationObservationFailure
+  deriving (Show)
+
 newtype PrimImplEnv m =
-  PrimImplEnv { primImplEnvMap :: M.Map PrimitiveClosureHead (PrimitiveClosureSpine -> EvalT m Value) }
+  PrimImplEnv { primImplEnvMap :: M.Map PrimitiveClosureHead (PrimitiveImpl (EvalT m)) }
 
 
 instance Monad m => U.Fresh (EvalT m) where
   fresh = EvalT . U.fresh
 
+handleObservationFailure :: MonadError EvaluationError m => m a -> EvaluationError -> m a
+handleObservationFailure h e =
+  case e of
+  EvaluationRuntimeError msg -> throwError $ EvaluationRuntimeError msg
+  EvaluationObservationFailure -> h
+  
+
 instance Monad m => MonadEval (EvalT m) where
   localEnv f = EvalT . local f . unEvalT
   askEnv = EvalT ask
   asksEnv f = EvalT (asks f)
-  unimplemented what = EvalT (throwError $ "unimplemented in FOmega.Eval " ++ what)
-  evaluationError what = EvalT (throwError $ "unexpected runtime error - FOmega.Eval " ++ what)
+  unimplemented what = EvalT (throwError $ EvaluationRuntimeError $ "unimplemented in FOmega.Eval " ++ what)
+  evaluationError what = EvalT (throwError $ EvaluationRuntimeError $ "unexpected runtime error - FOmega.Eval " ++ what)
+  observationFailure = EvalT (throwError EvaluationObservationFailure)
+  catchObservationFailure comp handler =
+      EvalT (unEvalT comp `catchError` handleObservationFailure (unEvalT handler))
   lookupPrimitive = lookupPrimitiveEvalT
 
 lookupPrimitiveEvalT :: Monad m
                         => PrimitiveClosureHead
-                        -> EvalT m (PrimitiveClosureSpine -> EvalT m Value)
+                        -> EvalT m (PrimitiveImpl (EvalT m))
 lookupPrimitiveEvalT h = EvalT $ do
   mfn <- lift (asks (M.lookup h . primImplEnvMap))
   case mfn of
    Just fn -> return fn
    Nothing -> unEvalT $ evaluationError $ "unknown primitive " ++ show h
 
-runEvalCommand :: (MonadIO m) => Command -> m (Either String Value)
+runEvalCommand :: (MonadIO m) => Command -> m (Either EvaluationError Value)
 runEvalCommand cmd = runEvalCommand' cmd (addPrimitiveVars emptyEnv) (PrimImplEnv primitiveEvalMap)
 
-runEvalCommand' :: (MonadIO m) => Command -> Env -> PrimImplEnv m -> m (Either String Value)
+runEvalCommand' :: (MonadIO m) => Command -> Env -> PrimImplEnv m -> m (Either EvaluationError Value)
 runEvalCommand' cmd env primImpl =
   runExceptT
   $ U.runFreshMT (runReaderT
@@ -78,7 +99,7 @@ addPrimitiveVars :: Env -> Env
 addPrimitiveVars env =
   M.foldWithKey extendEnv env Primitives.primitives
   
-primitiveEvalMap :: MonadEval m => M.Map PrimitiveClosureHead (PrimitiveClosureSpine -> m Value)
+primitiveEvalMap :: MonadEval m => M.Map PrimitiveClosureHead (PrimitiveImpl m)
 primitiveEvalMap =
   M.fromList [ primitive "__BOOT.intAdd"  intAddImpl
              , primitive "__BOOT.ifIntLt" ifIntLtImpl
@@ -94,7 +115,7 @@ primitiveEvalMap =
     primitive h c = (h, c)
 
 -- intAdd :: Int -> Int -> Int
-intAddImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+intAddImpl :: MonadEval m => PrimitiveImpl m
 intAddImpl (NilPCS
             `AppPCS` (LitV (IntL n1))
             `AppPCS` (LitV (IntL n2))) =
@@ -102,7 +123,7 @@ intAddImpl (NilPCS
 intAddImpl _ = evaluationError "__BOOT.intAdd incorrect arguments"
 
 -- realAdd :: Real -> Real -> Real
-realAddImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+realAddImpl :: MonadEval m => PrimitiveImpl m
 realAddImpl (NilPCS
              `AppPCS` (LitV (RealL r1))
              `AppPCS` (LitV (RealL r2))) =
@@ -110,7 +131,7 @@ realAddImpl (NilPCS
 realAddImpl _ = evaluationError "__BOOT.realAdd incorrect arguments"
 
 -- realMul :: Real -> Real -> Real
-realMulImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+realMulImpl :: MonadEval m => PrimitiveImpl m
 realMulImpl (NilPCS
              `AppPCS` (LitV (RealL r1))
              `AppPCS` (LitV (RealL r2))) =
@@ -118,7 +139,7 @@ realMulImpl (NilPCS
 realMulImpl _ = evaluationError "__BOOT.realMul incorrect arguments"
 
 -- ifIntLt :: forall a . Int -> Int -> ({} -> a) -> ({} -> a) -> ({} -> a)
-ifIntLtImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+ifIntLtImpl :: MonadEval m => PrimitiveImpl m
 ifIntLtImpl (NilPCS
              `AppPCS` (LitV (IntL n1))
              `AppPCS` (LitV (IntL n2))
@@ -127,7 +148,7 @@ ifIntLtImpl (NilPCS
 ifIntLtImpl _ = evaluationError "__BOOT.ifIntLt incorrect arguments"
   
 -- ifRealLt :: forall a . Real -> Real -> ({} -> a) -> ({} -> a) -> ({} -> a)
-ifRealLtImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+ifRealLtImpl :: MonadEval m => PrimitiveImpl m
 ifRealLtImpl (NilPCS
               `AppPCS` (LitV (RealL n1))
               `AppPCS` (LitV (RealL n2))
@@ -136,7 +157,7 @@ ifRealLtImpl (NilPCS
 ifRealLtImpl _ = evaluationError "__BOOT.ifRealLt incorrect arguments"
 
 -- distChooseImpl :: forall a . Real -> Dist a -> Dist a -> Dist a
-distChooseImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+distChooseImpl :: MonadEval m => PrimitiveImpl m
 distChooseImpl (NilPCS
                 `AppPCS` (LitV (RealL r))
                 `AppPCS` (DistV dc1)
@@ -147,7 +168,7 @@ distChooseImpl (NilPCS
 distChooseImpl _ = evaluationError "__BOOT.Distribution.choose incorrect arguments"
 
 -- distUniformImpl :: Real -> Real -> Dist Real
-distUniformImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+distUniformImpl :: MonadEval m => PrimitiveImpl m
 distUniformImpl (NilPCS
                  `AppPCS` (LitV (RealL lo))
                  `AppPCS` (LitV (RealL hi))) = do
@@ -157,7 +178,7 @@ distUniformImpl (NilPCS
 distUniformImpl _ = evaluationError "__BOOT.Distribution.uniform incorrect arguments"
 
 -- distNormalImpl :: Real -> Real -> Dist Real
-distNormalImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+distNormalImpl :: MonadEval m => PrimitiveImpl m
 distNormalImpl (NilPCS
                  `AppPCS` (LitV (RealL mu))
                  `AppPCS` (LitV (RealL sigma2))) = do
@@ -167,11 +188,19 @@ distNormalImpl (NilPCS
 distNormalImpl _ = evaluationError "__BOOT.Distribution.uniform incorrect arguments"
 
 -- posteriorImpl :: forall st obs . (st -> Dist obs) -> obs -> Dist st -> Dist st
-posteriorImpl :: MonadEval m => PrimitiveClosureSpine -> m Value
+posteriorImpl :: MonadEval m => PrimitiveImpl m
 posteriorImpl (NilPCS
                `AppPCS` kernel
                `AppPCS` obs
-               `AppPCS` prior) = return prior -- TODO
+               `AppPCS` prior) = do
+  kernelClz <- case kernel of
+    ClosureV clz -> return clz
+    _ -> evaluationError "__BOOT.posterior first arg not a function"
+  priorClz <- case prior of
+    DistV clz -> return clz
+    _ -> evaluationError "__BOOT.posterior third arg not a distribution"
+  return $ DistV $ DistClosure emptyEnv $ PrimitiveTh
+    $ PosteriorPD kernelClz obs priorClz
 posteriorImpl _ = evaluationError "__BOOT.posterior incorrect arguments"
 
 extendEnv :: Var -> Value -> Env -> Env
@@ -252,9 +281,16 @@ applyClosureV :: MonadEval m
                  -> m Value
 applyClosureV v1 v2 =
   case v1 of
-   ClosureV e clz ->
-     localEnv (const e) $ applyClosure clz v2
+   ClosureV clz ->
+     applyLambdaClosure clz v2
    _ -> evaluationError "application of something other than a closure"
+
+applyLambdaClosure :: MonadEval m
+                      => LambdaClosure
+                      -> Value
+                      -> m Value
+applyLambdaClosure clz v2 =
+  localEnv (const $ clz^.lambdaClosureEnv) $ applyClosure (clz^.lambdaClosureClz) v2
 
 applyClosure :: MonadEval m
                 => Closure
@@ -263,7 +299,8 @@ applyClosure :: MonadEval m
 applyClosure (PlainLambdaClz bnd) v2 = do
   (x, m) <- U.unbind bnd
   localEnv (extendEnv x v2) $ eval m
-applyClosure (PrimitiveClz p) v2 = applyPrimitiveVal p v2
+applyClosure (PrimitiveClz p) v2 =
+  applyPrimitiveVal p v2
 
 applyPClosureV :: MonadEval m
                  => Value
@@ -285,7 +322,7 @@ applyPolyClosure (PlainPolyClz bnd) t = do
 applyPolyClosure (PrimitivePolyClz prim) _t = do
   return $ if prim^.polyPrimSatArity > 1
            then PClosureV emptyEnv $ PrimitivePolyClz (prim & polyPrimSatArity -~ 1)
-           else ClosureV emptyEnv $ PrimitiveClz $ prim^.polyPrimClz
+           else ClosureV $ LambdaClosure emptyEnv $ PrimitiveClz $ prim^.polyPrimClz
 
 applyPrimitive :: MonadEval m
                   => PrimitiveClosure
@@ -294,7 +331,8 @@ applyPrimitive :: MonadEval m
 applyPrimitive prim growSpine =
   if prim^.primClzSatArity > 1
   then return
-       $ ClosureV emptyEnv
+       $ ClosureV
+       $ LambdaClosure emptyEnv
        $ PrimitiveClz (prim
                        & primClzSatArity -~ 1
                        & primClzSpine %~ growSpine)
@@ -314,7 +352,7 @@ evaluatePrimitive h sp = do
 mkClosureLam :: U.Bind (Var, U.Embed Type) Term -> Env -> Value
 mkClosureLam bnd env = 
   let ((v, _t), m) = UU.unsafeUnbind bnd
-  in ClosureV env $ PlainLambdaClz $ U.bind v m
+  in ClosureV $ LambdaClosure env $ PlainLambdaClz $ U.bind v m
   
 mkPClosure :: U.Bind (TyVar, U.Embed Kind) Term -> Env -> Value
 mkPClosure bnd env = 
@@ -428,7 +466,8 @@ evalSampleDistribution :: (MonadEval m, MonadIO m)
                           -> m Value
 evalSampleDistribution params v_ = do
   let
-    comp = replicateM (params^.numSamplesParameter) (forceValue v_)
+    numWanted = params^.numSamplesParameter
+    comp = replicateM numWanted $ restartOnObsFailure $ forceValue v_
   vs <- runSampleTIO comp
   embedToList vs
 
@@ -473,6 +512,13 @@ forceValue v_ =
 newtype SampleT g m a = SampleT {unSampleT :: StateT g m a }
                       deriving (Functor, Applicative, Monad, U.Fresh)
 
+restartOnObsFailure :: (RNG.RandomGen g, MonadEval m) => SampleT g m a -> SampleT g m a
+restartOnObsFailure comp = go
+  where
+    go = comp `catchObservationFailure` go
+      
+      
+
 runSampleTIO :: MonadIO m => SampleT RNG.StdGen m a -> m a
 runSampleTIO comp = do
   g <- liftIO $ RNG.newStdGen
@@ -483,12 +529,20 @@ instance (RNG.RandomGen g, Monad m) => PMonad.ProbabilityMonad (SampleT g m) whe
     x <- state $ RNG.randomR (0.0, 1.0)
     unSampleT $ if x < r then m1 else m2
 
-instance (MonadEval m) => MonadEval (SampleT g m) where
+instance (RNG.RandomGen g, MonadEval m) => MonadEval (SampleT g m) where
   localEnv f = SampleT . mapStateT (localEnv f) . unSampleT
   askEnv = SampleT $ lift $ askEnv
   asksEnv = SampleT . lift . asksEnv
   unimplemented = SampleT . lift . unimplemented
   evaluationError = SampleT . lift . evaluationError
+  observationFailure = SampleT $ lift observationFailure
+  catchObservationFailure comp handler =
+    SampleT $ StateT $ \g -> 
+      let (g1, g2) = RNG.split g
+      in runStateT (unSampleT comp) g1
+         `catchObservationFailure`
+         runStateT (unSampleT handler) g2
+      
   lookupPrimitive p = SampleT $ do
     f <- lift $ lookupPrimitive p
     return $ \x -> SampleT $ lift (f x)
@@ -533,3 +587,32 @@ forcePrimitiveDistribution pd =
      r <- PMonad.gauss
      let r' = mu + r * sigma2
      return $ LitV $ RealL r'
+   PosteriorPD kernelClz obsExp priorClz -> do
+     v <- forceDistClosure priorClz
+     distActual <- applyLambdaClosure kernelClz v
+     obsActual <- forceValue distActual
+     guardObservation obsExp obsActual
+     return v
+
+guardObservation :: (MonadEval m)
+                    => Value
+                    -> Value
+                    -> m ()
+guardObservation obsExp obsActual = do
+  case (obsExp, obsActual) of
+    (LitV lit1, LitV lit2) | lit1 == lit2 -> return ()
+                           | otherwise -> observationFailure
+    (RecordV fs1, RecordV fs2) | ((==) `on` (map fst)) fs1 fs2 ->
+                                   zipWithM_ guardObservation (map snd fs1) (map snd fs2)
+                               | otherwise -> unimplemented "guardObservation: record observations of unequal fields"
+    (InjV f1 v1, InjV f2 v2) | f1 == f2 -> guardObservation v1 v2
+                             | otherwise -> observationFailure
+    (RollV v1, RollV v2) -> guardObservation v1 v2
+    _ ->
+      -- XXX TODO: handle more valid observation cases here.
+      {- Unsafe.unsafePerformIO $ do
+        print "expecting: "
+        print obsExp
+        print "got"
+        print obsActual
+        return $ -} observationFailure

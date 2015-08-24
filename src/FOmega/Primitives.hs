@@ -28,7 +28,7 @@ primitives =
       let
         clz = PrimitiveClosure h n NilPCS
         pclz = if pn > 0 then (PClosureV emptyEnv $ PrimitivePolyClz $ PolyPrimitiveClosure clz pn)
-               else ClosureV emptyEnv $ PrimitiveClz clz
+               else ClosureV $ LambdaClosure emptyEnv $ PrimitiveClz clz
       in [(U.s2n h, pclz)]
 
 isPrimitive :: Var -> Bool

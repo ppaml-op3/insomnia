@@ -16,7 +16,7 @@ data Value =
   RecordV ![(Field, Value)]
   | InjV !Field !Value
   | PClosureV !Env !PolyClosure
-  | ClosureV !Env !Closure
+  | ClosureV !LambdaClosure
   | DistV !DistClosure
   | LitV !Literal
   | PackV !Type !Value
@@ -32,6 +32,12 @@ data PolyClosure =
   | PrimitivePolyClz !PolyPrimitiveClosure
 
 type PrimitiveClosureHead = String
+
+data LambdaClosure =
+  LambdaClosure
+  { _lambdaClosureEnv :: !Env
+  , _lambdaClosureClz :: !Closure
+  }
 
 -- the number is a count of type arguments.  Note that we assume a type erasure impl,
 -- so the types simply get thrown away.
@@ -71,9 +77,11 @@ data PrimitiveDistribution =
   ChoosePD !Double !DistClosure !DistClosure
   | UniformPD !Double !Double -- lo, hi
   | NormalPD !Double !Double -- mu, sigma^2
+  | PosteriorPD !LambdaClosure !Value !DistClosure
 
 newtype Env = Env { envLookup :: Var -> Value }
 
+$(makeLenses ''LambdaClosure)
 $(makeLenses ''PrimitiveClosure)
 $(makeLenses ''PolyPrimitiveClosure)
 $(makeLenses ''DistClosure)
@@ -93,13 +101,17 @@ instance Show Value where
                  .showString " "
                  . showsPrec 11 v)
      PClosureV {} -> showString "≪Λ…≫"
-     ClosureV _env clz -> showsPrec d clz
+     ClosureV clz -> showsPrec d clz
      DistV {} -> showString "≪D…≫"
      LitV l -> showParen (d > 10) (showString "LitV " . showsPrec 11 l)
      PackV t m -> showParen (d > 10) (showString "PackV " . showsPrec 11 t
                                       . showString " "
                                       . showsPrec 11 m)
      RollV m -> showParen (d > 10) (showString "RollV " . showsPrec 11 m)
+
+instance Show LambdaClosure where
+  showsPrec d v =
+    showsPrec d (v^.lambdaClosureClz)
 
 instance Show Closure where
   showsPrec d v_ =
@@ -131,12 +143,15 @@ instance Pretty Value where
      braces $ fsep $ punctuate "," $ map ppF fvs
   pp (InjV f v) = precParens 2 $ fsep ["inj", ppField f, pp v]
   pp (PClosureV {}) = "≪Λ…≫"
-  pp (ClosureV _env clz) = pp clz
+  pp (ClosureV clz) = pp clz
   pp (DistV {}) = "≪D…≫"
   pp (LitV l) = pp l
   pp (PackV t v) = precParens 2 $ fsep ["pack", withPrec 2 AssocLeft (Right $ ppType t)
                                        , indent "," (pp v)]
   pp (RollV v) = precParens 2 $ fsep ["pack", pp v]
+
+instance Pretty LambdaClosure where
+  pp v = pp (v^.lambdaClosureClz)
 
 instance Pretty Closure where
   pp (PlainLambdaClz {}) = "≪λ…≫"

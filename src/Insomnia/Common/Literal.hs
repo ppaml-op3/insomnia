@@ -9,6 +9,6 @@ import Unbound.Generics.LocallyNameless
 
 data Literal = IntL !Integer
              | RealL !Double
-             deriving (Show, Typeable, Generic)
+             deriving (Show, Eq, Typeable, Generic)
                       
 instance Alpha Literal
