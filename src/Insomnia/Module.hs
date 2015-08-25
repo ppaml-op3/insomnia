@@ -33,7 +33,7 @@ data ModuleExpr =
     -- if X is mentioned, but in general there does not exist a most
     -- general signature for M' that doesn't mention X.
   | ModelLocal !Module !ModuleExpr !ModuleType -- must annotate with sig.
-    -- | observe O where M is M'
+    -- | observe O where X is M'
   | ModelObserve !ModuleExpr ![ObservationClause]
   deriving (Show, Typeable, Generic)
 

@@ -20,8 +20,8 @@ import Insomnia.Common.Literal (Literal)
 -- type copy, we also bring along their definition (so that we can
 -- bring the constructors into scope)
 data TypeAlias =
-  ManifestTypeAlias !(Bind [KindedTVar] Type)
-  | DataCopyTypeAlias !TypePath !TypeDefn
+  ManifestTypeAlias !(Bind [KindedTVar] Type) -- type T = P.S
+  | DataCopyTypeAlias !TypePath !TypeDefn     -- datatype T = datatype P.S
                deriving (Show, Typeable, Generic)
 
 -- | A declaration of a type.  Note that we omit providing the name

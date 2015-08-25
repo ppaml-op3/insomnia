@@ -72,7 +72,7 @@ instance Ord TypeConstructor where
 -- variables, type constructors, annotted kinds, type applications,
 -- universally quantified types and record types.
 data Type = TV TyVar
-          | TUVar (UVar Kind Type) -- invariant: unification variables should be fully applied
+          | TUVar (UVar Kind Type) -- invariant: unification variables should be fully applied -- XXX what does this mean? ak-20150825
           | TC !TypeConstructor
           | TAnn Type !Kind
           | TApp Type Type

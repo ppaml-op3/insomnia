@@ -74,9 +74,9 @@ data SigV a = SigV { _sigVSig :: !a
 -- @Either Kind (Kind, TypeDefn)@, but we will separate them, for now.
 -- The invariant, however, is that both Maybes can't be Nothing.
 data TypeSigDecl =
-  AbstractTypeSigDecl !Kind
-  | ManifestTypeSigDecl !TypeDefn
-  | AliasTypeSigDecl !TypeAlias
+  AbstractTypeSigDecl !Kind       -- type T : ⋆
+  | ManifestTypeSigDecl !TypeDefn -- data T = True | False
+  | AliasTypeSigDecl !TypeAlias  --  type T = Int
   deriving (Show, Typeable, Generic)
 
 $(makeLenses ''SigV)
