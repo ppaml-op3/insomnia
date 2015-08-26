@@ -19,7 +19,7 @@ description:         Insomnia is a typed, modular probabilistic programming lang
                      .
                        * Model sealing is marginalization.  
                      .
-                     Currently the compiler is quite immature (in fact, there is no backend) and
+                     Currently the compiler is quite immature and
                      the language syntax and semantics are quite likely to continue evolving.
 homepage:            http://ppaml.cs.tufts.edu/
 license:             BSD3
