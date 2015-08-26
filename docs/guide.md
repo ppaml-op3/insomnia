@@ -1129,7 +1129,7 @@ of the various primitives as well as basic datatypes such as `Bool` and `List a`
 
 # Known Issues #
 
-## Version 0.0.3 ##
+## Version 0.0.4 ##
 
 * Tabulated functions typecheck, but are not yet fully supported by the
 interpreter or the compiler.
