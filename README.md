@@ -11,7 +11,7 @@ Slogans:
 Documentation
 -------------
 
-None yet.  Sorry.
+There is a (fairly sparse at this point) [Insomnia User's Guide](docs/guide.md)
 
 Some examples are in pretty good shape.  See:
 
@@ -72,6 +72,12 @@ Building from source - installation instructions
         
 
     (Sorry, the backend is a work in progress)
+
+### Building HTML and PDF versions of the User's guide:
+
+The documentation is in Markdown format. You will need [Pandoc](http://pandoc.org/) to build HTML and PDF versions.
+
+    make -C docs
 
 Compiler
 --------
