@@ -484,27 +484,371 @@ The module expressions are
 
 ## Module identifier paths ##
 
+If `M` is a module identifier and `F` is a submodule or submodel field
+then `M.F` may be used to access the submodule from a scope where `M`
+is visible.  Submodule paths me descened into several submodules
+`M.F1.F2` selects the `F2` submodules from the `F1` submodule of the
+module identified by `M`.
+
+You cannot descened into submodules of models.  If `M` is a module and
+its `F` component is a model, `M.F.X` is illegal for all `X`
+components of `M.F`.
+
 ## Module and model structures ##
+
+A literal module or model has the form `module { defns ... }` or
+`model { defns ... }`, respectively.
+
+Each module may contain zero or more definitions that provide the
+components of a module.
 
 ### Definitions ###
 
+There are three sorts of defintions: value definitions, type
+definitions and submodule definitoins.
+
 #### Value definitons ####
+
+Value definitions include: value signature specifications, value
+definitions, function definitions, sampled value definitions and
+tabulated function definitions.
+
+##### Value type signature specifications #####
+
+If `f` is a value field of type `T` a definition of the form
+
+```ocaml
+  sig f : T
+```
+
+May preceede the actual definition of T.
+
+In some situations type signatures are **required**:
+
+1. Recursive functions and mutually recursive definitions:
+
+    ```ocaml
+      sig f : A -> B
+      sig g : B -> A
+
+      fun f x = ... g y ...
+      fun g y = ....f x ...
+    ```
+
+    Note that the signatures for both mutually recursive functions were provided
+    before their definitions.
+
+2. Polymorphic functions:
+
+    ```ocaml
+      sig map :: forall (a : *) (b : *) . (a -> b) -> List a -> List b
+      fun map f xs = ...
+    ```
+
+##### Value definitons #####
+
+If `x` is a field of type `T` and `e` is an expression of type `T` then
+
+```ocaml
+  val x = e
+```
+
+Defines the field `x` to have the value that is the result of evaluating `e`.
+
+Value definitions may occur in models and modules.
+
+##### Function definitons #####
+
+If `f` is a field of type `forall (a1 : k1) ... (aM : kM) . T1 -> ... -> TN -> S` then
+provided that the expression `e` has type `S` given that each `xi` has type `Ti`, then the function can be defined by:
+
+```ocaml
+  fun f x1 ... xN = e
+```
+
+Function definitions may not occur in models.
+
+##### Sampled value definitions #####
+
+In models, if `x` is a field of type `T` and `e` is an expression of
+type `Dist T`, the definiton below defines `x` to be a sample from the
+distribution denoted by `e`.
+
+```ocaml
+   val x ~ e
+```
+
+It is an error to write a sampled value definition in a module.
+
+##### Tabulated function definition #####
+
+In models, a field `f` of type `E1 -> ... Ek -> S` may be defined by
+an expression `e` of type `Dist S` under the assumption that variables
+`idx1` through `idxk` have the corresponding types `E1` through `Ek`.
+
+```ocaml
+  forall (idx1 : E1) ... (idxK : Ek) .
+  fun f idx1 .... idxK ~ e
+```
+
+Note that each `idxi` variable must appear exactly once to the left of the `~`.
+
+Tabulated function definitions are illegal in modules.
 
 #### Type definitions ####
 
+Type definitions are either type alias definitions or datatype definitions.
+
+##### Type alias definitions #####
+
+If `S` is a type, the field `T` may be declared as
+
+```ocaml
+  type T = S
+```
+
+In the scope of the rest of the module `T` may be used as an alias for `S`.  Aliases may be at higher kinds.
+
+```ocaml
+  type Exc = Either Int
+```
+
+Here `Either Int` has kind `* -> *` and so does `Exc`.
+
+If `S` is a type mentioning variables `a1 : K1` through `aN : KN`, the
+field `T` may be declared as
+
+```ocaml
+  type T (a1 : K1) ... (aN : KN) = S
+```
+
+In this case `T` must be used with at least *n* type arguments.
+
+```ocaml
+type Exc2 (a : *) = Either Int a
+```
+
+In this case `Exc2` is illegal, btu `Exc2 Int` is okay.
+
+##### Datatype definitons #####
+
+Datatype definitions look exactly like datatype specifications in module types.
+
+Datatype definitions in different *Insomnia* modules give rise to
+different types.  Even if two modules declared the type `Bool` exactly
+the same way, those types are completely distinct and unrelated.
+
+Moreover, datatype definitions in *Insomnia* are generative.  Module
+expressions such as sealing and functor application give rise to
+distinct modules (and therefore any datatypes declared in such modules are distinct).
+
+```ocaml
+M1 = module {
+  data Bool = True | False
+}
+
+M2 = module {
+  data Bool = True | False
+}
+
+M3 = (M1 : module type { data Bool = True | False })
+
+IdentityFunctor = (X : module type { type Bool : *}) -> { type Bool = X.Bool }
+
+M4 = IdentityFunctor M1
+```
+
+Each of `M1`, `M2`, `M3`, `M4` have a distinct `Bool`
+type that is not equal to any of the others.
+
+
+However, the types `M1.Bool` and `Mnested.M1.Bool` are the same
+
+```ocaml
+Mnested = module {
+  M5 = M1
+}
+```
+
 #### Submodule definitons ####
+
+Models and modules may contain submodule or submodel components.
+
+For example
+
+```ocaml
+Outer = module {
+  Inner = module {
+    type T = Int
+  }
+
+  sig x : Inner.T
+  val x = 3
+}
+```
+
+Type and module components of `Inner` may be referenced by module
+identifier paths and type paths in the rest of the outer module.
+
+Submodels may also be defined.  However it is an error to access a
+component of a submodel.
+
+#### Submodule sampling ####
+
+In models, submodules may be sampled from models:
+
+```ocaml
+model M1 {
+  sig x : Bool
+  val x ~ flip 0.5
+}
+
+model M2 {
+  X ~ M1
+  sig y : Bool
+  val y = not X.x
+}
+```
+
+Here `M1` is a model containing a field `x`.  `M2` is a model
+containing two components: a module `X` that is sampled from `M1` and
+a value field `y` equal to the negation of the `x` component of the
+sampled submodule.
 
 ## Functors ##
 
-## Local modules ##
+Functor are parametrized modules or models.  That is, a functor takes one or more
+other modules as arguments and generates a new module.
+
+In Insomnia, functors are generative - each application of a functor
+generates a new modules that is distinct from all others, even if
+applied to the same types.
+
+Functors allow for a dependency among their arguments and their results.
+
+```ocaml
+FDouble = (X : module { type T : * val x : T }) -> {
+  type T = { fst : X.T ; snd : X. T }
+  val x = {fst = X.x , snd = X.x }
+}
+
+M1 = module {
+  type T = Int
+  val x = 3
+}
+
+M2 = FDouble (M1)
+```
+
+In the example above, `M2.T` is the type `{fst : Int, snd : Int}` and
+`M2.x` is the value `{fst = 3, snd = 3}`.
+
+```ocaml
+MakeTree = (X : module { type T : * }) -> {
+  data TTree = Leaf T | Node TTree TTree
+
+}
+
+M1 = module {
+  type T = Int
+}
+
+M2 = MakeTree (M1)
+M3 = MakeTree (M1)
+```
+
+In the example above, `M1.TTree` and `M2.TTree` are distinct datatypes
+that aren't equal to each other, even though both are trees that hold
+`Int` leaves.
+
+## Local models ##
+
+Local models allow model identifiers to be bound locally in the scope
+of a module definition.
+
+```ocaml
+Mflip = model {
+  val x ~ flip 0.5
+}
+  
+M = local
+  X ~ Mflip
+  in model {
+    val y ~ case X.x of
+      True -> flip 0.9
+      False -> flip 0.1
+  } : model type {
+    sig y : Bool
+    }
+```
+
+The general syntax is
+
+```ocaml
+local defns in ModelExpr : ModelType
+```
+
+Note that the model type is required and may not mention any of the local defns.
 
 ## Module sealing ##
 
+Module sealing narrows the interface of a module or model by hiding
+some components, or by hiding the manifest definition of some type
+components behind an abstract type.
+
+```ocaml
+ABSTRACT_TREE = module type {
+  type Element :: *
+  type Tree :: *
+  sig empty :: Tree
+  sig insert :: Tree -> Element -> Tree
+}
+
+IntBinaryTree = module {
+  type Element = Int
+  data Tree = Leaf Int | Node Tree Tree
+  sig insert :: Tree -> Element -> Tree
+  fun insert t x = ...
+}
+
+SealedTree = IntBinaryTree : ABSTRACT_TREE
+```
+
+The type `SealedTree.Tree` is abstract and clients of the `SealedTree`
+module do not get to see its implementation.
+
 ## Model observations ##
 
-# Types #
+Observations in *Insomnia* allow models to construct posterior models
+that incorporate evidence into prior models.
 
-Insomnia's types include
+```ocaml
+FullModel = model {
+  val r ~ beta 1 1
+  ObservationKernel = model {
+    val x ~ flip r
+  }
+}
+
+M = module { val x = True }
+
+Mposterior = observe FullModel where ObservationKernel is M
+```
+
+The `observe` model expression draws a new sample `O` from the
+`ObservationKernel` submodel of `FullModel` and conditions the
+outcomes of its fields to the values of the fields of `M`.  This has
+the effect of constructing `Mposterior` as a model whose distribution
+for the `r` component is `beta 2 1`.  (In this case one may exploit
+conjugacy to exactly characterize the posterior, but in general
+*Insomnia* uses conditioning to reject samples from `Mposterior` in
+which the observation does not hold.)
+
+# Types and Kinds#
+
+Types in *Insomnia* classify values.
+
+Insomnia's types include:
 
 1. Type constructor paths
 2. The base types
@@ -512,6 +856,67 @@ Insomnia's types include
 4. Polymorphic Functions
 5. Type variables
 6. Records
+
+Types are classified by kinds.  The base types, function types,
+records and polymorphic functions have kind `*`.  Polymorphic type
+variables must be annotated with their kind.  Plain inductive
+datatypes have kind `*`.  Polymorphic datatypes of the form `data T
+(a1 : k1) ... (aN : kN)` have kind `k1 -> ... -> kN -> *`.
+
+## Constructor Paths ##
+
+Types that are defined in modules or submodules visible from the current scope may be mentioned in types by separating the module path from the type with a `.`, for example:
+
+```ocaml
+  type T = Prelude.Bool
+```
+
+The local type alias `T` is defined to be equal to the type `Bool`
+from the `Prelude` module.
+
+## Base Types ##
+
+The base types are `Int` and `Real`.
+
+## Functions ##
+
+Monomorphic functions that take an argument `T1` and return a result
+`T2` have type `T1 -> T2`.
+
+In Insomnia, monomorphic function types are inferred by the typechecker.
+
+## Polymorphic Functions ##
+
+Polymorphic functions have a type `forall (a : K) . T` where `T` may
+mention the type variable `a`.  For example: `forall (a : *) . List a
+-> Bool` is the type of a function that works on any list and returns
+a boolean.
+
+In Insomnia, polymorphic functions must be annotated with their type signature.
+
+## Type variables ##
+
+Type variables may appear in types.  For example
+
+```ocaml
+data Stream (a :: *) = SCons a ({} -> Stream a)
+```
+
+The `Stream` polymorphic datatype contains a value of type `a` and a
+function from the unit type to another stream.
+
+Type variables must begin with a lowercase letter.
+
+The kind annotation on type variables is required.
+
+## Records ##
+
+A record type `{ f1 : T1; ...; fN : TN }` contains zero or more fields.
+The fields must being with a lower case letter and a record type must
+contain distinct field names.
+
+The record type `{}` with zero fields is called the *unit type* and
+contains a single value `{}`.
 
 # Value Expressions #
 
@@ -526,7 +931,233 @@ Insomnia's value expressions include
 7. Record constructions
 8. Case analysis by pattern matching
 
+## Value constructor paths ##
+
+If a data type definition is in scope with a constructor `C` , or if
+`M` is a module identifier that has a datatype with a constructor `C`,
+or if `M.F` is a submodule of a module and has a constructor C, then
+`C`, `M.C` or `M.F.C`, respectively, may be used to construct values
+of the corresponding data type.
+
+Value constructors may also be used as functions that take some number
+of arguments and then construct the corresponding datatype value (so
+they can be passed around to higher-order functions, returned from
+functions, stored in containers, etc).
+
+## Literal values ##
+
+Literal decimal integer values are written using the digits 0-9 and optional
+leading `+` and `-` signs.  Their range is not yet specified.
+
+Literal decimal floating point values are written using the digits 0-9
+with a required decimal point `.` and optional leading `+` and `-`
+signs.  Exponential notation is also permitted: `5e-1` is the same as `0.5`
+
+## Lambda expressions ##
+
+Lambda expressions are written as `\x -> e` or `\(x:T) -> e` and denote (monomorphic, unless bound to a variable with a polymorphic type annotation) functions.
+
+## Funciton application ##
+
+Function application is written as juxtaposition `not True`, `flip 0.5`
+
+## Let expressions ##
+
+Let expressions allow the introduction of some local bindings in the
+scope of a body expression.
+
+Let expressions that have at least one sample binding must have a body
+of type `Dist T` for some `T`.  Let expressions without any samples may
+have a body of any type.
+
+```ocaml
+  let
+    y ~ flip 0.5
+    x = not y
+  in
+    return { fst = x, snd = y }  
+```
+    
+### Value bindings ###
+
+```ocaml
+let x = y + y
+in x * x
+```
+
+Bound variables may be optionally annotated with a type: `let (x : Int) = y + y in x * x`
+
+### Sample bindings ###
+
+Sample bindings may be used to locally sample a value from a
+distribution.  The let expression's body must have type `Dist T` for
+some `T`.
+
+```ocaml
+let
+  r ~ beta 1 1
+in
+  flip r
+```
+  
+### Tabulated function bindings ###
+
+Tabulated function bindings bind a variable to a function value of
+type `Dist (E -> T)` by providing an expression `e` of type `Dist T` that
+depends on a variable `idx` of type `E`:
+
+```ocaml
+  let
+    forall (i : E) .
+      f i ~ e
+  in
+    f
+```
+
+## Point distribution ##
+
+The point distribution expression `return e` has type `Dist T` and
+represents the point-mass distribution at the value `e` of type `T`.
+
+## Record construction ##
+
+Records may be constructed via the form `{ f1 = e1, ..., fN = eN }`.
+If each `ei` has type `Ti` the whole record has type `{ f1 : T1; ...;
+fN : TN }`
+
+For example:
+
+```ocaml
+  type IntPair = { fst : Int; snd : Int }
+  sig p : Int Pair
+  val p = { fst = 3, snd = 4 }
+```
+
+All the fields of a record must be distinct.
+
+## Case analysis by pattern matching ##
+
+Case analysis may be used to work with record and value constructor values.
+
+The general form is
+
+```ocaml
+  case e of
+    pat1 -> e1
+    ...
+    patK -> eK
+```
+
+where each expression `ei` must have the same type `T` which is the
+type of the whole expression.
+
+Patterns are tried in order from first to last.  Redundant or
+non-exhaustive patterns do not trigger a compile-time error or
+warning.  Non-exhaustive patterns will cause a runtime error if a value is not matched.
+    
+
 ## Patterns ##
 
+The patterns are:
 
+1. wildcard
+2. variable binding
+3. value constructor match
+4. record field match
+
+### Wildcard ###
+
+The wildcard pattern `_` always matches:
+
+```ocaml
+  fun f x = case x of
+    _ -> x
+```
+
+### Variable ###
+
+The variable pattern always matches and binds the variable to the
+value that is being matched in the expression.
+
+```ocaml
+  fun f x = case x of
+    y -> y
+```
+
+### Value constructor match ###
+
+If `C` is a value constructor of *K* arguments, then `C pat1 ... patK`
+matches if the value being matched was constructed using `C` and the
+corresponding arguments each match the corresponding subpattern.
+
+```ocaml
+  data Tree = Leaf Int | Node Tree Tree
+
+  sig height :: Tree -> Int
+  fun height t = case t of
+    Leaf -> 0
+    Node l r -> 1 + max (height l) (height r)
+```
+
+### Record Field Match ###
+
+The pattern `{ f1 = pat1, ..., fK = patK }` matches provided that the
+subpatterns `pati` each match the corresponding field of the value
+being matched.
+
+```ocaml
+  sig swap : forall (a :: *) (b :: *)
+             . { fst : a; snd : b } -> {fst : b; snd : a}
+  fun swap p = case p of
+    ({fst = x, snd = y}) -> { fst = y, snd = x }
+```
+
+Note that because of a parser ambiguity, if a record pattern is the
+outermost pattern in a clause, it should be enclosed in parentheses,
+as above.
+
+# Builtins, Prelude, Libraries #
+
+The boot file `examples/boot.ism` specifies the low-level primitives
+provided by the *Insomnia* interpreter internally, and by the
+*Insomnia* compiler via the Racket module `examples/boot.rkt`.
+(Extending *Insomnia* beyond these primitives involves modifying the
+compiler source code and is beyond the scope of this Guide.)
+
+The file `examples/Prelude.ism` provides the "user-friendly" versions
+of the various primitives as well as basic datatypes such as `Bool` and `List a`.
+
+# Known Issues #
+
+## Version 0.0.3 ##
+
+* Tabulated functions typecheck, but are not yet fully supported by the
+interpreter or the compiler.
+
+* The compiler does not turn `query` toplevel operations into runnable
+  Racket code.  The current best mode of use is to manually wrap calls
+  to *Insomnia* modules in a sampler form:
+
+    In Insomnia, `example/MyModel.ism`:
+
+    ```ocaml
+      MyModel = model {
+        val f ~ flip 0.5
+      }
+    ```
+
+    After compilation, in Gamble:
+
+    ```scheme
+    #lang gamble
+    (require gamble/viz)
+    (require "example/MyModel.rkt")
+
+    (define s
+      (mh-sampler (MyModel)))
+ 
+    (hist (repeat s 100))
+    ```
+* The compiler and interpreter have debug output turned on by default,
+  there is a lot of compilation noise.
 

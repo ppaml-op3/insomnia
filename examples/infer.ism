@@ -6,7 +6,7 @@ import "examples/Prelude.ism" (module Prelude)
 ----------------------------------------
 
 Flip = model {
-  val coin1 ~ Prelude.flip 0.5
+  val coin1 ~ Prelude.flip 5e-1
 
 }
 
