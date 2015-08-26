@@ -122,7 +122,7 @@ external file: `module X using Y` lets the module identifier `X` stand
 for the module `Y` in the specified file.
 
 It is legal to import the same file more than once, but the imports
-will refer to the same module and any effects (ie queries) will be
+will refer to the same module and any effects (i.e. queries) will be
 executed exactly once.
 
 Import cycles are illegal and *Insomnia* will signal an error when
@@ -141,7 +141,7 @@ Where *n* is the number of samples to generate from the model given by `ModelIde
 The query form is deliberately impoverished.  Future versions of
 insomnia will support a richer set of queries on models.
 
-## Module- and Modele-type Identifier Definitions ##
+## Module- and Model-type Identifier Definitions ##
 
 A module type definition has the form
 
@@ -154,7 +154,7 @@ the module-type expression on the right hand side.  The name `MY_SIG` is
 not in scope in the right-hand side.
 
 Whether `MY_SIG` is a model-type or a module-type depends on the
-expression on the RHS.
+expression on the right-hand side.
 
 By convention, module type identifiers are written `IN_ALL_CAPS` with
 words separated by underscores.  This is merely a convention, the
@@ -163,7 +163,7 @@ with a capital letter.
 
 ## Module and Model Identifier Definitions ##
 
-A module definiton has the form
+A module definition has the form
 
 ```ocaml
 MyModule = ModuleExpression
@@ -171,7 +171,7 @@ MyModule = ModuleExpression
 
 The identifier `MyModule` is bound in the rest of the current file to
 the module expression on the right hand side.  The name `MyModule` is
-not in scope in the right-hand side.
+not in scope in the right-hand side (RHS).
 
 Whether `MyModule` is a module or a model depends on the expression on the RHS.
 
@@ -243,7 +243,7 @@ The possible declarations are described below.
 
 The declarations are zero or more submodule, type or value
 declarations.  Submodule and type declaration each scope over the
-remainded of the current sequence of declarations.
+remainder of the current sequence of declarations.
 
 Declarations may either be separated by semicolons, or by *layout*.
 With layout, each declaration must begin in the same column as the
@@ -347,7 +347,7 @@ b` and `forall (a : *) (b : *) . b -> Either a b`, respectively.
 
 Data type constructors may appear partially applied.  `Either` and
 `Either Int` are both valid, in addition to `Either Int Bool`.  Value
-constructors may aloso be used partially applied.
+constructors may also be used partially applied.
 
 ##### Abstract type declarations #####
 
@@ -382,7 +382,7 @@ that takes two values of type `T` and returns a boolean indicating
 whether the two values are equal.  This signature may be ascribed to
 many modules that implement equality for various types.
 
-Additionally asbtract types in signatures may be supplemented by
+Additionally abstract types in signatures may be supplemented by
 `where` clauses to produce new signatures that carry a manifest type
 in place of the abstract one.  (See the section on where clauses).
 
@@ -486,11 +486,11 @@ The module expressions are
 
 If `M` is a module identifier and `F` is a submodule or submodel field
 then `M.F` may be used to access the submodule from a scope where `M`
-is visible.  Submodule paths me descened into several submodules
+is visible.  Submodule paths may descend into several submodules
 `M.F1.F2` selects the `F2` submodules from the `F1` submodule of the
 module identified by `M`.
 
-You cannot descened into submodules of models.  If `M` is a module and
+You cannot descend into submodules of models.  If `M` is a module and
 its `F` component is a model, `M.F.X` is illegal for all `X`
 components of `M.F`.
 
@@ -504,10 +504,10 @@ components of a module.
 
 ### Definitions ###
 
-There are three sorts of defintions: value definitions, type
-definitions and submodule definitoins.
+There are three sorts of definitions: value definitions, type
+definitions and submodule definitions.
 
-#### Value definitons ####
+#### Value definitions ####
 
 Value definitions include: value signature specifications, value
 definitions, function definitions, sampled value definitions and
@@ -521,7 +521,7 @@ If `f` is a value field of type `T` a definition of the form
   sig f : T
 ```
 
-May preceede the actual definition of T.
+May precede the actual definition of T.
 
 In some situations type signatures are **required**:
 
@@ -545,7 +545,7 @@ In some situations type signatures are **required**:
       fun map f xs = ...
     ```
 
-##### Value definitons #####
+##### Value definitions #####
 
 If `x` is a field of type `T` and `e` is an expression of type `T` then
 
@@ -557,7 +557,7 @@ Defines the field `x` to have the value that is the result of evaluating `e`.
 
 Value definitions may occur in models and modules.
 
-##### Function definitons #####
+##### Function definitions #####
 
 If `f` is a field of type `forall (a1 : k1) ... (aM : kM) . T1 -> ... -> TN -> S` then
 provided that the expression `e` has type `S` given that each `xi` has type `Ti`, then the function can be defined by:
@@ -571,7 +571,7 @@ Function definitions may not occur in models.
 ##### Sampled value definitions #####
 
 In models, if `x` is a field of type `T` and `e` is an expression of
-type `Dist T`, the definiton below defines `x` to be a sample from the
+type `Dist T`, the definition below defines `x` to be a sample from the
 distribution denoted by `e`.
 
 ```ocaml
@@ -628,9 +628,9 @@ In this case `T` must be used with at least *n* type arguments.
 type Exc2 (a : *) = Either Int a
 ```
 
-In this case `Exc2` is illegal, btu `Exc2 Int` is okay.
+In this case `Exc2` is illegal, but `Exc2 Int` is okay.
 
-##### Datatype definitons #####
+##### Datatype definitions #####
 
 Datatype definitions look exactly like datatype specifications in module types.
 
@@ -670,7 +670,7 @@ Mnested = module {
 }
 ```
 
-#### Submodule definitons ####
+#### Submodule definitions ####
 
 Models and modules may contain submodule or submodel components.
 
@@ -770,7 +770,7 @@ of a module definition.
 Mflip = model {
   val x ~ flip 0.5
 }
-  
+
 M = local
   X ~ Mflip
   in model {
@@ -788,7 +788,8 @@ The general syntax is
 local defns in ModelExpr : ModelType
 ```
 
-Note that the model type is required and may not mention any of the local defns.
+Note that the model type is required and may not mention any of the local
+definitions.
 
 ## Module sealing ##
 
@@ -942,7 +943,7 @@ of the corresponding data type.
 Value constructors may also be used as functions that take some number
 of arguments and then construct the corresponding datatype value (so
 they can be passed around to higher-order functions, returned from
-functions, stored in containers, etc).
+functions, stored in containers, etc.).
 
 ## Literal values ##
 
@@ -957,7 +958,7 @@ signs.  Exponential notation is also permitted: `5e-1` is the same as `0.5`
 
 Lambda expressions are written as `\x -> e` or `\(x:T) -> e` and denote (monomorphic, unless bound to a variable with a polymorphic type annotation) functions.
 
-## Funciton application ##
+## Function application ##
 
 Function application is written as juxtaposition `not True`, `flip 0.5`
 
@@ -975,9 +976,9 @@ have a body of any type.
     y ~ flip 0.5
     x = not y
   in
-    return { fst = x, snd = y }  
+    return { fst = x, snd = y }
 ```
-    
+
 ### Value bindings ###
 
 ```ocaml
@@ -999,7 +1000,7 @@ let
 in
   flip r
 ```
-  
+
 ### Tabulated function bindings ###
 
 Tabulated function bindings bind a variable to a function value of
@@ -1054,7 +1055,7 @@ type of the whole expression.
 Patterns are tried in order from first to last.  Redundant or
 non-exhaustive patterns do not trigger a compile-time error or
 warning.  Non-exhaustive patterns will cause a runtime error if a value is not matched.
-    
+
 
 ## Patterns ##
 
