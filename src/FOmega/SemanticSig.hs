@@ -22,7 +22,7 @@ data SemanticSig =
   | SigSem !AbstractSig
   -- [= δ = {f1:τ1 | … | fN:τN} : κ]
   | DataSem !TyVar !DataTypeSem !Kind
-  -- { f1 = Σ1, ..., fn = Σn }
+  -- { f1 : Σ1, ..., fn : Σn }
   | ModSem ![(Field, SemanticSig)]
     -- ∀ α1:κ1 ... αN:κN . Σ → Ξ
   | FunctorSem !(Bind [(TyVar, Embed Kind)] SemanticFunctor)
