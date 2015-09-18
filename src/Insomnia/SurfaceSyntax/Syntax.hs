@@ -138,6 +138,7 @@ data TypeAtom = TC !(Notation Con)
               | TV !TyVar
               | TEnclosed !Type !(Maybe Kind)  -- '(' Type ')' or '(' Type ':' Kind ')'
               | TRecord !Row
+              | TPack !BigExpr  -- '{{' Module '}}'
               deriving (Show)
 
 newtype Label = Label { labelName :: String }

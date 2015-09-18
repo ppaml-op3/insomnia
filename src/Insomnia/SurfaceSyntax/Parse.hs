@@ -78,7 +78,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
                      "return",
                      "λ", "_"
                      ]
-  , reservedOpNames = ["\\", ":", ".", "~", "=", "*", "|"]
+  , reservedOpNames = ["\\", ":", ".", "~", "=", "*", "|", "{{", "}}"]
   , caseSensitive = True
   }
 
@@ -99,6 +99,9 @@ Tok.TokenParser {braces = _
 --     }
 -- 
 braces = between (localIndentation Any $ symbol "{") (localIndentation Any $ symbol "}") . localIndentation Any
+
+dblbraces =
+  between (localIndentation Any $ try (symbol "{{")) (localIndentation Any $ try (symbol "}}"))
 
 exactly :: (Show a, Eq a) => Parser a -> a -> Parser ()
 exactly p x = (p >>= \x' -> guard (x == x')) <?> show x
@@ -637,6 +640,7 @@ typeAtom =
   <|> (TC <$> try ((PrefixN <$> conId)
                    <|> (InfixN <$> infixConId)))
   <|> (TEnclosed <$> tforall <*> pure Nothing)
+  <|> dblbraces (TPack <$> bigExpr)
   <|> (TRecord <$> recordRow)
   <|> parens (TEnclosed <$> typeExpr
               <*> optional (classify *> kindExpr))

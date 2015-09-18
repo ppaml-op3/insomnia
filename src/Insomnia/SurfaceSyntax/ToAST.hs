@@ -420,6 +420,9 @@ typeAtom (TEnclosed ty mk) = do
    Just k -> do
      k' <- kind k
      return $ I.TAnn ty' k'
+typeAtom (TPack be) = do
+  s <- expectBigExprSignature be
+  return $ I.TPack s
 
 row :: Monad m => Row -> TA m I.Row
 row (Row lts) = I.Row <$> mapM labeledType lts
