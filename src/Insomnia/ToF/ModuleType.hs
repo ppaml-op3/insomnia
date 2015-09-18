@@ -22,7 +22,7 @@ import qualified FOmega.SemanticSig as F
 
 import Insomnia.ToF.Env
 import Insomnia.ToF.Summary
-import Insomnia.ToF.Type (kind, type', typeAlias)
+import {-# SOURCE #-} Insomnia.ToF.Type (kind, type', typeAlias)
 import Insomnia.ToF.DataType
 
 ---------------------------------------- Module Types

@@ -16,7 +16,7 @@ import qualified FOmega.SemanticSig as F
 
 import Insomnia.ToF.Env
 import Insomnia.ToF.Summary
-import Insomnia.ToF.Type
+import {-# SOURCE #-} Insomnia.ToF.Type
 
 
 datatypeDefinition :: ToF m

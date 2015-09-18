@@ -16,6 +16,10 @@ import qualified FOmega.Syntax as F
 import qualified FOmega.SemanticSig as F
 
 import Insomnia.ToF.Env
+import Insomnia.ToF.ModuleType (moduleType)
+
+normalizeAbstractSig :: Monad m => F.AbstractSig -> m F.AbstractSig
+normalizeAbstractSig = return -- TODO: finish first class module signature normalization
 
 typeAlias :: ToF m => TypeAlias -> m F.SemanticSig
 typeAlias (ManifestTypeAlias bnd) =
@@ -89,6 +93,11 @@ type' t_ =
        (t', _) <- type' t
        return (F.FUser $ labelName l, t')
      return (F.TRecord fts, F.KType)
+   TPack modTy -> do
+     absSig <- moduleType modTy
+     absSig' <- normalizeAbstractSig absSig
+     t' <- F.embedAbstractSig absSig'
+     return (t', F.KType)
 
 -- opportunistically beta reduce some types.
 betaWhnf :: U.LFresh m => F.Type -> m F.Type

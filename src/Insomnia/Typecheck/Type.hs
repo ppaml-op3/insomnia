@@ -17,6 +17,7 @@ import Insomnia.TypeDefn (TypeAlias(..))
 import Insomnia.Types
 
 import Insomnia.Typecheck.Env
+import {-# SOURCE #-} Insomnia.Typecheck.ModuleType (checkModuleType)
 
 -- | Check that a kind is well-formed.  Note that for now, all kinds
 -- are well-formed.
@@ -78,6 +79,9 @@ inferType t =
     TRecord row -> do
       row' <- checkRow row
       return (TRecord row', KType)
+    TPack modTy -> do
+      (modTy', _) <- checkModuleType modTy
+      return (TPack modTy', KType)
 
 checkRow :: Row -> TC Row
 checkRow r@(Row ts) = do
