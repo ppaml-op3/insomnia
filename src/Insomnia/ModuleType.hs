@@ -15,7 +15,9 @@ import Unbound.Generics.LocallyNameless
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Identifier
-import Insomnia.Types
+import {-# SOURCE #-} Insomnia.Types (Type, Kind,
+                                      TypePath, TyConName,
+                                      TypeConstructor)
 import Insomnia.Expr (Expr)
 import Insomnia.TypeDefn
 
@@ -138,6 +140,13 @@ instance Subst TypeConstructor WhereClause
 instance Subst TypeConstructor a => Subst TypeConstructor (FunctorArgument a)
 instance Subst TypeConstructor TypeSigDecl
 instance Subst TypeConstructor a => Subst TypeConstructor (SigV a)
+
+instance Subst Type ModuleType
+instance Subst Type a => Subst Type (FunctorArgument a)
+instance Subst Type a => Subst Type (SigV a)
+instance Subst Type Signature
+instance Subst Type WhereClause
+instance Subst Type TypeSigDecl
 
 
 -- model types do not have expressions in them.

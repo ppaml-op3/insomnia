@@ -23,6 +23,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
 import Insomnia.Identifier
 import Insomnia.Common.Literal
+import {-# SOURCE #-} Insomnia.ModuleType (ModuleType)
 
 import Insomnia.Unify (UVar, Unifiable(..),
                     HasUVars(..),
@@ -78,7 +79,8 @@ data Type = TV TyVar
           | TApp Type Type
           | TForall (Bind (TyVar, Kind) Type)
           | TRecord Row
-            deriving (Show, Typeable, Generic)
+          | TPack !ModuleType -- first class modules of the given module type
+          deriving (Show, Typeable, Generic)
 
 infixl 6 `TApp`
 
@@ -158,12 +160,17 @@ instance Subst Type Kind where
 instance Subst Type (UVar w a) where
   subst _ _ = id
   substs _ = id
+instance Subst Type SigPath where
+  subst _ _ = id
+  substs _ = id
+
 instance Subst Path Kind where
   subst _ _ = id
   substs _ = id
 instance Subst Path Label where
   subst _ _ = id
   substs _ = id
+
 
 instance Subst Path TypePath
 instance Subst Path TypeConstructor

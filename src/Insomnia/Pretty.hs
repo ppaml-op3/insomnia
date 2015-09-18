@@ -278,6 +278,7 @@ instance Pretty Type where
     let (vk, t) = UU.unsafeUnbind bnd
     in ppCollapseForalls (Endo (vk :)) t
   pp (TRecord row) = pp row
+  pp (TPack modTy) = dblbraces $ pp modTy
 
 instance Pretty Row where
   pp (Row ts) = braces . fsep . punctuate ";" $ map ppLabeledType ts
@@ -653,6 +654,9 @@ parens = fmap PP.parens
 
 braces :: PM Doc -> PM Doc
 braces = fmap PP.braces
+
+dblbraces :: PM Doc -> PM Doc
+dblbraces p = text "{{" <> p <> "}}"
 
 brackets :: PM Doc -> PM Doc
 brackets = fmap PP.brackets
