@@ -35,6 +35,8 @@ data ModuleExpr =
   | ModelLocal !Module !ModuleExpr !ModuleType -- must annotate with sig.
     -- | observe O where X is M'
   | ModelObserve !ModuleExpr ![ObservationClause]
+    -- | unpack E Sig
+  | ModuleUnpack !Expr !ModuleType
   deriving (Show, Typeable, Generic)
 
 data ObservationClause =

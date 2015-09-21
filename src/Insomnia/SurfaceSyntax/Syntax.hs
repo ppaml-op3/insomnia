@@ -54,6 +54,7 @@ data BigExpr_ =
   | WhereTypeBE !BigExpr !WhereClause -- S where type t = P.t'
   | AssumeBE !BigExpr -- assume S
   | ObserveBE !BigExpr ![ObservationClause]
+  | UnpackBE !Expr !BigExpr -- unpack {{ e }} as S
     deriving (Show)
 
 type BigExpr = Positioned BigExpr_

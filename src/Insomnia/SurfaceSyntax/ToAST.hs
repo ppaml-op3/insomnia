@@ -160,6 +160,10 @@ inferBigExpr_ (ObserveBE beMdl obss) = do
   mdl <- expectBigExprModule beMdl
   obss' <- mapM observationClause obss
   return $ ModuleBV $ I.ModelObserve mdl obss'
+inferBigExpr_ (UnpackBE e beModTy) = do
+  e' <- expr e
+  modTy <- expectBigExprSignature beModTy
+  return $ ModuleBV $ I.ModuleUnpack e' modTy
 inferBigExpr_ (AssumeBE be) =
   (ModuleBV . I.ModuleAssume) <$> expectBigExprSignature be
 

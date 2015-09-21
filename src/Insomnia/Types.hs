@@ -222,6 +222,7 @@ instance HasUVars Type Type where
       TC {} -> pure t
       TAnn t1 k -> TAnn <$> allUVars f t1 <*> pure k
       TApp t1 t2 -> TApp <$> allUVars f t1 <*> allUVars f t2
+      TPack {} -> pure t
       TForall bnd -> let
         (vk, t1) = UU.unsafeUnbind bnd
         in (TForall . bind vk) <$> allUVars f t1
@@ -257,6 +258,7 @@ groundUnificationVar = \ k -> do
 data TypeUnificationError =
   SimplificationFail (M.Map (UVar Kind Type) Type) !Type !Type -- the two given types could not be simplified under the given constraints
   | RowLabelsDifferFail !Row !Row -- the two given rows could not be unifified because they have different labels
+  | PackedModuleTypesDifferFail !ModuleType !ModuleType -- the two given module types are not equivalent
 
 class MonadTypeAlias m where
   expandTypeAlias :: TypeConstructor -> m (Maybe Type)
@@ -284,6 +286,11 @@ instance (MonadUnify TypeUnificationError Kind Type m,
       --     t1' =?= t2
       -- (_, TForall {}) -> t2 =?= t1
       (TRecord row1, TRecord row2) -> row1 =?= row2
+      (TPack modTy1, TPack modTy2) -> 
+        if aeq modTy1 modTy2
+        then return ()
+        else throwUnificationFailure $ Unsimplifiable (PackedModuleTypesDifferFail modTy1 modTy2)
+
       (TUVar u1, TUVar u2) | u1 == u2 -> return ()
       (TUVar u1, _)                   -> u1 -?= t2
       (_, TUVar u2)                   -> u2 -?= t1
@@ -335,6 +342,7 @@ instance Plated Type where
   plate _ (t@TUVar {}) = pure t
   plate _ (t@TV {}) = pure t
   plate _ (t@TC {}) = pure t
+  plate f (TPack modTy) = TPack <$> traverseTypes f modTy
   plate f (TForall bnd) =
     let (tvk,t) = UU.unsafeUnbind bnd
     in (TForall . bind tvk) <$> f t

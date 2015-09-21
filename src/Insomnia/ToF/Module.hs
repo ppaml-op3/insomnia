@@ -70,7 +70,8 @@ moduleExpr modPath mdl_ =
      modelLocal lcl bdy mt
    ModelObserve mdl obss ->
      modelObserve mdl obss
-
+   ModuleUnpack e modTy ->
+     moduleUnpack e modTy
 
 moduleAssume :: ToF m
                 => Maybe Path
@@ -291,6 +292,13 @@ observationClause sigTp (ObservationClause f obsMe) = do
       , prior
       ]
   return term
+
+moduleUnpack :: ToF m => Expr -> ModuleType -> m (F.AbstractSig, F.Term)
+moduleUnpack e modTy = do
+  m <- expr e
+  absSig <- moduleType modTy
+  return (absSig, m)
+
 
 -- | Translation declarations.
 -- This is a bit different from how F-ing modules does it in order to avoid producing quite so many

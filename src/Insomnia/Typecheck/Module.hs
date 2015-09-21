@@ -122,7 +122,17 @@ inferModuleExpr pmod (ModelObserve mdle obss) = do
                                               <> "checking an observation " <> formatErr pmod)
   obss' <- checkObservationClauses pmod mdlSig obss
   return (ModelObserve mdle' obss', mtnf)
-
+inferModuleExpr pmod (ModuleUnpack e msig) = do
+  (msig', mtnf) <- checkModuleType msig
+           <??@ ("while checking ascribed signature for unpack module from expression in "
+                 <> formatErr pmod)
+  let mt = TPack msig'
+  res <- solveUnification $ do
+    checkExpr e mt
+      <??@ ("while checking expression to unpack at " <> formatErr pmod)
+  case res of
+    UOkay e_ -> return (ModuleUnpack e_ msig', mtnf)
+    UFail err -> typeError ("when checking unpacked expression " <> formatErr err)
 
 -- | After checking a declaration we get one or more declarations out
 -- (for example if we inferred a signature for a value binding that did not have one).

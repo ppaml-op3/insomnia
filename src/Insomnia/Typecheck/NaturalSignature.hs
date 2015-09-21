@@ -113,6 +113,8 @@ naturalSignatureModuleExpr (ModelLocal _ _ mt) = do
    FunMTNF {} -> typeError ("model is ascribed a functor type " <> formatErr mt)
 naturalSignatureModuleExpr mo@(ModelObserve _m _obss) =
   typeError ("unimplemented natural signature for model observation" <> formatErr mo)
+naturalSignatureModuleExpr (ModuleUnpack _e mt) =
+  whnfModuleType mt
 
 naturalSignatureFunctorApplication :: Path -> [Path] -> TC ModuleTypeNF
 naturalSignatureFunctorApplication pfun pargs = do

@@ -1,6 +1,8 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Insomnia.Types where
 
+import Control.Lens (Traversal)
+
 import Unbound.Generics.LocallyNameless (Alpha, Subst)
 
 import Insomnia.Identifier (Path)
@@ -15,3 +17,6 @@ instance Subst Path Type
 instance Subst Path TypeConstructor
 
 data TypePath
+
+class TraverseTypes s t where
+  traverseTypes :: Traversal s t Type Type

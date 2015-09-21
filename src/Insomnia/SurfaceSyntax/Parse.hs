@@ -65,6 +65,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
   , reservedNames = ["model", "module", "local",
                      "import", "using",
                      "observe", "is",
+                     "unpack", "as",
                      "query",
                      "where",
                      "forall", "∀",
@@ -274,6 +275,7 @@ atomicBigExpr =
   <|> (applicationOrVarBigExpr <?> "functor application")
   <|> (localBigExpr <?> "model local declaration")
   <|> (observeBigExpr <?> "model observation")
+  <|> (unpackBigExpr <?> "first class module unpacking")
   <|> parens bigExpr
 
 classifierBigExpr :: Parser BigExpr
@@ -322,6 +324,12 @@ observeBigExpr =
                    <*> atomicBigExpr
                    <*> many1 observationClause)
 
+unpackBigExpr :: Parser BigExpr
+unpackBigExpr =
+  parsePositioned (UnpackBE <$ reserved "unpack"
+                   <*> dblbraces expr
+                   <* reserved "as"
+                   <*> atomicBigExpr)
 
 
 moduleKind :: Parser ModuleKind

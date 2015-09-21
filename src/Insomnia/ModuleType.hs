@@ -17,7 +17,8 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 import Insomnia.Identifier
 import {-# SOURCE #-} Insomnia.Types (Type, Kind,
                                       TypePath, TyConName,
-                                      TypeConstructor)
+                                      TypeConstructor,
+                                      TraverseTypes(..))
 import Insomnia.Expr (Expr)
 import Insomnia.TypeDefn
 
@@ -156,3 +157,5 @@ instance Subst Expr ModuleType where
 
 instance Subst Expr a => Subst Expr (FunctorArgument a)
 
+instance TraverseTypes ModuleType ModuleType where
+  traverseTypes f t = pure t -- XXX TODO finish traverseTypes for ModuleTypes

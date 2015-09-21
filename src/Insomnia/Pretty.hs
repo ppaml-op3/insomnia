@@ -482,6 +482,12 @@ instance Pretty ModuleExpr where
     fsep ["observe",
           pp mdl,
           nesting (fsep $ map pp clauses)]
+  pp (ModuleUnpack e modTy) =
+      fsep ["unpack",
+            dblbraces $ pp e,
+            "as",
+            pp modTy]
+           
 
 ppFunctor :: (U.Alpha a, Pretty a)
              => PM Doc
@@ -576,6 +582,10 @@ instance Pretty a => Pretty (UnificationFailure TypeUnificationError w a) where
     cat ["failed to simplify unification problem "
          <+> pp r1 <+> indent "≟" (pp r2)
          <+> " because the rows have different labels"]
+  pp (Unsimplifiable (PackedModuleTypesDifferFail modTy1 modTy2)) =
+      cat ["failed to simplify unification problem "
+           <+> pp (TPack modTy1) <+> indent "≟" (pp $ TPack modTy2)
+          ]
     
 
 -- | @ppTelescope pelem t@ pretty prints the 'Telescope' @t@
