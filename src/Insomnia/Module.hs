@@ -78,6 +78,12 @@ instance Subst Path ObservationClause
 instance Subst Path Decl
 instance Subst Path ValueDecl
 
+instance Subst Type ModuleExpr
+instance Subst Type Module
+instance Subst Type ObservationClause
+instance Subst Type Decl
+instance Subst Type ValueDecl
+
 instance Subst TypeConstructor ModuleExpr
 instance Subst TypeConstructor Module
 instance Subst TypeConstructor ObservationClause

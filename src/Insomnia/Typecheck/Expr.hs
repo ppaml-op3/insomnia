@@ -12,6 +12,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Common.Literal
 import Insomnia.Common.Telescope
+import Insomnia.Identifier (Path(..))
 import Insomnia.Types (Kind(..), Type(..), Row(..),
                        canonicalOrderRowLabels,
                        freshUVarT,
@@ -27,7 +28,9 @@ import Insomnia.Pretty (Pretty)
 
 import Insomnia.Typecheck.Env
 import Insomnia.Typecheck.Type (checkType)
-
+import {-# SOURCE #-} Insomnia.Typecheck.Module (inferModuleExpr)
+import Insomnia.Typecheck.ModuleType (checkModuleType)
+import Insomnia.Typecheck.MayAscribe (mayAscribeNF)
 
 checkLiteral :: Literal -> Type -> TC ()
 checkLiteral (IntL {}) t = t =?= intT
@@ -113,6 +116,14 @@ checkExpr e_ t_ = case e_ of
     t1 <- unifyDistT t_
     e1 <- checkExpr e1_ t1
     return (Return e1)
+  Pack me modTy -> do
+    (modTy', mtnfAsc) <- checkModuleType modTy
+    (me', mtnfInf) <- inferModuleExpr (IdP $ U.s2n "<first class module>") me
+    _ <- mayAscribeNF mtnfInf mtnfAsc
+         <??@ ("while checking first class module expression " <> formatErr me
+               <> " packed with module type" <> formatErr modTy)
+    (TPack modTy') =?= t_ 
+    return (Pack me' modTy')
   Instantiate {} -> typeError ("internal error: did not expect to see an explicit polymorphic instantiation in source language: " <> formatErr e_)
 
 type PatternMatch = [(Var, Type)]
@@ -295,6 +306,13 @@ inferExpr e_ = case e_ of
   Return e1 -> do
     (t1, e1') <- inferExpr e1
     return (distT t1, Return e1')
+  Pack me modTy -> do
+    (modTy', mtnfAsc) <- checkModuleType modTy
+    (me', mtnfInf) <- inferModuleExpr (IdP $ U.s2n "<first class module>") me
+    _ <- mayAscribeNF mtnfInf mtnfAsc
+         <??@ ("while checking first class module expression " <> formatErr me
+               <> " packed with module type" <> formatErr modTy)
+    return (TPack modTy', Pack me' modTy')
   Let bnd ->
     U.lunbind bnd $ \(binds, body) ->
     checkBindings binds $ \binds' -> do

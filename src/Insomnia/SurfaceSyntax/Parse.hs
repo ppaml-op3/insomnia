@@ -66,6 +66,7 @@ insomniaLang = Tok.makeIndentLanguageDef $ LanguageDef {
                      "import", "using",
                      "observe", "is",
                      "unpack", "as",
+                     "pack",
                      "query",
                      "where",
                      "forall", "∀",
@@ -706,12 +707,20 @@ exprAtom =
   <|> (L <$> literal)
   <|> recordExpression
   <|> returnExpression
+  <|> packExpression
   <|> parens (Enclosed <$> expr
               <*> optional (classify *> typeExpr))
 
 returnExpression :: Parser ExprAtom
 returnExpression =
   Return <$> (reserved "return" *> exprAtom)
+
+packExpression :: Parser ExprAtom
+packExpression =
+  Pack <$ reserved "pack"
+  <*> dblbraces bigExpr
+  <* reserved "as"
+  <*> atomicBigExpr
 
 recordExpression :: Parser ExprAtom
 recordExpression =

@@ -23,6 +23,8 @@ import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn (ValueConstructor)
+import {-# SOURCE #-} Insomnia.Module (ModuleExpr)
+import {-# SOURCE #-} Insomnia.ModuleType (ModuleType)
 
 type Var = Name Expr
 
@@ -41,6 +43,7 @@ data Expr = V !Var
           | Let !(Bind Bindings Expr)
           | Ann !Expr !Type
           | Return !Expr
+          | Pack !ModuleExpr !ModuleType -- pack {{ M }} as S
             -- | internal node for explicit instantiation.  The type
             -- unification algorithm inserts these.
           | Instantiate !Expr !InstantiationCoercion
@@ -270,6 +273,7 @@ instance Plated Expr where
     let (bindings, e) = UU.unsafeUnbind bnd
     in Let <$> (bind <$> traverseExprs f bindings <*> f e)
   plate f (Return e) = Return <$> f e
+  plate _ e@(Pack {}) = pure e
   plate f (Instantiate e co) = Instantiate <$> f e <*> pure co
 
 class TraverseExprs s t where
@@ -320,6 +324,7 @@ instance TraverseTypes Expr Expr where
     Ann e <$> f t
   traverseTypes f (Instantiate e co) =
     Instantiate <$> pure e <*> traverseTypes f co
+  traverseTypes _ e@(Pack {}) = pure e
 
 instance TraverseTypes InstantiationCoercion InstantiationCoercion where
   traverseTypes f (InstantiationSynthesisCoercion sigma ts rho) =

@@ -189,6 +189,12 @@ instance Pretty Expr where
        , nesting (pp e)
        ]
   pp (Return e) = infixOp 10 mempty AssocLeft "return" (pp e)
+  pp (Pack mdl modTy) =
+         fsep [ "pack"
+              , dblbraces (pp mdl)
+              , "as"
+              , pp modTy
+              ]
   pp (Instantiate e co) = infixOp 99 "·¢·" AssocLeft (pp e) (pp co)
 
 instance Pretty InstantiationCoercion where

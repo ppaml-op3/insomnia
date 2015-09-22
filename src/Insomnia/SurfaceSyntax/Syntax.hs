@@ -162,6 +162,7 @@ data ExprAtom = V !(Notation Var)
               | Record ![(Label, Expr)]
               | Enclosed !Expr !(Maybe Type) -- '(' Expr ')' or '(' Expr ':' Type ')'
               | Return !ExprAtom
+              | Pack !BigExpr !BigExpr -- pack {{ M }} as S
               deriving (Show)
 
 data Expr = Phrase ![ExprAtom]

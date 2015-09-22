@@ -519,6 +519,9 @@ exprAtom (Record les) = do
   return (I.Record les')
 exprAtom (L lit) = I.L <$> literal lit
 exprAtom (Return eatm) = I.Return <$> exprAtom eatm
+exprAtom (Pack mbe modTyBE) =
+  I.Pack <$> expectBigExprModule mbe
+  <*> expectBigExprSignature modTyBE
 
 literal :: Monad m => Literal -> TA m Literal
 literal = return

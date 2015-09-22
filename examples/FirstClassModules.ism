@@ -1,0 +1,30 @@
+
+S = module type {
+  type T : * 
+}
+
+
+W = module type {
+  sig x : {{ S }}
+  X : S
+}
+
+N = module {
+  type H = Real
+}
+
+Q_SIG = module type {
+  sig x : {{ S where type T = Int }}
+}
+
+M = (Q : Q_SIG) -> module {
+  X = unpack {{ Q.x }} as (S where type T = Int)
+}
+
+QImpl = module {
+  val x = pack {{ module { type W = Int
+                           type T = W
+                         } }} as (S where type T = Int)
+}
+
+QApp = M (QImpl)

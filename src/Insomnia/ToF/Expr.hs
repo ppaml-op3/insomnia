@@ -20,6 +20,7 @@ import qualified FOmega.Syntax as F
 import Insomnia.ToF.Env
 import Insomnia.ToF.Type 
 import {-# SOURCE #-} Insomnia.ToF.Pattern (patternTranslation)
+import {-# SOURCE #-} Insomnia.ToF.Module (sealing)
 
 expr :: ToF m => Expr -> m F.Term
 expr e_ =
@@ -66,6 +67,9 @@ expr e_ =
      return $ F.Record fms
    Ann e _t -> expr e
    Return e -> liftM F.Return $ expr e
+   Pack me modTy -> do
+     (_absSigSeal, m) <- sealing me modTy
+     return m
    Case e cls ann -> caseExpr e cls ann
    Let bnd -> do
      U.lunbind bnd $ \(bndings, body) ->

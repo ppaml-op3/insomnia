@@ -12,7 +12,10 @@ import GHC.Generics (Generic)
 import Unbound.Generics.LocallyNameless
 
 import Insomnia.Identifier
-import Insomnia.Types
+import {-# SOURCE #-} Insomnia.Types (Kind, Type, TypePath,
+                                      Label,
+                                      TypeConstructor,
+                                      Nat, KindedTVar)
 import Insomnia.Common.Literal (Literal)
 
 -- | A type alias does not define a new type, but it defines a new name for
