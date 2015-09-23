@@ -29,14 +29,15 @@ M = module {
   val myflips = DataTypes.Cons Prelude.True (DataTypes.Cons Prelude.False DataTypes.Nil)
 
 
+  -- build a packed model from a list of observations
   sig h : DataTypes.List Prelude.Bool -> {{ FLIP }}
   fun h ys = case ys of
     DataTypes.Nil -> pack {{ Flip }} as FLIP
     (DataTypes.Cons y ys2) -> let
       mrest = h ys2
-      o = pack {{ module { val x = y } }} as OBS
       in pack {{ observe (unpack {{ mrest }} as FLIP) where Kernel is module { val x = y} }} as FLIP
   
+  -- the resulting model that learned the flip values
   It = unpack {{ h myflips }} as FLIP
 
 }
