@@ -9,6 +9,8 @@ module Insomnia.Typecheck.ExtendModuleCtx (
 import Control.Lens
 import Control.Monad.Reader.Class (MonadReader(..))
 
+import Data.Monoid ((<>))
+
 import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Identifier
@@ -53,9 +55,13 @@ extendToplevelDeclCtx tr (ModuleTS fld bnd) kont =
   extendModuleCtxNF (ProjP (TopRefP tr) fld) mtnf
   . extendToplevelDeclCtx tr rest
   $ kont
-extendToplevelDeclCtx tr (SignatureTS _fld bnd) kont =
-  U.lunbind bnd $ \(_sig, rest) ->
-  extendToplevelDeclCtx tr rest kont
+extendToplevelDeclCtx tr (SignatureTS fld bnd) kont =
+  U.lunbind bnd $ \((sigId, _mtnf), rest_) ->
+    let sigPath = SigTopRefP tr fld
+        -- if the rest of the toplevel summary refers to this local sig, refer to it
+        -- via the topref instead.
+        rest = U.subst sigId sigPath rest_
+    in extendToplevelDeclCtx tr rest kont
 
 -- | Given a (selfified) signature, add all of its fields to the context
 -- by prefixing them with the given path - presumably the path of this

@@ -164,6 +164,10 @@ instance Subst Type SigPath where
   subst _ _ = id
   substs _ = id
 
+instance Subst SigPath Kind where
+  subst _ _ = id
+  substs _ = id
+
 instance Subst Path Kind where
   subst _ _ = id
   substs _ = id
@@ -171,6 +175,18 @@ instance Subst Path Label where
   subst _ _ = id
   substs _ = id
 
+instance Subst SigPath Type
+instance Subst SigPath TypePath where
+  subst _ _ = id
+  substs _ = id
+instance Subst SigPath Row
+instance Subst SigPath Label where
+  subst _ _ = id
+  substs _ = id
+instance Subst SigPath TypeConstructor
+instance Subst SigPath (UVar w a) where
+  subst _ _ = id
+  substs _ = id
 
 instance Subst Path TypePath
 instance Subst Path TypeConstructor

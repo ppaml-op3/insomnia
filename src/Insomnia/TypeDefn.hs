@@ -93,6 +93,10 @@ instance Alpha ValConPath
 instance Alpha InferredValConPath
 instance Alpha ValueConstructor
 
+instance Subst SigPath TypeAlias
+instance Subst SigPath TypeDefn
+instance Subst SigPath ConstructorDef
+
 instance Subst Path TypeDefn
 instance Subst Path ConstructorDef
 instance Subst Path TypeAlias

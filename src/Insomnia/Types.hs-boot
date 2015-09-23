@@ -8,7 +8,7 @@ import Control.Lens (Traversal)
 
 import Unbound.Generics.LocallyNameless (Name, Alpha, Subst)
 
-import Insomnia.Identifier (Path)
+import Insomnia.Identifier (Path, SigPath)
 
 data Kind
 data Type
@@ -27,6 +27,10 @@ instance Alpha Kind
 instance Alpha Type
 instance Alpha TypeConstructor
 instance Alpha TypePath
+
+instance Subst SigPath Kind
+instance Subst SigPath Type
+instance Subst SigPath TypePath
 
 
 instance Subst Path Kind

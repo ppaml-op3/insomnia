@@ -126,6 +126,10 @@ instance Subst Path Path where
   isvar (IdP i) = Just (SubstName i)
   isvar _ = Nothing
 
+instance Subst SigPath SigPath where
+  isvar (SigIdP i) = Just (SubstName i)
+  isvar _ = Nothing
+
 instance Subst TopPath (UVar w a) where
   subst _ _ = id
   substs _ = id

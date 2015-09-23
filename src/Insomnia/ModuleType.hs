@@ -119,6 +119,15 @@ instance Alpha TypeSigDecl
 instance Alpha WhereClause
 instance Alpha ModuleTypeNF
 
+instance Subst SigPath ToplevelSummary
+instance Subst SigPath Signature
+instance Subst SigPath TypeSigDecl
+instance Subst SigPath ModuleTypeNF
+instance Subst SigPath ModuleType
+instance Subst SigPath WhereClause
+instance Subst SigPath a => Subst SigPath (SigV a)
+instance Subst SigPath a => Subst SigPath (FunctorArgument a)
+
 instance Subst Path ToplevelSummary
 instance Subst Path Signature
 instance Subst Path TypeSigDecl

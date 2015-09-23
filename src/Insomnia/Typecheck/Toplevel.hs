@@ -49,7 +49,7 @@ checkToplevelItem item kont =
       (tl', tsum) <- local clearExceptToplevelsEnv (checkToplevel tl)
                      <??@ ("while importing the toplevel from " <> formatErr fp
                            <> " as " <> formatErr tr)
-      extendToplevelDeclCtx tr tsum $ extendToplevelSummaryCtx tr tsum $ kont (ToplevelImported fp tr tl') mempty
+      extendToplevelSummaryCtx tr tsum $ extendToplevelDeclCtx tr tsum $ kont (ToplevelImported fp tr tl') mempty
     ToplevelQuery qe -> do
       qe' <- checkQueryExpr qe
       kont (ToplevelQuery qe') mempty

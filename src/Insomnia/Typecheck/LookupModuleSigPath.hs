@@ -18,7 +18,7 @@ lookupModuleSigPath (IdP ident) = lookupModuleSig ident
 lookupModuleSigPath (TopRefP tr) = typeError ("unexepected bare toplevel reference " <> formatErr tr)
 lookupModuleSigPath (ProjP (TopRefP tr) f) = do
   tsum <- lookupToplevelSummary tr
-  projectToplevelModuleField (TopRefP tr) tsum f
+  projectToplevelModuleField tr tsum f
 lookupModuleSigPath (ProjP pmod fieldName) = do
   modnf <- lookupModuleSigPath pmod
   case modnf of
@@ -29,17 +29,19 @@ lookupModuleSigPath (ProjP pmod fieldName) = do
    FunMTNF {} -> typeError ("unexpected functor when projecting " <> formatErr fieldName
                             <> " from " <> formatErr pmod)
 
-projectToplevelModuleField :: Path -> ToplevelSummary -> Field -> TC ModuleTypeNF
-projectToplevelModuleField pmod UnitTS fld =
-  typeError ("toplevel " <> formatErr pmod <> " does not have a module " <> formatErr fld)
-projectToplevelModuleField pmod (SignatureTS _ bnd) fld =
-  U.lunbind bnd $ \((_sigId, _sigmt), rest) -> projectToplevelModuleField pmod rest fld
-projectToplevelModuleField pmod (ModuleTS fld' bnd) fld =
+projectToplevelModuleField :: TopRef -> ToplevelSummary -> Field -> TC ModuleTypeNF
+projectToplevelModuleField tr UnitTS fld =
+  typeError ("toplevel " <> formatErr tr <> " does not have a module " <> formatErr fld)
+projectToplevelModuleField tr (SignatureTS fld' bnd) fld =
+  U.lunbind bnd $ \((sigId, _sigmt), rest) ->
+  let rest' = U.subst sigId (SigTopRefP tr fld') rest
+  in projectToplevelModuleField tr rest' fld
+projectToplevelModuleField tr (ModuleTS fld' bnd) fld =
   U.lunbind bnd $ \((modId, U.unembed -> modTy), rest) ->
   if fld == fld'
   then return modTy
-  else let rest' = U.subst modId (ProjP pmod fld') rest
-       in projectToplevelModuleField pmod rest' fld
+  else let rest' = U.subst modId (ProjP (TopRefP tr) fld') rest
+       in projectToplevelModuleField tr rest' fld
 
 projectModuleField :: Path -> Field -> Signature -> TC ModuleTypeNF
 projectModuleField pmod fieldName = go
