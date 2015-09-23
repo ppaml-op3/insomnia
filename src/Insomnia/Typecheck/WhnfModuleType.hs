@@ -178,18 +178,22 @@ patchToAlias (PatchTypeField _fld ty_ k_) = do
 
 
 whnfModuleType :: ModuleType -> TC ModuleTypeNF
-whnfModuleType (SigMT sigv) = return (SigMTNF sigv)
-whnfModuleType (IdentMT (SigIdP modId)) = lookupModuleType modId
-whnfModuleType (IdentMT (SigTopRefP topref f)) = do
+whnfModuleType mt =
+  whnfModuleType_ mt <??@ ("while normalizing module type " <> formatErr mt)
+
+whnfModuleType_ :: ModuleType -> TC ModuleTypeNF
+whnfModuleType_ (SigMT sigv) = return (SigMTNF sigv)
+whnfModuleType_ (IdentMT (SigIdP modId)) = lookupModuleType modId
+whnfModuleType_ (IdentMT (SigTopRefP topref f)) = do
   tsum <- lookupToplevelSummary topref
   projectToplevelModuleTypeField (TopRefP topref) tsum f
-whnfModuleType (FunMT bnd) =
+whnfModuleType_ (FunMT bnd) =
   U.lunbind bnd $ \(tele, body) ->
   whnfTelescope tele $ \telenf -> do
     bodynf <- whnfModuleType body
     return (FunMTNF $ U.bind telenf bodynf)
-whnfModuleType (WhereMT mt whClause) = do
-  mtnf <- whnfModuleType mt
+whnfModuleType_ (WhereMT mt whClause) = do
+  mtnf <- whnfModuleType_ mt
   reduceWhereModuleTypeNF mtnf whClause
 
 whnfTelescope :: Telescope (FunctorArgument ModuleType)

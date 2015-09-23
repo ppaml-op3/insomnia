@@ -3,6 +3,8 @@ module Insomnia.Typecheck.ClarifySignature (clarifySignatureV, clarifySignatureN
 
 import Control.Applicative
 
+import Data.Monoid((<>))
+
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 
@@ -124,6 +126,7 @@ clarifySubmodule :: Path
                    -> TC Signature
 clarifySubmodule pmod f ident subModTy rest = do
   subSigNF <- whnfModuleType subModTy
+              <??@ ("while clarifying submodule " <> formatErr pmod)
   clearSubSigNF <- clarifySignatureNF (ProjP pmod f) subSigNF
   rest' <- clarifySignature pmod rest
   return $ SubmoduleSig f $ U.bind (ident, U.embed (moduleTypeNormalFormEmbed clearSubSigNF)) rest'

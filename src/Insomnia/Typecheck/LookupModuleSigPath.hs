@@ -74,4 +74,6 @@ projectModuleField pmod fieldName = go
         in go mrest
       else
         U.lunbind bnd $ \((_, U.unembed -> modTy), _) ->
-        whnfModuleType modTy
+        whnfModuleType modTy <??@ ("while projecting "
+                                   <> formatErr fieldName
+                                   <> " near " <> formatErr pmod)

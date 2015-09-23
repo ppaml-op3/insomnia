@@ -4,7 +4,7 @@ module Insomnia.Typecheck.Selfify
        , selfifyTypeDefn
        ) where
 
-import Data.Monoid (Monoid(..))
+import Data.Monoid (Monoid(..), (<>))
 
 import qualified Unbound.Generics.LocallyNameless as U
 import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
@@ -56,7 +56,7 @@ selfifySignature pmod msig_ =
     SubmoduleSig fld bnd ->
       U.lunbind bnd $ \((modId, U.unembed -> modTy), msig) -> do
         let p = ProjP pmod fld
-        mtnf <- whnfModuleType modTy
+        mtnf <- whnfModuleType modTy <??@ ("while selfifying signature of " <> formatErr pmod)
         case mtnf of
          (SigMTNF (SigV subSig ModuleMK)) -> do
            subSelfSig <- selfifySignature p subSig
