@@ -255,7 +255,7 @@ caseConstruct ysubj (DtInOut dtInOut)
   let
     dtOut = dtInOut `F.Proj` F.FDataOut
     -- For  polymorphic types constructors we need to build a higher-order context.
-    -- Consider the clause: case l of (Cons x ·¢· [Int] xs) -> x + sum xs 
+    -- Consider the clause: case l of (Cons ·¢· [Int] x xs) -> x + sum xs 
     -- In that case, we need to translate to:
     --    case Δ.out [λ (δ:⋆→⋆) . δ Int] l of (Cons z) -> let x = z.0 xs = z.1 in ...
     -- That is, we have to know that the polymorphic type Δ was instantiated with τs
