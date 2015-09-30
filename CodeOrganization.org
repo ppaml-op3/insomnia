@@ -1,0 +1,163 @@
+* Highlevel overview
+
+  1. Text input
+  2. Parsing [[file:src/Insomnia/SurfaceSyntax/Parse.hs][Insomnia.SurfaceSyntax.Parse]]
+  3. Surface Syntax [[file:src/Insomnia/SurfaceSyntax/Syntax.hs][Insomnia.SurfaceSyntax.Syntax]]
+  4. "toasting" [[file:src/Insomnia/SurfaceSyntax/ToAST.hs][Insomnia.SurfaceSyntax.ToAST]]
+
+     There are a few wrinkles in the story at this point.
+
+     1. Modules or module types?
+
+	The lexical structure of the language distinguishes value
+        names (initial lowercase identifier) and type,module and
+        module type names (initial uppercase identifier).
+        Additionally, the syntactic structure of the language is such
+        that we never confuse a type for a module or a module type.
+
+	On the other hand, module and module types may sometimes
+        appear ambiguous.  (The most notable place is that if we see
+        "X = module { ... }" then X must be a module identifier, if we
+        see "X = module type { ... }" it must be a module type
+        identifier.
+
+	So in the course of toasting, we keep track of module and
+        module type names and which sort they are. In the surface
+        syntax both modules and module types are "BigExpr"s and the
+        ToAST conversion tries to locally infer what kind of thing it
+        got based on the bigexpr form.
+
+     2. References to foreign files.
+
+	The "ToAST" monad is actually a resumable coroutine monad.
+        When we see "import "file.ism" (...)" we pause the ToAST
+        conversion and jump back out to the Text input stage, provide
+        it with a name and then wait to be resumed with a toasted
+        summary of the imported file.
+
+     3. Infix expressions
+
+	The surface syntax has "phrases" which are just whitespace
+        delimited sequences of atoms.  The ToAST stage invokes a
+        precedence parser to resolve infix operators.
+
+  5. Internal AST [[file:src/Insomnia/Toplevel.hs][Insomnia.Toplevel]] (and ModuleType, Module, Types,
+     Expr and others).
+
+  6. "ireturn" insertion [[file:src/Insomnia/IReturn.hs][Insomnia.IReturn]]
+
+     convert "model { val x = e }" to "model { val x ~ return e }".
+
+     convert "model { val x = let y ~ e1 in e2 }" to
+             "model { val x ~ let y ~ e1 in return e2 }"
+
+  7. Type checking and inference [[file:src/Insomnia/Typecheck.hs][Insomnia.Typecheck]] (and the Typecheck
+     submodules).
+
+     In the "small" language we use a unification monad to perform
+     type inference.
+
+     In the "large" language we perform prinicipal signature inference
+     for modules and selfification to add modules to the context.
+
+     At this point UVar expressions may be introduced in the small language, but they must all be
+     solved in the course of typechecking.
+
+  8. Typecheked internal AST.
+
+     In the typechecked AST there are explicit "instantiation" and
+     "generalization" nodes at the places where type inference had to
+     perform instantiation or generalization.
+
+     Additionally, data constuctors are annotated to point to their
+     parent datatype.
+
+  9. Elaboration [[file:src/Insomnia/ToF.hs][Insomnia.ToF]] (and the ToF submodules).
+
+     This stage performs the "F-ing modules"-style elaboration.  Since
+     we already typechecked, this step cannot go wrong.
+
+  10. F-Omega [[file:src/FOmega/Syntax.hs][FOmega.Syntax]]
+
+      F-Omega makes a syntactic distinction between expressions (pure,
+      or stochastic represented as an ~FOmega.Syntax.Expr~) and commands
+      (impure IO operations - primarily to support toplevel queries -
+      represented as ~FOmega.Syntax.Command~).
+
+      F-Omega also has a typechecker [[file:src/FOmega/Check.hs][FOmega.Check]].  F-Omega is
+      explicitly typed so typechecking is straightforward and doesn't
+      need to do any unification.
+
+
+  1. Interpreter and ToGamble translator.
+     1. Interpreter [[file:src/FOmega/Eval.hs][FOmega.Eval]]
+
+	The interpreter has unsaturated n-ary primitive applications
+        as value forms and accumulates type and value arguments until
+        the primitive can fire.
+
+	The stochastic bits are implemented on top of ~Insomnia.Interp.PMonad~ 
+	 
+     2. ToGamble translator [[file:src/Gambling/FromF.hs][Gambling.FromF]]
+
+	The translation is pretty uninspired.  All functions take
+        exactly one argument, so multi-arg functions are translated to
+        nested lambdas in Racket.  Distributions are translated to
+        nullary functions.  Records and modules are translated to
+        immutable hashes keyed by the field name.  Datatype values are
+        translated into vectors where the first component is a symbol
+        made from the value constructor name (e.g. (quote True) for a
+        bool) and the rest of the components are the arguments of the
+        value constructor.  (So (Cons 1 Nil) becomes a triple of
+        (vector (quote Cons) 1 (vector (quote Nil))))
+
+	Toplevel query commands are IGNORED.  So the resulting Gamble
+        module doesn't actually run any queries, but it ought to be callable from other racket code:
+	
+	#+BEGIN_EXAMPLE insomnia
+	X = model {
+	 f ~ Prelude.flip 0.5
+	}
+	#+END_EXAMPLE
+
+	produces
+
+	#+BEGIN_EXAMPLE racket
+	#lang gamble
+	(define (X)
+	  ...
+        )
+	#+END_EXAMPLE
+
+	So you may well do
+
+	#+BEGIN_EXAMPLE racket
+	#lang gamble
+	(require "X.rkt")
+	(define X-sampler (mh-sampler (X)))
+	;; returned samples will be hashes with an "f" element mapped to an encoding of an Insomnia Bool
+	#+END_EXAMPLE
+
+* How builtins work
+  The ~boot.ism~ file has a __BOOT module implemented as "assume module type {...}"
+
+  1. The "assume" part tells the Typechecker to posit the __BOOT module with the given module type.
+  2. The "..." part is what the ToF translator tries to match in order
+     to identify any given module as being its notion of __BOOT.  The
+     declared elements of __BOOT are translated to free variables of
+     the form "__BOOT.xxx"
+  3. Internally to the FOmega typechecker there's an initial
+     environment that assigns a type to all the "__BOOT.xxx" free
+     variables.
+  4. The interpreter has an initial value environment that maps each
+     "__BOOT.xxx" free variable to native closure.
+  5. The ToGamble translator just assumes there's a "boot.rkt" Racket
+     module and imports all of it.
+	
+
+  So to add a new primitive, all of that stuff has to be updated in
+  sync.  This isn't the best design.  Should consider something
+  cleaner.  (Also perhaps something that allows different intrinsics
+  for different backends, and perhaps making the ToF translation
+  backend-aware and giving the typechecker different initial
+  environments based on backend.)
