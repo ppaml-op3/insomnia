@@ -1,0 +1,1901 @@
+Running insomnia...
+Parsing
+import ^examples/boot.ism1 "examples/boot.ism" {
+  module __BOOT
+    = assume
+        module {
+        val intAdd : Int → Int → Int
+        val ifIntLt
+          : ∀ (a : ⋆)
+              . Int → Int → ({} → a) → ({} → a) → {} → a
+        val realAdd : Real → Real → Real
+        val realMul : Real → Real → Real
+        val ifRealLt
+          : ∀ (a : ⋆)
+              . Real → Real → ({} → a) → ({} → a) → {} → a
+        module Distribution
+          : module {
+            val choose
+              : ∀ (a : ⋆) . Real → Dist a → Dist a → Dist a
+            val uniform : Real → Real → Dist Real
+            val normal : Real → Real → Dist Real
+            }
+        val posterior
+          : ∀ (st : ⋆) (obs : ⋆)
+              . (st → Dist obs) → obs → Dist st → Dist st
+        }
+}
+
+import ^examples/Prelude.ism "examples/Prelude.ism"
+{ module __BOOT
+    = module { import ^examples/boot.ism1:__BOOT }
+
+  module type FUNCTOR
+  module {
+  type T : ⋆ → ⋆
+  val map : ∀ (a : ⋆) (b : ⋆) . (a → b) → T a → T b
+  }
+
+  module type PRELUDE
+  module {
+  val + : Int → Int → Int
+  val +. : Real → Real → Real
+  val *. : Real → Real → Real
+  data Bool = True | False
+  val || : Bool → Bool → Bool
+  val < : Int → Int → Bool
+  val <. : Real → Real → Bool
+  val flip : Real → Dist Bool
+  val bernoulli : Real → Dist Int
+  val uniform : {lo : Real; hi : Real} → Dist Real
+  val normal : {μ : Real; σ² : Real} → Dist Real
+  }
+
+  module Prelude : PRELUDE
+    module { fun + x y = __BOOT.intAdd x y
+             fun +. x y = __BOOT.realAdd x y
+             fun *. x y = __BOOT.realMul x y
+             data Bool = True | False
+             fun || x y = case x of {True → True ; _ → y}
+             fun < x y
+               = __BOOT.ifIntLt x y (λ _v . True) (λ _v . False) {}
+             fun <. x y
+               = __BOOT.ifRealLt x y (λ _v . True) (λ _v . False)
+                   {}
+             fun flip d
+               = __BOOT.Distribution.choose d (return True)
+                   (return False)
+             fun bernoulli d
+               = __BOOT.Distribution.choose d (return 1) (return 0)
+             fun uniform p
+               = case p of
+                 {{lo = lo, hi = hi} → __BOOT.Distribution.uniform lo
+                                         hi}
+             fun normal p
+               = case p of
+                 {{μ = m, σ² = s} → __BOOT.Distribution.normal m s}
+           }
+}
+
+module Prelude
+  = module { import ^examples/Prelude.ism:Prelude }
+
+module type B_BIAS module { val b_bias : Real }
+
+module B1 : B_BIAS
+  module { parameter b_bias = 0.1 }
+
+module B2 : B_BIAS
+  module { parameter b_bias = 0.9 }
+
+module type BIAS_MODEL model { val b_bias : Real }
+
+module FlipAChooseB : BIAS_MODEL
+  model { val a_outcome ~ Prelude.flip 0.5
+          val b_bias = case a_outcome of
+                       {Prelude.True → B1.b_bias
+                        ; Prelude.False → B2.b_bias}
+        }
+
+module FlipBCoin
+(X : B_BIAS)
+  = model { val outcome ~ Prelude.flip X.b_bias }
+
+module type EXPERIMENT
+model {
+module Bias : B_BIAS
+module BFlips : model { val outcome : Prelude.Bool }
+}
+
+module Experiment : EXPERIMENT
+  model { module Bias ~ FlipAChooseB
+          module BFlips = FlipBCoin (Bias)
+        }
+
+module TwoFlips
+  = model { module E ~ Experiment
+            module B1 ~ E.BFlips
+            module B2 ~ E.BFlips
+          }
+
+query sample TwoFlips 3
+--------------------✂✄--------------------
+Desugaring
+import ^examples/boot.ism1 "examples/boot.ism" {
+  module __BOOT
+    = assume
+        module {
+        val intAdd : Int → Int → Int
+        val ifIntLt
+          : ∀ (a : ⋆)
+              . Int → Int → ({} → a) → ({} → a) → {} → a
+        val realAdd : Real → Real → Real
+        val realMul : Real → Real → Real
+        val ifRealLt
+          : ∀ (a : ⋆)
+              . Real → Real → ({} → a) → ({} → a) → {} → a
+        module Distribution
+          : module {
+            val choose
+              : ∀ (a : ⋆) . Real → Dist a → Dist a → Dist a
+            val uniform : Real → Real → Dist Real
+            val normal : Real → Real → Dist Real
+            }
+        val posterior
+          : ∀ (st : ⋆) (obs : ⋆)
+              . (st → Dist obs) → obs → Dist st → Dist st
+        }
+}
+
+import ^examples/Prelude.ism "examples/Prelude.ism"
+{ module __BOOT
+    = module { import ^examples/boot.ism1:__BOOT }
+
+  module type FUNCTOR
+  module {
+  type T : ⋆ → ⋆
+  val map : ∀ (a : ⋆) (b : ⋆) . (a → b) → T a → T b
+  }
+
+  module type PRELUDE
+  module {
+  val + : Int → Int → Int
+  val +. : Real → Real → Real
+  val *. : Real → Real → Real
+  data Bool = True | False
+  val || : Bool → Bool → Bool
+  val < : Int → Int → Bool
+  val <. : Real → Real → Bool
+  val flip : Real → Dist Bool
+  val bernoulli : Real → Dist Int
+  val uniform : {lo : Real; hi : Real} → Dist Real
+  val normal : {μ : Real; σ² : Real} → Dist Real
+  }
+
+  module Prelude : PRELUDE
+    module { fun + x y = __BOOT.intAdd x y
+             fun +. x y = __BOOT.realAdd x y
+             fun *. x y = __BOOT.realMul x y
+             data Bool = True | False
+             fun || x y = case x of {True → True ; _ → y}
+             fun < x y
+               = __BOOT.ifIntLt x y (λ _v . True) (λ _v . False) {}
+             fun <. x y
+               = __BOOT.ifRealLt x y (λ _v . True) (λ _v . False)
+                   {}
+             fun flip d
+               = __BOOT.Distribution.choose d (return True)
+                   (return False)
+             fun bernoulli d
+               = __BOOT.Distribution.choose d (return 1) (return 0)
+             fun uniform p
+               = case p of
+                 {{lo = lo, hi = hi} → __BOOT.Distribution.uniform lo
+                                         hi}
+             fun normal p
+               = case p of
+                 {{μ = m, σ² = s} → __BOOT.Distribution.normal m s}
+           }
+}
+
+module Prelude
+  = module { import ^examples/Prelude.ism:Prelude }
+
+module type B_BIAS module { val b_bias : Real }
+
+module B1 : B_BIAS
+  module { parameter b_bias = 0.1 }
+
+module B2 : B_BIAS
+  module { parameter b_bias = 0.9 }
+
+module type BIAS_MODEL model { val b_bias : Real }
+
+module FlipAChooseB : BIAS_MODEL
+  model { val a_outcome ~ Prelude.flip 0.5
+          val b_bias ~ return
+                         (case a_outcome of
+                          {Prelude.True → B1.b_bias
+                           ; Prelude.False → B2.b_bias})
+        }
+
+module FlipBCoin
+(X : B_BIAS)
+  = model { val outcome ~ Prelude.flip X.b_bias }
+
+module type EXPERIMENT
+model {
+module Bias : B_BIAS
+module BFlips : model { val outcome : Prelude.Bool }
+}
+
+module Experiment : EXPERIMENT
+  model { module Bias ~ FlipAChooseB
+          module BFlips = FlipBCoin (Bias)
+        }
+
+module TwoFlips
+  = model { module E ~ Experiment
+            module B1 ~ E.BFlips
+            module B2 ~ E.BFlips
+          }
+
+query sample TwoFlips 3
+--------------------✂✄--------------------
+Typechecking
+Typechecked OK.
+Unification state:
+Map
+{⁇0 ↦ ⁇1 → ⁇2
+ ⁇1 ↦ Int
+ ⁇2 ↦ ⁇3 → ⁇4
+ ⁇3 ↦ Int
+ ⁇4 ↦ Int
+ ⁇5 ↦ Int
+ ⁇6 ↦ Int → Int
+ ⁇7 ↦ Int
+ ⁇8 ↦ Int
+ ⁇9 ↦ ⁇10 → ⁇11
+ ⁇10 ↦ Real
+ ⁇11 ↦ ⁇12 → ⁇13
+ ⁇12 ↦ Real
+ ⁇13 ↦ Real
+ ⁇14 ↦ Real
+ ⁇15 ↦ Real → Real
+ ⁇16 ↦ Real
+ ⁇17 ↦ Real
+ ⁇18 ↦ ⁇19 → ⁇20
+ ⁇19 ↦ Real
+ ⁇20 ↦ ⁇21 → ⁇22
+ ⁇21 ↦ Real
+ ⁇22 ↦ Real
+ ⁇23 ↦ Real
+ ⁇24 ↦ Real → Real
+ ⁇25 ↦ Real
+ ⁇26 ↦ Real
+ ⁇27 ↦ ⁇28 → ⁇29
+ ⁇28 ↦ Bool
+ ⁇29 ↦ ⁇30 → ⁇31
+ ⁇30 ↦ Bool
+ ⁇31 ↦ Bool
+ ⁇32 ↦ ⁇33 → ⁇34
+ ⁇33 ↦ Int
+ ⁇34 ↦ ⁇35 → ⁇36
+ ⁇35 ↦ Int
+ ⁇36 ↦ Bool
+ ⁇37 ↦ Bool
+ ⁇38 ↦ Int
+ ⁇39 ↦ Int → ({} → ⁇37) → ({} → ⁇37) → {} → ⁇37
+ ⁇40 ↦ Int
+ ⁇41 ↦ ({} → ⁇37) → ({} → ⁇37) → {} → ⁇37
+ ⁇42 ↦ {} → ⁇45
+ ⁇43 ↦ ({} → Bool) → {} → Bool
+ ⁇44 ↦ {}
+ ⁇45 ↦ ⁇37
+ ⁇46 ↦ {} → Bool
+ ⁇47 ↦ {} → Bool
+ ⁇48 ↦ {}
+ ⁇49 ↦ Bool
+ ⁇50 ↦ {}
+ ⁇51 ↦ Bool
+ ⁇52 ↦ ⁇53 → ⁇54
+ ⁇53 ↦ Real
+ ⁇54 ↦ ⁇55 → ⁇56
+ ⁇55 ↦ Real
+ ⁇56 ↦ Bool
+ ⁇57 ↦ Bool
+ ⁇58 ↦ Real
+ ⁇59 ↦ Real → ({} → ⁇57) → ({} → ⁇57) → {} → ⁇57
+ ⁇60 ↦ Real
+ ⁇61 ↦ ({} → ⁇57) → ({} → ⁇57) → {} → ⁇57
+ ⁇62 ↦ {} → ⁇65
+ ⁇63 ↦ ({} → Bool) → {} → Bool
+ ⁇64 ↦ {}
+ ⁇65 ↦ ⁇57
+ ⁇66 ↦ {} → Bool
+ ⁇67 ↦ {} → Bool
+ ⁇68 ↦ {}
+ ⁇69 ↦ Bool
+ ⁇70 ↦ {}
+ ⁇71 ↦ Bool
+ ⁇72 ↦ ⁇73 → ⁇74
+ ⁇73 ↦ Real
+ ⁇74 ↦ Dist Bool
+ ⁇75 ↦ Bool
+ ⁇76 ↦ Real
+ ⁇77 ↦ Dist ⁇75 → Dist ⁇75 → Dist ⁇75
+ ⁇78 ↦ Dist ⁇80
+ ⁇79 ↦ Dist Bool → Dist Bool
+ ⁇80 ↦ ⁇75
+ ⁇81 ↦ Dist Bool
+ ⁇82 ↦ Dist Bool
+ ⁇83 ↦ Bool
+ ⁇84 ↦ ⁇85 → ⁇86
+ ⁇85 ↦ Real
+ ⁇86 ↦ Dist Int
+ ⁇87 ↦ Int
+ ⁇88 ↦ Real
+ ⁇89 ↦ Dist ⁇87 → Dist ⁇87 → Dist ⁇87
+ ⁇90 ↦ Dist ⁇92
+ ⁇91 ↦ Dist Int → Dist Int
+ ⁇92 ↦ ⁇87
+ ⁇93 ↦ Dist Int
+ ⁇94 ↦ Dist Int
+ ⁇95 ↦ Int
+ ⁇96 ↦ ⁇97 → ⁇98
+ ⁇97 ↦ {hi : ⁇100; lo : ⁇99}
+ ⁇98 ↦ Dist Real
+ ⁇99 ↦ Real
+ ⁇100 ↦ Real
+ ⁇101 ↦ Real
+ ⁇102 ↦ Real → Dist Real
+ ⁇103 ↦ Real
+ ⁇104 ↦ Dist Real
+ ⁇105 ↦ ⁇106 → ⁇107
+ ⁇106 ↦ {μ : ⁇108; σ² : ⁇109}
+ ⁇107 ↦ Dist Real
+ ⁇108 ↦ Real
+ ⁇109 ↦ Real
+ ⁇110 ↦ Real
+ ⁇111 ↦ Real → Dist Real
+ ⁇112 ↦ Real
+ ⁇113 ↦ Dist Real
+ ⁇114 ↦ Real
+ ⁇115 ↦ Real
+ ⁇116 ↦ ^examples/Prelude.ism:Prelude.Bool
+ ⁇117 ↦ Real
+ ⁇118 ↦ Dist ^examples/Prelude.ism:Prelude.Bool
+ ⁇119 ↦ Real
+ ⁇120 ↦ ⁇119
+ ⁇121 ↦ ^examples/Prelude.ism:Prelude.Bool
+ ⁇122 ↦ Real
+ ⁇123 ↦ Dist ^examples/Prelude.ism:Prelude.Bool}
+import ^examples/boot.ism1 "examples/boot.ism" {
+  module __BOOT
+    = assume
+        module {
+        val intAdd : Int → Int → Int
+        val ifIntLt
+          : ∀ (a : ⋆)
+              . Int → Int → ({} → a) → ({} → a) → {} → a
+        val realAdd : Real → Real → Real
+        val realMul : Real → Real → Real
+        val ifRealLt
+          : ∀ (a : ⋆)
+              . Real → Real → ({} → a) → ({} → a) → {} → a
+        module Distribution
+          : module {
+            val choose
+              : ∀ (a : ⋆) . Real → Dist a → Dist a → Dist a
+            val uniform : Real → Real → Dist Real
+            val normal : Real → Real → Dist Real
+            }
+        val posterior
+          : ∀ (st : ⋆) (obs : ⋆)
+              . (st → Dist obs) → obs → Dist st → Dist st
+        }
+}
+
+import ^examples/Prelude.ism "examples/Prelude.ism"
+{ module __BOOT
+    = module { parameter sig intAdd : Int → Int → Int
+               parameter intAdd = ^examples/boot.ism1:__BOOT.intAdd
+               parameter sig ifIntLt : ∀ (a : ⋆)
+                                         . Int →
+                                             Int →
+                                               ({} → a) → ({} → a) → {} → a
+               parameter ifIntLt = ^examples/boot.ism1:__BOOT.ifIntLt
+               parameter sig realAdd : Real → Real → Real
+               parameter realAdd = ^examples/boot.ism1:__BOOT.realAdd
+               parameter sig realMul : Real → Real → Real
+               parameter realMul = ^examples/boot.ism1:__BOOT.realMul
+               parameter sig ifRealLt : ∀ (a : ⋆)
+                                          . Real →
+                                              Real →
+                                                ({} → a) → ({} → a) → {} → a
+               parameter ifRealLt = ^examples/boot.ism1:__BOOT.ifRealLt
+               module Distribution
+                 = ^examples/boot.ism1:__BOOT.Distribution
+               parameter sig posterior : ∀ (st : ⋆) (obs : ⋆)
+                                           . (st → Dist obs) →
+                                               obs → Dist st → Dist st
+               parameter posterior = ^examples/boot.ism1:__BOOT.posterior
+             }
+
+  module type FUNCTOR
+  module {
+  type T : ⋆ → ⋆
+  val map : ∀ (a : ⋆) (b : ⋆) . (a → b) → T a → T b
+  }
+
+  module type PRELUDE
+  module {
+  val + : Int → Int → Int
+  val +. : Real → Real → Real
+  val *. : Real → Real → Real
+  data Bool = True | False
+  val || : Bool → Bool → Bool
+  val < : Int → Int → Bool
+  val <. : Real → Real → Bool
+  val flip : Real → Dist Bool
+  val bernoulli : Real → Dist Int
+  val uniform : {hi : Real; lo : Real} → Dist Real
+  val normal : {μ : Real; σ² : Real} → Dist Real
+  }
+
+  module Prelude : PRELUDE
+    module { parameter sig + : Int → Int → Int
+             fun + (x : Int) (y : Int) = __BOOT.intAdd x y
+             parameter sig +. : Real → Real → Real
+             fun +. (x : Real) (y : Real) = __BOOT.realAdd x y
+             parameter sig *. : Real → Real → Real
+             fun *. (x : Real) (y : Real) = __BOOT.realMul x y
+             data Bool = True | False
+             parameter sig || : Bool → Bool → Bool
+             fun || (x : Bool) (y : Bool)
+               = case x of
+                 {True ·¢· Bool ≤ [ ] Bool → True ; _ → y}
+             parameter sig < : Int → Int → Bool
+             fun < (x : Int) (y : Int)
+               = __BOOT.ifIntLt ·¢·
+                   ∀ (a : ⋆) . Int → Int → ({} → a) → ({} → a) → {} → a
+                   ≤ [ Bool ]
+                   (Int → Int → ({} → Bool) → ({} → Bool) → {} → Bool)
+                   x
+                   y
+                   (λ (_v : {}) . True)
+                   (λ (_v : {}) . False)
+                   {}
+             parameter sig <. : Real → Real → Bool
+             fun <. (x : Real) (y : Real)
+               = __BOOT.ifRealLt ·¢·
+                   ∀ (a : ⋆)
+                     . Real → Real → ({} → a) → ({} → a) → {} → a
+                   ≤ [ Bool ]
+                   (Real →
+                      Real → ({} → Bool) → ({} → Bool) → {} → Bool)
+                   x
+                   y
+                   (λ (_v : {}) . True)
+                   (λ (_v : {}) . False)
+                   {}
+             parameter sig flip : Real → Dist Bool
+             fun flip (d : Real)
+               = __BOOT.Distribution.choose ·¢·
+                   ∀ (a : ⋆) . Real → Dist a → Dist a → Dist a ≤ [ Bool
+                   ] (Real → Dist Bool → Dist Bool → Dist Bool)
+                   d
+                   (return True)
+                   (return False)
+             parameter sig bernoulli : Real → Dist Int
+             fun bernoulli (d : Real)
+               = __BOOT.Distribution.choose ·¢·
+                   ∀ (a : ⋆) . Real → Dist a → Dist a → Dist a ≤ [ Int
+                   ] (Real → Dist Int → Dist Int → Dist Int)
+                   d
+                   (return 1)
+                   (return 0)
+             parameter sig uniform : {hi : Real; lo : Real} →
+                                       Dist Real
+             fun uniform (p : {hi : Real; lo : Real})
+               = case p of
+                 {{lo = lo, hi = hi} → __BOOT.Distribution.uniform lo
+                                         hi}
+             parameter sig normal : {μ : Real; σ² : Real} →
+                                      Dist Real
+             fun normal (p : {μ : Real; σ² : Real})
+               = case p of
+                 {{μ = m, σ² = s} → __BOOT.Distribution.normal m s}
+           }
+}
+
+module Prelude
+  = module { parameter sig + : Int → Int → Int
+             parameter + = ^examples/Prelude.ism:Prelude.+
+             parameter sig +. : Real → Real → Real
+             parameter +. = ^examples/Prelude.ism:Prelude.+.
+             parameter sig *. : Real → Real → Real
+             parameter *. = ^examples/Prelude.ism:Prelude.*.
+             datatype Bool
+                        = data ^examples/Prelude.ism:Prelude.Bool
+                        (data _ = True | False)
+             parameter sig || : ^examples/Prelude.ism:Prelude.Bool
+                                → ^examples/Prelude.ism:Prelude.Bool →
+                                    ^examples/Prelude.ism:Prelude.Bool
+             parameter || = ^examples/Prelude.ism:Prelude.||
+             parameter sig < : Int →
+                                 Int → ^examples/Prelude.ism:Prelude.Bool
+             parameter < = ^examples/Prelude.ism:Prelude.<
+             parameter sig <. : Real →
+                                  Real → ^examples/Prelude.ism:Prelude.Bool
+             parameter <. = ^examples/Prelude.ism:Prelude.<.
+             parameter sig flip : Real →
+                                    Dist ^examples/Prelude.ism:Prelude.Bool
+             parameter flip = ^examples/Prelude.ism:Prelude.flip
+             parameter sig bernoulli : Real → Dist Int
+             parameter bernoulli = ^examples/Prelude.ism:Prelude.bernoulli
+             parameter sig uniform : {hi : Real; lo : Real} →
+                                       Dist Real
+             parameter uniform = ^examples/Prelude.ism:Prelude.uniform
+             parameter sig normal : {μ : Real; σ² : Real} →
+                                      Dist Real
+             parameter normal = ^examples/Prelude.ism:Prelude.normal
+           }
+
+module type B_BIAS module { val b_bias : Real }
+
+module B1 : B_BIAS
+  module { parameter sig b_bias : Real
+           parameter b_bias = 0.1
+         }
+
+module B2 : B_BIAS
+  module { parameter sig b_bias : Real
+           parameter b_bias = 0.9
+         }
+
+module type BIAS_MODEL model { val b_bias : Real }
+
+module FlipAChooseB : BIAS_MODEL
+  model { random sig a_outcome : ^examples/Prelude.ism:Prelude.Bool
+          val a_outcome ~ Prelude.flip 0.5
+          random sig b_bias : Real
+          val b_bias ~ return
+                         (case a_outcome of
+                          {Prelude.Bool@True ·¢·
+                             Prelude.Bool ≤ [ ] Prelude.Bool → B1.b_bias
+                           ; Prelude.Bool@False ·¢·
+                               Prelude.Bool ≤ [ ] Prelude.Bool → B2.b_bias})
+        }
+
+module FlipBCoin
+(X : B_BIAS)
+  = model { random sig outcome : ^examples/Prelude.ism:Prelude.Bool
+            val outcome ~ Prelude.flip X.b_bias
+          }
+
+module type EXPERIMENT
+model {
+module Bias : B_BIAS
+module BFlips
+  : model {
+    val outcome : ^examples/Prelude.ism:Prelude.Bool }
+}
+
+module Experiment : EXPERIMENT
+  model { module Bias ~ FlipAChooseB
+          module BFlips = FlipBCoin (Bias)
+        }
+
+module TwoFlips
+  = model { module E ~ Experiment
+            module B1 ~ E.BFlips
+            module B2 ~ E.BFlips
+          }
+
+query sample TwoFlips 3
+--------------------✂✄--------------------
+Convert to FΩ
+let
+   ^examples/boot.ism1
+     ← (let
+           __BOOT
+             = {intAdd = {val = __BOOT.intAdd},
+                ifIntLt = {val = __BOOT.ifIntLt},
+                realAdd = {val = __BOOT.realAdd},
+                realMul = {val = __BOOT.realMul},
+                ifRealLt = {val = __BOOT.ifRealLt},
+                Distribution
+                  = {choose = {val = __BOOT.Distribution.choose},
+                     uniform = {val = __BOOT.Distribution.uniform},
+                     normal = {val = __BOOT.Distribution.normal}},
+                posterior = {val = __BOOT.posterior}}
+        in return {__BOOT = __BOOT})
+   ^examples/boot.ism = ^examples/boot.ism1
+   ^examples/Prelude.ism1
+     ← (let
+           __BOOT
+             = (let
+                   intAdd = ^examples/boot.ism.__BOOT.intAdd.val
+                   intAdd = {val = intAdd}
+                   ifIntLt = ^examples/boot.ism.__BOOT.ifIntLt.val
+                   ifIntLt = {val = ifIntLt}
+                   realAdd = ^examples/boot.ism.__BOOT.realAdd.val
+                   realAdd = {val = realAdd}
+                   realMul = ^examples/boot.ism.__BOOT.realMul.val
+                   realMul = {val = realMul}
+                   ifRealLt = ^examples/boot.ism.__BOOT.ifRealLt.val
+                   ifRealLt = {val = ifRealLt}
+                   Distribution
+                     = ^examples/boot.ism.__BOOT.Distribution
+                   posterior = ^examples/boot.ism.__BOOT.posterior.val
+                   posterior = {val = posterior}
+                in {intAdd = intAdd, ifIntLt = ifIntLt,
+                    realAdd = realAdd, realMul = realMul,
+                    ifRealLt = ifRealLt, Distribution = Distribution,
+                    posterior = posterior})
+           FUNCTOR
+             = {sig
+                  = (λ
+                     (z :
+                      (∃ T : (⋆ → ⋆)
+                         . {T : {type : ∀ α : (⋆ → ⋆) → ⋆ . α T → α T},
+                            map
+                              : {val
+                                   : ∀ a : ⋆
+                                       . ∀ b : ⋆ . (a → b) → T a → T b}}))
+                       . z)}
+           PRELUDE
+             = {sig
+                  = (λ
+                     (z :
+                      (∃ δ : ⋆
+                         . {+ : {val : Int → Int → Int},
+                            +. : {val : Real → Real → Real},
+                            *. : {val : Real → Real → Real},
+                            Bool
+                              : {dataOut
+                                   : ∀ γ : ⋆ → ⋆
+                                       . γ δ →
+                                           γ {con True : {} | con False : {}},
+                                 dataIn : {con True : δ, con False : δ}},
+                            || : {val : δ → δ → δ}, < : {val : Int → Int → δ},
+                            <. : {val : Real → Real → δ},
+                            flip : {val : Real → Dist δ},
+                            bernoulli : {val : Real → Dist Int},
+                            uniform
+                              : {val : {hi : Real, lo : Real} → Dist Real},
+                            normal
+                              : {val : {μ : Real, σ² : Real} → Dist Real}}))
+                       . z)}
+           unpack δ1 , Prelude1
+             = (let
+                   unpack δ , z
+                     = (let
+                           rec + : {val : Int → Int → Int}
+                             = {val
+                                  = λ (x : Int)
+                                      . λ (y : Int) . __BOOT.intAdd.val x y}
+                           rec +. : {val : Real → Real → Real}
+                             = {val
+                                  = λ (x : Real)
+                                      . λ (y : Real) . __BOOT.realAdd.val x y}
+                           rec *. : {val : Real → Real → Real}
+                             = {val
+                                  = λ (x : Real)
+                                      . λ (y : Real) . __BOOT.realMul.val x y}
+                           unpack δ , Δ
+                             = (pack
+                                (μ δ : ⋆ . {con True : {} | con False : {}})
+                                  , {dataIn
+                                       = {con True
+                                            = (roll
+                                               (μ δ : ⋆
+                                                  . {con True : {}
+                                                     | con False : {}})
+                                                 , (inj con True {}
+                                                    as {con True : {}
+                                                        | con False : {}})
+                                                 as ε . ε),
+                                          con False
+                                            = (roll
+                                               (μ δ : ⋆
+                                                  . {con True : {}
+                                                     | con False : {}})
+                                                 , (inj con False {}
+                                                    as {con True : {}
+                                                        | con False : {}})
+                                                 as ε . ε)},
+                                     dataOut
+                                       = (λ [γ : (⋆ → ⋆)]
+                                            . λ
+                                              (x :
+                                               γ (μ δ : ⋆
+                                                    . {con True : {}
+                                                       | con False : {}}))
+                                                . unroll
+                                                  μ δ : ⋆
+                                                    . {con True : {}
+                                                       | con False : {}}
+                                                    , x as ε . γ ε)}
+                                  as δ : ⋆
+                                       . {dataOut
+                                            : (∀ γ : (⋆ → ⋆)
+                                                 . γ δ →
+                                                     γ {con True : {}
+                                                        | con False : {}}),
+                                          dataIn
+                                            : {con True : δ, con False : δ}})
+                           rec || : {val : δ → δ → δ}
+                             = {val
+                                  = λ (x : δ)
+                                      . λ (y : δ)
+                                          . let  subjP = x
+                                            in case
+                                               Δ.dataOut [(λ δ1 : ⋆ . δ1)]
+                                                 subjP
+                                               of
+                                               {(con True z)
+                                                  → Δ.dataIn.con True
+                                                ; _ → y}}
+                           rec < : {val : Int → Int → δ}
+                             = {val
+                                  = λ (x : Int)
+                                      . λ (y : Int)
+                                          . __BOOT.ifIntLt.val [δ] x y
+                                              (λ (_v : {})
+                                                 . Δ.dataIn.con True)
+                                              (λ (_v : {})
+                                                 . Δ.dataIn.con False)
+                                              {}}
+                           rec <. : {val : Real → Real → δ}
+                             = {val
+                                  = λ (x : Real)
+                                      . λ (y : Real)
+                                          . __BOOT.ifRealLt.val [δ] x y
+                                              (λ (_v : {})
+                                                 . Δ.dataIn.con True)
+                                              (λ (_v : {})
+                                                 . Δ.dataIn.con False)
+                                              {}}
+                           rec flip : {val : Real → Dist δ}
+                             = {val
+                                  = λ (d : Real)
+                                      . __BOOT.Distribution.choose.val [δ] d
+                                          return (Δ.dataIn.con True)
+                                          return (Δ.dataIn.con False)}
+                           rec bernoulli : {val : Real → Dist Int}
+                             = {val
+                                  = λ (d : Real)
+                                      . __BOOT.Distribution.choose.val [Int] d
+                                          return (1)
+                                          return (0)}
+                           rec uniform
+                             : {val : {hi : Real, lo : Real} → Dist Real}
+                             = {val
+                                  = λ (p : {hi : Real, lo : Real})
+                                      . let
+                                           subjP = p
+                                           lo = subjP.lo
+                                           hi = subjP.hi
+                                        in __BOOT.Distribution.uniform.val lo
+                                             hi}
+                           rec normal
+                             : {val : {μ : Real, σ² : Real} → Dist Real}
+                             = {val
+                                  = λ (p : {μ : Real, σ² : Real})
+                                      . let
+                                           subjP = p μ = subjP.μ σ² = subjP.σ²
+                                        in __BOOT.Distribution.normal.val μ
+                                             σ²}
+                        in pack δ
+                             , {+ = +, +. = +., *. = *., Bool = Δ, || = ||,
+                                < = <, <. = <., flip = flip,
+                                bernoulli = bernoulli, uniform = uniform,
+                                normal = normal}
+                             as δ : ⋆
+                                  . {+ : {val : Int → Int → Int},
+                                     +. : {val : Real → Real → Real},
+                                     *. : {val : Real → Real → Real},
+                                     Bool
+                                       : {dataOut
+                                            : ∀ γ : ⋆ → ⋆
+                                                . γ δ →
+                                                    γ {con True : {}
+                                                       | con False : {}},
+                                          dataIn
+                                            : {con True : δ, con False : δ}},
+                                     || : {val : δ → δ → δ},
+                                     < : {val : Int → Int → δ},
+                                     <. : {val : Real → Real → δ},
+                                     flip : {val : Real → Dist δ},
+                                     bernoulli : {val : Real → Dist Int},
+                                     uniform
+                                       : {val
+                                            : {hi : Real, lo : Real} →
+                                                Dist Real},
+                                     normal
+                                       : {val
+                                            : {μ : Real, σ² : Real} →
+                                                Dist Real}})
+                   z = z
+                in pack δ
+                     , pack δ
+                         , {*. = {val = z.*..val}, + = {val = z.+.val},
+                            +. = {val = z.+..val}, < = {val = z.<.val},
+                            <. = {val = z.<..val}, Bool = z.Bool,
+                            bernoulli = {val = z.bernoulli.val},
+                            flip = {val = z.flip.val},
+                            normal = {val = z.normal.val},
+                            uniform = {val = z.uniform.val},
+                            || = {val = z.||.val}}
+                         as δ1 : ⋆
+                              . {+ : {val : Int → Int → Int},
+                                 +. : {val : Real → Real → Real},
+                                 *. : {val : Real → Real → Real},
+                                 Bool
+                                   : {dataOut
+                                        : ∀ γ : ⋆ → ⋆
+                                            . γ δ1 →
+                                                γ {con True : {}
+                                                   | con False : {}},
+                                      dataIn
+                                        : {con True : δ1, con False : δ1}},
+                                 || : {val : δ1 → δ1 → δ1},
+                                 < : {val : Int → Int → δ1},
+                                 <. : {val : Real → Real → δ1},
+                                 flip : {val : Real → Dist δ1},
+                                 bernoulli : {val : Real → Dist Int},
+                                 uniform
+                                   : {val
+                                        : {hi : Real, lo : Real} → Dist Real},
+                                 normal
+                                   : {val
+                                        : {μ : Real, σ² : Real} → Dist Real}}
+                     as δ : ⋆
+                          . ∃ δ1 : ⋆
+                              . {+ : {val : Int → Int → Int},
+                                 +. : {val : Real → Real → Real},
+                                 *. : {val : Real → Real → Real},
+                                 Bool
+                                   : {dataOut
+                                        : ∀ γ : ⋆ → ⋆
+                                            . γ δ1 →
+                                                γ {con True : {}
+                                                   | con False : {}},
+                                      dataIn
+                                        : {con True : δ1, con False : δ1}},
+                                 || : {val : δ1 → δ1 → δ1},
+                                 < : {val : Int → Int → δ1},
+                                 <. : {val : Real → Real → δ1},
+                                 flip : {val : Real → Dist δ1},
+                                 bernoulli : {val : Real → Dist Int},
+                                 uniform
+                                   : {val
+                                        : {hi : Real, lo : Real} → Dist Real},
+                                 normal
+                                   : {val
+                                        : {μ : Real, σ² : Real} → Dist Real}})
+           unpack δ , Prelude2 = Prelude1
+           Prelude = Prelude2
+        in return
+           pack δ1
+             , pack δ
+                 , {__BOOT = __BOOT, FUNCTOR = FUNCTOR,
+                    PRELUDE = PRELUDE, Prelude = Prelude}
+                 as δ : ⋆
+                      . {__BOOT
+                           : {intAdd : {val : Int → Int → Int},
+                              ifIntLt
+                                : {val
+                                     : ∀ a : ⋆
+                                         . Int →
+                                             Int →
+                                               ({} → a) → ({} → a) → {} → a},
+                              realAdd : {val : Real → Real → Real},
+                              realMul : {val : Real → Real → Real},
+                              ifRealLt
+                                : {val
+                                     : ∀ a : ⋆
+                                         . Real →
+                                             Real →
+                                               ({} → a) → ({} → a) → {} → a},
+                              Distribution
+                                : {choose
+                                     : {val
+                                          : ∀ a : ⋆
+                                              . Real →
+                                                  Dist a → Dist a → Dist a},
+                                   uniform : {val : Real → Real → Dist Real},
+                                   normal : {val : Real → Real → Dist Real}},
+                              posterior
+                                : {val
+                                     : ∀ st : ⋆
+                                         . ∀ obs : ⋆
+                                             . (st → Dist obs) →
+                                                 obs → Dist st → Dist st}},
+                         FUNCTOR
+                           : {sig
+                                : (∃ T : (⋆ → ⋆)
+                                     . {T : {type
+                                               : ∀ α : (⋆ → ⋆) → ⋆
+                                                   . α T → α T},
+                                        map
+                                          : {val
+                                               : ∀ a : ⋆
+                                                   . ∀ b : ⋆
+                                                       . (a → b) →
+                                                           T a → T b}})
+                                  → ∃ T : ⋆ → ⋆
+                                      . {T : {type
+                                                : ∀ α : (⋆ → ⋆) → ⋆
+                                                    . α T → α T},
+                                         map
+                                           : {val
+                                                : ∀ a : ⋆
+                                                    . ∀ b : ⋆
+                                                        . (a → b) →
+                                                            T a → T b}}},
+                         PRELUDE
+                           : {sig
+                                : (∃ δ2 : ⋆
+                                     . {+ : {val : Int → Int → Int},
+                                        +. : {val : Real → Real → Real},
+                                        *. : {val : Real → Real → Real},
+                                        Bool
+                                          : {dataOut
+                                               : ∀ γ : ⋆ → ⋆
+                                                   . γ δ2 →
+                                                       γ {con True : {}
+                                                          | con False : {}},
+                                             dataIn
+                                               : {con True : δ2,
+                                                  con False : δ2}},
+                                        || : {val : δ2 → δ2 → δ2},
+                                        < : {val : Int → Int → δ2},
+                                        <. : {val : Real → Real → δ2},
+                                        flip : {val : Real → Dist δ2},
+                                        bernoulli : {val : Real → Dist Int},
+                                        uniform
+                                          : {val
+                                               : {hi : Real, lo : Real} →
+                                                   Dist Real},
+                                        normal
+                                          : {val
+                                               : {μ : Real, σ² : Real} →
+                                                   Dist Real}})
+                                  → ∃ δ2 : ⋆
+                                      . {+ : {val : Int → Int → Int},
+                                         +. : {val : Real → Real → Real},
+                                         *. : {val : Real → Real → Real},
+                                         Bool
+                                           : {dataOut
+                                                : ∀ γ : ⋆ → ⋆
+                                                    . γ δ2 →
+                                                        γ {con True : {}
+                                                           | con False : {}},
+                                              dataIn
+                                                : {con True : δ2,
+                                                   con False : δ2}},
+                                         || : {val : δ2 → δ2 → δ2},
+                                         < : {val : Int → Int → δ2},
+                                         <. : {val : Real → Real → δ2},
+                                         flip : {val : Real → Dist δ2},
+                                         bernoulli : {val : Real → Dist Int},
+                                         uniform
+                                           : {val
+                                                : {hi : Real, lo : Real} →
+                                                    Dist Real},
+                                         normal
+                                           : {val
+                                                : {μ : Real, σ² : Real} →
+                                                    Dist Real}}},
+                         Prelude
+                           : {+ : {val : Int → Int → Int},
+                              +. : {val : Real → Real → Real},
+                              *. : {val : Real → Real → Real},
+                              Bool
+                                : {dataOut
+                                     : ∀ γ : ⋆ → ⋆
+                                         . γ δ →
+                                             γ {con True : {}
+                                                | con False : {}},
+                                   dataIn : {con True : δ, con False : δ}},
+                              || : {val : δ → δ → δ},
+                              < : {val : Int → Int → δ},
+                              <. : {val : Real → Real → δ},
+                              flip : {val : Real → Dist δ},
+                              bernoulli : {val : Real → Dist Int},
+                              uniform
+                                : {val : {hi : Real, lo : Real} → Dist Real},
+                              normal
+                                : {val : {μ : Real, σ² : Real} → Dist Real}}}
+             as δ1 : ⋆
+                  . ∃ δ : ⋆
+                      . {__BOOT
+                           : {intAdd : {val : Int → Int → Int},
+                              ifIntLt
+                                : {val
+                                     : ∀ a : ⋆
+                                         . Int →
+                                             Int →
+                                               ({} → a) → ({} → a) → {} → a},
+                              realAdd : {val : Real → Real → Real},
+                              realMul : {val : Real → Real → Real},
+                              ifRealLt
+                                : {val
+                                     : ∀ a : ⋆
+                                         . Real →
+                                             Real →
+                                               ({} → a) → ({} → a) → {} → a},
+                              Distribution
+                                : {choose
+                                     : {val
+                                          : ∀ a : ⋆
+                                              . Real →
+                                                  Dist a → Dist a → Dist a},
+                                   uniform : {val : Real → Real → Dist Real},
+                                   normal : {val : Real → Real → Dist Real}},
+                              posterior
+                                : {val
+                                     : ∀ st : ⋆
+                                         . ∀ obs : ⋆
+                                             . (st → Dist obs) →
+                                                 obs → Dist st → Dist st}},
+                         FUNCTOR
+                           : {sig
+                                : (∃ T : (⋆ → ⋆)
+                                     . {T : {type
+                                               : ∀ α : (⋆ → ⋆) → ⋆
+                                                   . α T → α T},
+                                        map
+                                          : {val
+                                               : ∀ a : ⋆
+                                                   . ∀ b : ⋆
+                                                       . (a → b) →
+                                                           T a → T b}})
+                                  → ∃ T : ⋆ → ⋆
+                                      . {T : {type
+                                                : ∀ α : (⋆ → ⋆) → ⋆
+                                                    . α T → α T},
+                                         map
+                                           : {val
+                                                : ∀ a : ⋆
+                                                    . ∀ b : ⋆
+                                                        . (a → b) →
+                                                            T a → T b}}},
+                         PRELUDE
+                           : {sig
+                                : (∃ δ2 : ⋆
+                                     . {+ : {val : Int → Int → Int},
+                                        +. : {val : Real → Real → Real},
+                                        *. : {val : Real → Real → Real},
+                                        Bool
+                                          : {dataOut
+                                               : ∀ γ : ⋆ → ⋆
+                                                   . γ δ2 →
+                                                       γ {con True : {}
+                                                          | con False : {}},
+                                             dataIn
+                                               : {con True : δ2,
+                                                  con False : δ2}},
+                                        || : {val : δ2 → δ2 → δ2},
+                                        < : {val : Int → Int → δ2},
+                                        <. : {val : Real → Real → δ2},
+                                        flip : {val : Real → Dist δ2},
+                                        bernoulli : {val : Real → Dist Int},
+                                        uniform
+                                          : {val
+                                               : {hi : Real, lo : Real} →
+                                                   Dist Real},
+                                        normal
+                                          : {val
+                                               : {μ : Real, σ² : Real} →
+                                                   Dist Real}})
+                                  → ∃ δ2 : ⋆
+                                      . {+ : {val : Int → Int → Int},
+                                         +. : {val : Real → Real → Real},
+                                         *. : {val : Real → Real → Real},
+                                         Bool
+                                           : {dataOut
+                                                : ∀ γ : ⋆ → ⋆
+                                                    . γ δ2 →
+                                                        γ {con True : {}
+                                                           | con False : {}},
+                                              dataIn
+                                                : {con True : δ2,
+                                                   con False : δ2}},
+                                         || : {val : δ2 → δ2 → δ2},
+                                         < : {val : Int → Int → δ2},
+                                         <. : {val : Real → Real → δ2},
+                                         flip : {val : Real → Dist δ2},
+                                         bernoulli : {val : Real → Dist Int},
+                                         uniform
+                                           : {val
+                                                : {hi : Real, lo : Real} →
+                                                    Dist Real},
+                                         normal
+                                           : {val
+                                                : {μ : Real, σ² : Real} →
+                                                    Dist Real}}},
+                         Prelude
+                           : {+ : {val : Int → Int → Int},
+                              +. : {val : Real → Real → Real},
+                              *. : {val : Real → Real → Real},
+                              Bool
+                                : {dataOut
+                                     : ∀ γ : ⋆ → ⋆
+                                         . γ δ →
+                                             γ {con True : {}
+                                                | con False : {}},
+                                   dataIn : {con True : δ, con False : δ}},
+                              || : {val : δ → δ → δ},
+                              < : {val : Int → Int → δ},
+                              <. : {val : Real → Real → δ},
+                              flip : {val : Real → Dist δ},
+                              bernoulli : {val : Real → Dist Int},
+                              uniform
+                                : {val : {hi : Real, lo : Real} → Dist Real},
+                              normal
+                                : {val : {μ : Real, σ² : Real} → Dist Real}}})
+   unpack δ1 , ^examples/Prelude.ism2
+     = ^examples/Prelude.ism1
+   unpack δ , ^examples/Prelude.ism3
+     = ^examples/Prelude.ism2
+   ^examples/Prelude.ism = ^examples/Prelude.ism3
+   Prelude
+     = (let
+           + = ^examples/Prelude.ism.Prelude.+.val
+           + = {val = +}
+           +. = ^examples/Prelude.ism.Prelude.+..val
+           +. = {val = +.}
+           *. = ^examples/Prelude.ism.Prelude.*..val
+           *. = {val = *.}
+           Bool = ^examples/Prelude.ism.Prelude.Bool
+           || = ^examples/Prelude.ism.Prelude.||.val
+           || = {val = ||}
+           < = ^examples/Prelude.ism.Prelude.<.val
+           < = {val = <}
+           <. = ^examples/Prelude.ism.Prelude.<..val
+           <. = {val = <.}
+           flip = ^examples/Prelude.ism.Prelude.flip.val
+           flip = {val = flip}
+           bernoulli
+             = ^examples/Prelude.ism.Prelude.bernoulli.val
+           bernoulli = {val = bernoulli}
+           uniform = ^examples/Prelude.ism.Prelude.uniform.val
+           uniform = {val = uniform}
+           normal = ^examples/Prelude.ism.Prelude.normal.val
+           normal = {val = normal}
+        in {+ = +, +. = +., *. = *., Bool = Bool, || = ||,
+            < = <, <. = <., flip = flip, bernoulli = bernoulli,
+            uniform = uniform, normal = normal})
+   B_BIAS
+     = {sig = (λ (z : {b_bias : {val : Real}}) . z)}
+   B1
+     = (let
+           z = (let  b_bias = 0.1 b_bias = {val = b_bias}
+                in {b_bias = b_bias})
+        in {b_bias = {val = z.b_bias.val}})
+   B2
+     = (let
+           z = (let  b_bias = 0.9 b_bias = {val = b_bias}
+                in {b_bias = b_bias})
+        in {b_bias = {val = z.b_bias.val}})
+   BIAS_MODEL
+     = {sig
+          = (λ (z : (Dist {b_bias : {val : Real}})) . z)}
+   FlipAChooseB
+     = (let
+           z = (let
+                   a_outcome ~ (Prelude.flip.val 0.5)
+                   a_outcome = {val = a_outcome}
+                   b_bias
+                     ~ return
+                       ((let  subjP = a_outcome.val
+                         in case Prelude.Bool.dataOut [(λ δ2 : ⋆ . δ2)] subjP
+                            of
+                            {(con True z) → B1.b_bias.val
+                             ; (con False z) → B2.b_bias.val
+                             ; abort Real}))
+                   b_bias = {val = b_bias}
+                in return {a_outcome = a_outcome, b_bias = b_bias})
+           s ~ z
+        in return
+           let  y = s in {b_bias = {val = y.b_bias.val}})
+   FlipBCoin
+     = (λ (X : {b_bias : {val : Real}})
+          . let
+               outcome ~ (Prelude.flip.val X.b_bias.val)
+               outcome = {val = outcome}
+            in return {outcome = outcome})
+   EXPERIMENT
+     = {sig
+          = (λ
+             (z :
+              (Dist
+                 {Bias : {b_bias : {val : Real}},
+                  BFlips : (Dist {outcome : {val : δ}})}))
+               . z)}
+   Experiment
+     = (let
+           z = (let
+                   Bias ~ FlipAChooseB
+                   Bias = Bias
+                   BFlips
+                     = (FlipBCoin {b_bias = {val = Bias.b_bias.val}})
+                in return {Bias = Bias, BFlips = BFlips})
+           s ~ z
+        in return
+           let  y = s
+           in {BFlips
+                 = let  s ~ y.BFlips
+                   in return
+                      let  y = s in {outcome = {val = y.outcome.val}},
+               Bias = {b_bias = {val = y.Bias.b_bias.val}}})
+   TwoFlips
+     = (let
+           E ~ Experiment
+           E = E
+           B1 ~ E.BFlips
+           B1 = B1
+           B2 ~ E.BFlips
+           B2 = B2
+        in return {E = E, B1 = B1, B2 = B2})
+   _ ← (let  l ← query sample TwoFlips 3 in print l)
+in return
+   pack δ1
+     , pack δ
+         , {^examples/boot.ism = ^examples/boot.ism,
+            ^examples/Prelude.ism = ^examples/Prelude.ism,
+            Prelude = Prelude, B_BIAS = B_BIAS, B1 = B1,
+            B2 = B2, BIAS_MODEL = BIAS_MODEL,
+            FlipAChooseB = FlipAChooseB, FlipBCoin = FlipBCoin,
+            EXPERIMENT = EXPERIMENT, Experiment = Experiment,
+            TwoFlips = TwoFlips}
+         as δ : ⋆
+              . {^examples/boot.ism
+                   : {__BOOT
+                        : {intAdd : {val : Int → Int → Int},
+                           ifIntLt
+                             : {val
+                                  : ∀ a : ⋆
+                                      . Int →
+                                          Int → ({} → a) → ({} → a) → {} → a},
+                           realAdd : {val : Real → Real → Real},
+                           realMul : {val : Real → Real → Real},
+                           ifRealLt
+                             : {val
+                                  : ∀ a : ⋆
+                                      . Real →
+                                          Real →
+                                            ({} → a) → ({} → a) → {} → a},
+                           Distribution
+                             : {choose
+                                  : {val
+                                       : ∀ a : ⋆
+                                           . Real → Dist a → Dist a → Dist a},
+                                uniform : {val : Real → Real → Dist Real},
+                                normal : {val : Real → Real → Dist Real}},
+                           posterior
+                             : {val
+                                  : ∀ st : ⋆
+                                      . ∀ obs : ⋆
+                                          . (st → Dist obs) →
+                                              obs → Dist st → Dist st}}},
+                 ^examples/Prelude.ism
+                   : {__BOOT
+                        : {intAdd : {val : Int → Int → Int},
+                           ifIntLt
+                             : {val
+                                  : ∀ a : ⋆
+                                      . Int →
+                                          Int → ({} → a) → ({} → a) → {} → a},
+                           realAdd : {val : Real → Real → Real},
+                           realMul : {val : Real → Real → Real},
+                           ifRealLt
+                             : {val
+                                  : ∀ a : ⋆
+                                      . Real →
+                                          Real →
+                                            ({} → a) → ({} → a) → {} → a},
+                           Distribution
+                             : {choose
+                                  : {val
+                                       : ∀ a : ⋆
+                                           . Real → Dist a → Dist a → Dist a},
+                                uniform : {val : Real → Real → Dist Real},
+                                normal : {val : Real → Real → Dist Real}},
+                           posterior
+                             : {val
+                                  : ∀ st : ⋆
+                                      . ∀ obs : ⋆
+                                          . (st → Dist obs) →
+                                              obs → Dist st → Dist st}},
+                      FUNCTOR
+                        : {sig
+                             : (∃ T : (⋆ → ⋆)
+                                  . {T : {type
+                                            : ∀ α : (⋆ → ⋆) → ⋆ . α T → α T},
+                                     map
+                                       : {val
+                                            : ∀ a : ⋆
+                                                . ∀ b : ⋆
+                                                    . (a → b) → T a → T b}})
+                               → ∃ T : ⋆ → ⋆
+                                   . {T : {type
+                                             : ∀ α : (⋆ → ⋆) → ⋆ . α T → α T},
+                                      map
+                                        : {val
+                                             : ∀ a : ⋆
+                                                 . ∀ b : ⋆
+                                                     . (a → b) → T a → T b}}},
+                      PRELUDE
+                        : {sig
+                             : (∃ δ2 : ⋆
+                                  . {+ : {val : Int → Int → Int},
+                                     +. : {val : Real → Real → Real},
+                                     *. : {val : Real → Real → Real},
+                                     Bool
+                                       : {dataOut
+                                            : ∀ γ : ⋆ → ⋆
+                                                . γ δ2 →
+                                                    γ {con True : {}
+                                                       | con False : {}},
+                                          dataIn
+                                            : {con True : δ2,
+                                               con False : δ2}},
+                                     || : {val : δ2 → δ2 → δ2},
+                                     < : {val : Int → Int → δ2},
+                                     <. : {val : Real → Real → δ2},
+                                     flip : {val : Real → Dist δ2},
+                                     bernoulli : {val : Real → Dist Int},
+                                     uniform
+                                       : {val
+                                            : {hi : Real, lo : Real} →
+                                                Dist Real},
+                                     normal
+                                       : {val
+                                            : {μ : Real, σ² : Real} →
+                                                Dist Real}})
+                               → ∃ δ2 : ⋆
+                                   . {+ : {val : Int → Int → Int},
+                                      +. : {val : Real → Real → Real},
+                                      *. : {val : Real → Real → Real},
+                                      Bool
+                                        : {dataOut
+                                             : ∀ γ : ⋆ → ⋆
+                                                 . γ δ2 →
+                                                     γ {con True : {}
+                                                        | con False : {}},
+                                           dataIn
+                                             : {con True : δ2,
+                                                con False : δ2}},
+                                      || : {val : δ2 → δ2 → δ2},
+                                      < : {val : Int → Int → δ2},
+                                      <. : {val : Real → Real → δ2},
+                                      flip : {val : Real → Dist δ2},
+                                      bernoulli : {val : Real → Dist Int},
+                                      uniform
+                                        : {val
+                                             : {hi : Real, lo : Real} →
+                                                 Dist Real},
+                                      normal
+                                        : {val
+                                             : {μ : Real, σ² : Real} →
+                                                 Dist Real}}},
+                      Prelude
+                        : {+ : {val : Int → Int → Int},
+                           +. : {val : Real → Real → Real},
+                           *. : {val : Real → Real → Real},
+                           Bool
+                             : {dataOut
+                                  : ∀ γ : ⋆ → ⋆
+                                      . γ δ →
+                                          γ {con True : {} | con False : {}},
+                                dataIn : {con True : δ, con False : δ}},
+                           || : {val : δ → δ → δ}, < : {val : Int → Int → δ},
+                           <. : {val : Real → Real → δ},
+                           flip : {val : Real → Dist δ},
+                           bernoulli : {val : Real → Dist Int},
+                           uniform
+                             : {val : {hi : Real, lo : Real} → Dist Real},
+                           normal
+                             : {val : {μ : Real, σ² : Real} → Dist Real}}},
+                 Prelude
+                   : {+ : {val : Int → Int → Int},
+                      +. : {val : Real → Real → Real},
+                      *. : {val : Real → Real → Real},
+                      Bool
+                        : {dataOut
+                             : ∀ γ : ⋆ → ⋆
+                                 . γ δ → γ {con True : {} | con False : {}},
+                           dataIn : {con True : δ, con False : δ}},
+                      || : {val : δ → δ → δ}, < : {val : Int → Int → δ},
+                      <. : {val : Real → Real → δ},
+                      flip : {val : Real → Dist δ},
+                      bernoulli : {val : Real → Dist Int},
+                      uniform
+                        : {val : {hi : Real, lo : Real} → Dist Real},
+                      normal : {val : {μ : Real, σ² : Real} → Dist Real}},
+                 B_BIAS
+                   : {sig
+                        : {b_bias : {val : Real}} →
+                            {b_bias : {val : Real}}},
+                 B1 : {b_bias : {val : Real}},
+                 B2 : {b_bias : {val : Real}},
+                 BIAS_MODEL
+                   : {sig
+                        : Dist {b_bias : {val : Real}} →
+                            Dist {b_bias : {val : Real}}},
+                 FlipAChooseB : Dist {b_bias : {val : Real}},
+                 FlipBCoin
+                   : {b_bias : {val : Real}} →
+                       Dist {outcome : {val : δ}},
+                 EXPERIMENT
+                   : {sig
+                        : Dist
+                            {Bias : {b_bias : {val : Real}},
+                             BFlips : (Dist {outcome : {val : δ}})}
+                          → Dist
+                              {Bias : {b_bias : {val : Real}},
+                               BFlips : (Dist {outcome : {val : δ}})}},
+                 Experiment
+                   : Dist
+                       {Bias : {b_bias : {val : Real}},
+                        BFlips : (Dist {outcome : {val : δ}})},
+                 TwoFlips
+                   : Dist
+                       {E : {Bias : {b_bias : {val : Real}},
+                             BFlips : (Dist {outcome : {val : δ}})},
+                        B1 : {outcome : {val : δ}},
+                        B2 : {outcome : {val : δ}}}}
+     as δ1 : ⋆
+          . ∃ δ : ⋆
+              . {^examples/boot.ism
+                   : {__BOOT
+                        : {intAdd : {val : Int → Int → Int},
+                           ifIntLt
+                             : {val
+                                  : ∀ a : ⋆
+                                      . Int →
+                                          Int → ({} → a) → ({} → a) → {} → a},
+                           realAdd : {val : Real → Real → Real},
+                           realMul : {val : Real → Real → Real},
+                           ifRealLt
+                             : {val
+                                  : ∀ a : ⋆
+                                      . Real →
+                                          Real →
+                                            ({} → a) → ({} → a) → {} → a},
+                           Distribution
+                             : {choose
+                                  : {val
+                                       : ∀ a : ⋆
+                                           . Real → Dist a → Dist a → Dist a},
+                                uniform : {val : Real → Real → Dist Real},
+                                normal : {val : Real → Real → Dist Real}},
+                           posterior
+                             : {val
+                                  : ∀ st : ⋆
+                                      . ∀ obs : ⋆
+                                          . (st → Dist obs) →
+                                              obs → Dist st → Dist st}}},
+                 ^examples/Prelude.ism
+                   : {__BOOT
+                        : {intAdd : {val : Int → Int → Int},
+                           ifIntLt
+                             : {val
+                                  : ∀ a : ⋆
+                                      . Int →
+                                          Int → ({} → a) → ({} → a) → {} → a},
+                           realAdd : {val : Real → Real → Real},
+                           realMul : {val : Real → Real → Real},
+                           ifRealLt
+                             : {val
+                                  : ∀ a : ⋆
+                                      . Real →
+                                          Real →
+                                            ({} → a) → ({} → a) → {} → a},
+                           Distribution
+                             : {choose
+                                  : {val
+                                       : ∀ a : ⋆
+                                           . Real → Dist a → Dist a → Dist a},
+                                uniform : {val : Real → Real → Dist Real},
+                                normal : {val : Real → Real → Dist Real}},
+                           posterior
+                             : {val
+                                  : ∀ st : ⋆
+                                      . ∀ obs : ⋆
+                                          . (st → Dist obs) →
+                                              obs → Dist st → Dist st}},
+                      FUNCTOR
+                        : {sig
+                             : (∃ T : (⋆ → ⋆)
+                                  . {T : {type
+                                            : ∀ α : (⋆ → ⋆) → ⋆ . α T → α T},
+                                     map
+                                       : {val
+                                            : ∀ a : ⋆
+                                                . ∀ b : ⋆
+                                                    . (a → b) → T a → T b}})
+                               → ∃ T : ⋆ → ⋆
+                                   . {T : {type
+                                             : ∀ α : (⋆ → ⋆) → ⋆ . α T → α T},
+                                      map
+                                        : {val
+                                             : ∀ a : ⋆
+                                                 . ∀ b : ⋆
+                                                     . (a → b) → T a → T b}}},
+                      PRELUDE
+                        : {sig
+                             : (∃ δ2 : ⋆
+                                  . {+ : {val : Int → Int → Int},
+                                     +. : {val : Real → Real → Real},
+                                     *. : {val : Real → Real → Real},
+                                     Bool
+                                       : {dataOut
+                                            : ∀ γ : ⋆ → ⋆
+                                                . γ δ2 →
+                                                    γ {con True : {}
+                                                       | con False : {}},
+                                          dataIn
+                                            : {con True : δ2,
+                                               con False : δ2}},
+                                     || : {val : δ2 → δ2 → δ2},
+                                     < : {val : Int → Int → δ2},
+                                     <. : {val : Real → Real → δ2},
+                                     flip : {val : Real → Dist δ2},
+                                     bernoulli : {val : Real → Dist Int},
+                                     uniform
+                                       : {val
+                                            : {hi : Real, lo : Real} →
+                                                Dist Real},
+                                     normal
+                                       : {val
+                                            : {μ : Real, σ² : Real} →
+                                                Dist Real}})
+                               → ∃ δ2 : ⋆
+                                   . {+ : {val : Int → Int → Int},
+                                      +. : {val : Real → Real → Real},
+                                      *. : {val : Real → Real → Real},
+                                      Bool
+                                        : {dataOut
+                                             : ∀ γ : ⋆ → ⋆
+                                                 . γ δ2 →
+                                                     γ {con True : {}
+                                                        | con False : {}},
+                                           dataIn
+                                             : {con True : δ2,
+                                                con False : δ2}},
+                                      || : {val : δ2 → δ2 → δ2},
+                                      < : {val : Int → Int → δ2},
+                                      <. : {val : Real → Real → δ2},
+                                      flip : {val : Real → Dist δ2},
+                                      bernoulli : {val : Real → Dist Int},
+                                      uniform
+                                        : {val
+                                             : {hi : Real, lo : Real} →
+                                                 Dist Real},
+                                      normal
+                                        : {val
+                                             : {μ : Real, σ² : Real} →
+                                                 Dist Real}}},
+                      Prelude
+                        : {+ : {val : Int → Int → Int},
+                           +. : {val : Real → Real → Real},
+                           *. : {val : Real → Real → Real},
+                           Bool
+                             : {dataOut
+                                  : ∀ γ : ⋆ → ⋆
+                                      . γ δ →
+                                          γ {con True : {} | con False : {}},
+                                dataIn : {con True : δ, con False : δ}},
+                           || : {val : δ → δ → δ}, < : {val : Int → Int → δ},
+                           <. : {val : Real → Real → δ},
+                           flip : {val : Real → Dist δ},
+                           bernoulli : {val : Real → Dist Int},
+                           uniform
+                             : {val : {hi : Real, lo : Real} → Dist Real},
+                           normal
+                             : {val : {μ : Real, σ² : Real} → Dist Real}}},
+                 Prelude
+                   : {+ : {val : Int → Int → Int},
+                      +. : {val : Real → Real → Real},
+                      *. : {val : Real → Real → Real},
+                      Bool
+                        : {dataOut
+                             : ∀ γ : ⋆ → ⋆
+                                 . γ δ → γ {con True : {} | con False : {}},
+                           dataIn : {con True : δ, con False : δ}},
+                      || : {val : δ → δ → δ}, < : {val : Int → Int → δ},
+                      <. : {val : Real → Real → δ},
+                      flip : {val : Real → Dist δ},
+                      bernoulli : {val : Real → Dist Int},
+                      uniform
+                        : {val : {hi : Real, lo : Real} → Dist Real},
+                      normal : {val : {μ : Real, σ² : Real} → Dist Real}},
+                 B_BIAS
+                   : {sig
+                        : {b_bias : {val : Real}} →
+                            {b_bias : {val : Real}}},
+                 B1 : {b_bias : {val : Real}},
+                 B2 : {b_bias : {val : Real}},
+                 BIAS_MODEL
+                   : {sig
+                        : Dist {b_bias : {val : Real}} →
+                            Dist {b_bias : {val : Real}}},
+                 FlipAChooseB : Dist {b_bias : {val : Real}},
+                 FlipBCoin
+                   : {b_bias : {val : Real}} →
+                       Dist {outcome : {val : δ}},
+                 EXPERIMENT
+                   : {sig
+                        : Dist
+                            {Bias : {b_bias : {val : Real}},
+                             BFlips : (Dist {outcome : {val : δ}})}
+                          → Dist
+                              {Bias : {b_bias : {val : Real}},
+                               BFlips : (Dist {outcome : {val : δ}})}},
+                 Experiment
+                   : Dist
+                       {Bias : {b_bias : {val : Real}},
+                        BFlips : (Dist {outcome : {val : δ}})},
+                 TwoFlips
+                   : Dist
+                       {E : {Bias : {b_bias : {val : Real}},
+                             BFlips : (Dist {outcome : {val : δ}})},
+                        B1 : {outcome : {val : δ}},
+                        B2 : {outcome : {val : δ}}}}
+--------------------✂✄--------------------
+Typechecking FΩ
+FOmega type is: 
+∃ δ1 : ⋆, δ : ⋆
+  . {^examples/boot.ism
+       : {__BOOT
+            : {intAdd : {val : Int → Int → Int},
+               ifIntLt
+                 : {val
+                      : ∀ a : ⋆
+                          . Int → Int → ({} → a) → ({} → a) → {} → a},
+               realAdd : {val : Real → Real → Real},
+               realMul : {val : Real → Real → Real},
+               ifRealLt
+                 : {val
+                      : ∀ a : ⋆
+                          . Real → Real → ({} → a) → ({} → a) → {} → a},
+               Distribution
+                 : {choose
+                      : {val : ∀ a : ⋆ . Real → Dist a → Dist a → Dist a},
+                    uniform : {val : Real → Real → Dist Real},
+                    normal : {val : Real → Real → Dist Real}},
+               posterior
+                 : {val
+                      : ∀ st : ⋆
+                          . ∀ obs : ⋆
+                              . (st → Dist obs) → obs → Dist st → Dist st}}},
+     ^examples/Prelude.ism
+       : {__BOOT
+            : {intAdd : {val : Int → Int → Int},
+               ifIntLt
+                 : {val
+                      : ∀ a : ⋆
+                          . Int → Int → ({} → a) → ({} → a) → {} → a},
+               realAdd : {val : Real → Real → Real},
+               realMul : {val : Real → Real → Real},
+               ifRealLt
+                 : {val
+                      : ∀ a : ⋆
+                          . Real → Real → ({} → a) → ({} → a) → {} → a},
+               Distribution
+                 : {choose
+                      : {val : ∀ a : ⋆ . Real → Dist a → Dist a → Dist a},
+                    uniform : {val : Real → Real → Dist Real},
+                    normal : {val : Real → Real → Dist Real}},
+               posterior
+                 : {val
+                      : ∀ st : ⋆
+                          . ∀ obs : ⋆
+                              . (st → Dist obs) → obs → Dist st → Dist st}},
+          FUNCTOR
+            : {sig
+                 : (∃ T : (⋆ → ⋆)
+                      . {T : {type : ∀ α : (⋆ → ⋆) → ⋆ . α T → α T},
+                         map
+                           : {val : ∀ a : ⋆ . ∀ b : ⋆ . (a → b) → T a → T b}})
+                   → ∃ T : ⋆ → ⋆
+                       . {T : {type : ∀ α : (⋆ → ⋆) → ⋆ . α T → α T},
+                          map
+                            : {val
+                                 : ∀ a : ⋆ . ∀ b : ⋆ . (a → b) → T a → T b}}},
+          PRELUDE
+            : {sig
+                 : (∃ δ2 : ⋆
+                      . {+ : {val : Int → Int → Int},
+                         +. : {val : Real → Real → Real},
+                         *. : {val : Real → Real → Real},
+                         Bool
+                           : {dataOut
+                                : ∀ γ : ⋆ → ⋆
+                                    . γ δ2 →
+                                        γ {con True : {} | con False : {}},
+                              dataIn : {con True : δ2, con False : δ2}},
+                         || : {val : δ2 → δ2 → δ2},
+                         < : {val : Int → Int → δ2},
+                         <. : {val : Real → Real → δ2},
+                         flip : {val : Real → Dist δ2},
+                         bernoulli : {val : Real → Dist Int},
+                         uniform
+                           : {val : {hi : Real, lo : Real} → Dist Real},
+                         normal : {val : {μ : Real, σ² : Real} → Dist Real}})
+                   → ∃ δ2 : ⋆
+                       . {+ : {val : Int → Int → Int},
+                          +. : {val : Real → Real → Real},
+                          *. : {val : Real → Real → Real},
+                          Bool
+                            : {dataOut
+                                 : ∀ γ : ⋆ → ⋆
+                                     . γ δ2 →
+                                         γ {con True : {} | con False : {}},
+                               dataIn : {con True : δ2, con False : δ2}},
+                          || : {val : δ2 → δ2 → δ2},
+                          < : {val : Int → Int → δ2},
+                          <. : {val : Real → Real → δ2},
+                          flip : {val : Real → Dist δ2},
+                          bernoulli : {val : Real → Dist Int},
+                          uniform
+                            : {val : {hi : Real, lo : Real} → Dist Real},
+                          normal
+                            : {val : {μ : Real, σ² : Real} → Dist Real}}},
+          Prelude
+            : {+ : {val : Int → Int → Int},
+               +. : {val : Real → Real → Real},
+               *. : {val : Real → Real → Real},
+               Bool
+                 : {dataOut
+                      : ∀ γ : ⋆ → ⋆
+                          . γ δ → γ {con True : {} | con False : {}},
+                    dataIn : {con True : δ, con False : δ}},
+               || : {val : δ → δ → δ}, < : {val : Int → Int → δ},
+               <. : {val : Real → Real → δ},
+               flip : {val : Real → Dist δ},
+               bernoulli : {val : Real → Dist Int},
+               uniform
+                 : {val : {hi : Real, lo : Real} → Dist Real},
+               normal
+                 : {val : {μ : Real, σ² : Real} → Dist Real}}},
+     Prelude
+       : {+ : {val : Int → Int → Int},
+          +. : {val : Real → Real → Real},
+          *. : {val : Real → Real → Real},
+          Bool
+            : {dataOut
+                 : ∀ γ : ⋆ → ⋆
+                     . γ δ → γ {con True : {} | con False : {}},
+               dataIn : {con True : δ, con False : δ}},
+          || : {val : δ → δ → δ}, < : {val : Int → Int → δ},
+          <. : {val : Real → Real → δ},
+          flip : {val : Real → Dist δ},
+          bernoulli : {val : Real → Dist Int},
+          uniform
+            : {val : {hi : Real, lo : Real} → Dist Real},
+          normal : {val : {μ : Real, σ² : Real} → Dist Real}},
+     B_BIAS
+       : {sig
+            : {b_bias : {val : Real}} →
+                {b_bias : {val : Real}}},
+     B1 : {b_bias : {val : Real}},
+     B2 : {b_bias : {val : Real}},
+     BIAS_MODEL
+       : {sig
+            : Dist {b_bias : {val : Real}} →
+                Dist {b_bias : {val : Real}}},
+     FlipAChooseB : Dist {b_bias : {val : Real}},
+     FlipBCoin
+       : {b_bias : {val : Real}} →
+           Dist {outcome : {val : δ}},
+     EXPERIMENT
+       : {sig
+            : Dist
+                {Bias : {b_bias : {val : Real}},
+                 BFlips : (Dist {outcome : {val : δ}})}
+              → Dist
+                  {Bias : {b_bias : {val : Real}},
+                   BFlips : (Dist {outcome : {val : δ}})}},
+     Experiment
+       : Dist
+           {Bias : {b_bias : {val : Real}},
+            BFlips : (Dist {outcome : {val : δ}})},
+     TwoFlips
+       : Dist
+           {E : {Bias : {b_bias : {val : Real}},
+                 BFlips : (Dist {outcome : {val : δ}})},
+            B1 : {outcome : {val : δ}},
+            B2 : {outcome : {val : δ}}}}
+
+
+--------------------✂✄--------------------
+Running FΩ
+pack
+inj Cons
+{#0
+   = {E = {BFlips = ≪D…≫,
+           Bias = {b_bias = {val = 0.1}}},
+      B1 = {outcome = {val = pack inj con False {}}},
+      B2 = {outcome = {val = pack inj con False {}}}},
+ #1
+   = pack
+     inj Cons
+     {#0
+        = {E = {BFlips = ≪D…≫,
+                Bias = {b_bias = {val = 0.1}}},
+           B1 = {outcome = {val = pack inj con False {}}},
+           B2 = {outcome = {val = pack inj con False {}}}},
+      #1
+        = pack
+          inj Cons
+          {#0
+             = {E = {BFlips = ≪D…≫,
+                     Bias = {b_bias = {val = 0.9}}},
+                B1 = {outcome = {val = pack inj con True {}}},
+                B2 = {outcome = {val = pack inj con True {}}}},
+           #1 = pack inj Nil {}}}}
+pack (μ δ : ⋆ . {con True : {} | con False : {}})
+  , pack (μ δ : ⋆ . {con True : {} | con False : {}})
+      , {^examples/boot.ism
+           = {__BOOT
+                = {intAdd = {val = ≪__BOOT.intAdd _ _≫},
+                   ifIntLt = {val = ≪Λ…≫},
+                   realAdd = {val = ≪__BOOT.realAdd _ _≫},
+                   realMul = {val = ≪__BOOT.realMul _ _≫},
+                   ifRealLt = {val = ≪Λ…≫},
+                   Distribution
+                     = {choose = {val = ≪Λ…≫},
+                        uniform = {val = ≪__BOOT.Distribution.uniform _ _≫},
+                        normal = {val = ≪__BOOT.Distribution.normal _ _≫}},
+                   posterior = {val = ≪Λ…≫}}},
+         ^examples/Prelude.ism
+           = {__BOOT
+                = {intAdd = {val = ≪__BOOT.intAdd _ _≫},
+                   ifIntLt = {val = ≪Λ…≫},
+                   realAdd = {val = ≪__BOOT.realAdd _ _≫},
+                   realMul = {val = ≪__BOOT.realMul _ _≫},
+                   ifRealLt = {val = ≪Λ…≫},
+                   Distribution
+                     = {choose = {val = ≪Λ…≫},
+                        uniform = {val = ≪__BOOT.Distribution.uniform _ _≫},
+                        normal = {val = ≪__BOOT.Distribution.normal _ _≫}},
+                   posterior = {val = ≪Λ…≫}},
+              FUNCTOR = {sig = ≪λ…≫}, PRELUDE = {sig = ≪λ…≫},
+              Prelude
+                = {*. = {val = ≪λ…≫}, + = {val = ≪λ…≫},
+                   +. = {val = ≪λ…≫}, < = {val = ≪λ…≫},
+                   <. = {val = ≪λ…≫},
+                   Bool
+                     = {dataIn
+                          = {con True = pack inj con True {},
+                             con False = pack inj con False {}},
+                        dataOut = ≪Λ…≫},
+                   bernoulli = {val = ≪λ…≫}, flip = {val = ≪λ…≫},
+                   normal = {val = ≪λ…≫}, uniform = {val = ≪λ…≫},
+                   || = {val = ≪λ…≫}}},
+         Prelude
+           = {+ = {val = ≪λ…≫}, +. = {val = ≪λ…≫},
+              *. = {val = ≪λ…≫},
+              Bool
+                = {dataIn
+                     = {con True = pack inj con True {},
+                        con False = pack inj con False {}},
+                   dataOut = ≪Λ…≫},
+              || = {val = ≪λ…≫}, < = {val = ≪λ…≫},
+              <. = {val = ≪λ…≫}, flip = {val = ≪λ…≫},
+              bernoulli = {val = ≪λ…≫}, uniform = {val = ≪λ…≫},
+              normal = {val = ≪λ…≫}},
+         B_BIAS = {sig = ≪λ…≫}, B1 = {b_bias = {val = 0.1}},
+         B2 = {b_bias = {val = 0.9}},
+         BIAS_MODEL = {sig = ≪λ…≫}, FlipAChooseB = ≪D…≫,
+         FlipBCoin = ≪λ…≫, EXPERIMENT = {sig = ≪λ…≫},
+         Experiment = ≪D…≫, TwoFlips = ≪D…≫}
+--------------------✂✄--------------------
+

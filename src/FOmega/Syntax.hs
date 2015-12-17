@@ -67,7 +67,7 @@ data Term =
   | Record ![(Field, Term)] -- Record [] is the unit value
   | Proj !Term !Field
   | Pack !Type !Term !ExistPack
-  | Unpack !(Bind (TyVar, Var, Embed Term) Term)
+  | Unpack !(Bind (TyVar, Var, Embed Term) Term) -- let unpack <α, x> = e₁ in e₂
   | Return !Term
   | LetSample !(Bind (Var, Embed Term) Term)
   | LetRec !(Bind RecBindings Term)

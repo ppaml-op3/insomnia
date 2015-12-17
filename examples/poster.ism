@@ -1,0 +1,50 @@
+-- insomnia test flags:
+-- eval: False
+
+import "examples/Prelude.ism" (module Prelude)
+
+B_BIAS = module type {
+  sig b_bias : Real
+}
+
+B1 : B_BIAS = module {
+  val b_bias = 0.1
+}
+
+B2 : B_BIAS = module {
+  val b_bias = 0.9
+}
+
+BIAS_MODEL = model type {
+  sig b_bias : Real
+}
+
+FlipAChooseB : BIAS_MODEL = model {
+  val a_outcome ~ Prelude.flip 0.5
+  val b_bias =
+    case a_outcome of
+      Prelude.True -> B1.b_bias
+      Prelude.False -> B2.b_bias
+}
+
+FlipBCoin = (X : B_BIAS) -> model {
+  val outcome ~ Prelude.flip X.b_bias
+}
+
+EXPERIMENT = model type {
+  Bias : B_BIAS
+  BFlips : model type { sig outcome : Prelude.Bool }
+}
+
+Experiment : EXPERIMENT = model {
+  Bias ~ FlipAChooseB
+  BFlips = FlipBCoin (Bias)
+}
+
+TwoFlips = model {
+  E ~ Experiment
+  B1 ~ E.BFlips
+  B2 ~ E.BFlips
+}
+
+query sample TwoFlips 3
