@@ -5,7 +5,7 @@ import Unbound.Generics.LocallyNameless (Alpha, Subst)
 
 import Insomnia.Identifier (Path)
 import {-# SOURCE #-} Insomnia.Types (Type, TypeConstructor)
-import Insomnia.TypeDefn (ValueConstructor)
+import Insomnia.ValueConstructor (ValueConstructor)
 
 data ModuleExpr
 

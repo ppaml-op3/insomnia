@@ -10,9 +10,9 @@ import qualified Unbound.Generics.LocallyNameless as U
 import Insomnia.Identifier (Field)
 import Insomnia.Types (Kind, TyVar)
 import Insomnia.TypeDefn (TypeDefn (..),
-                          ConstructorDef(..),
-                          PrettyField(..),
-                          canonicalizeConstructorDefs)
+                          PrettyField(..))
+import Insomnia.ValueConstructor(ConstructorDef(..),
+                                 canonicalizeConstructorDefs)
 
 import Insomnia.Typecheck.Env
 

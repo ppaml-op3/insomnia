@@ -25,6 +25,7 @@ import Insomnia.Common.SampleParameters
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr
+import Insomnia.ValueConstructor
 import Insomnia.TypeDefn
 import Insomnia.Module
 import Insomnia.ModuleType

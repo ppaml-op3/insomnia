@@ -16,6 +16,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 
 import Insomnia.Types (Nat, TypeConstructor(..),
                        Kind(..), TyVar, kArrs)
+import Insomnia.ValueConstructor
 import Insomnia.TypeDefn
 
 import Insomnia.Typecheck.Env

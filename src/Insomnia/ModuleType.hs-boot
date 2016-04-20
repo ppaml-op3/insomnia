@@ -5,7 +5,7 @@ import Unbound.Generics.LocallyNameless (Alpha, Subst)
 
 import Insomnia.Identifier (Path, SigPath)
 import {-# SOURCE #-} Insomnia.Types (Type, TypeConstructor, TraverseTypes)
-import Insomnia.TypeDefn (ValueConstructor)
+import {-# SOURCE #-} Insomnia.ValueConstructor (ValueConstructor)
 
 data ModuleType
 

@@ -13,6 +13,7 @@ import Unbound.Generics.LocallyNameless
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn
+import Insomnia.ValueConstructor
 import Insomnia.ModuleType
 
 import Insomnia.Common.ModuleKind

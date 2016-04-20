@@ -25,10 +25,11 @@ import Control.Monad.Except (Except, runExcept)
 
 import Insomnia.Identifier
 import Insomnia.Types
-import Insomnia.TypeDefn (TypeAlias(..),
-                          ValConName, ValConPath(..),
-                          InferredValConPath(..),
-                          ValueConstructor(..))
+import Insomnia.TypeDefn (TypeAlias(..))
+import Insomnia.ValueConstructor (ValConName, ValConPath(..),
+                                  InferredValConPath(..),
+                                  ValueConstructor(..))
+
 import Insomnia.Expr (Var, QVar)
 import Insomnia.ModuleType (ToplevelSummary, ModuleTypeNF(..))
 

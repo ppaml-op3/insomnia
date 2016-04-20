@@ -35,7 +35,7 @@ import Unbound.Generics.LocallyNameless (LFresh)
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.Expr (Var)
-import Insomnia.TypeDefn (ValConName)
+import Insomnia.ValueConstructor (ValConName)
 
 import Insomnia.Common.FreshName
 

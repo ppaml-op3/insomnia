@@ -27,6 +27,7 @@ import qualified Insomnia.Identifier  as I
 import qualified Insomnia.Expr        as I
 import qualified Insomnia.Types       as I
 import qualified Insomnia.TypeDefn    as I
+import qualified Insomnia.ValueConstructor as I
 import qualified Insomnia.ModuleType  as I
 import qualified Insomnia.Module      as I
 import qualified Insomnia.Query       as I

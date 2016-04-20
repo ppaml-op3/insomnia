@@ -12,7 +12,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 import Insomnia.Identifier
 import Insomnia.Expr
 import Insomnia.Types (Label(..), TypePath(..))
-import Insomnia.TypeDefn
+import Insomnia.ValueConstructor
 import Insomnia.Common.Telescope
 
 import qualified FOmega.Syntax as F

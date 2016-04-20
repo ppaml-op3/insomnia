@@ -10,6 +10,7 @@ import qualified Unbound.Generics.LocallyNameless as U
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn
+import Insomnia.ValueConstructor
 
 import qualified FOmega.Syntax as F
 import qualified FOmega.SemanticSig as F

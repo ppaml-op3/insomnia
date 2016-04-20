@@ -1,7 +1,6 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 module Insomnia.Types where
 
-import GHC.Generics (Generic)
 import Data.Typeable (Typeable)
 
 import Control.Lens (Traversal)
@@ -20,7 +19,6 @@ instance Show Kind
 instance Show Type
 instance Show TypePath
 
-instance Generic Type
 instance Typeable Type
 
 instance Alpha Kind

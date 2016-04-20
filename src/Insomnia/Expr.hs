@@ -22,7 +22,7 @@ import Insomnia.Common.Literal
 import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.Types
-import Insomnia.TypeDefn (ValueConstructor)
+import Insomnia.ValueConstructor (ValueConstructor)
 import {-# SOURCE #-} Insomnia.Module (ModuleExpr)
 import {-# SOURCE #-} Insomnia.ModuleType (ModuleType)
 

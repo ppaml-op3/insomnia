@@ -22,6 +22,7 @@ import Insomnia.Common.Telescope
 import Insomnia.Identifier
 import Insomnia.Types
 import Insomnia.TypeDefn
+import Insomnia.ValueConstructor
 import Insomnia.ModuleType
 import Insomnia.Module
 import Insomnia.Expr

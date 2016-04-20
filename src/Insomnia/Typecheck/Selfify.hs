@@ -13,10 +13,11 @@ import Insomnia.Common.ModuleKind
 import Insomnia.Identifier (Path(..))
 import Insomnia.Types (TypeConstructor(..), TypePath(..))
 import Insomnia.Expr (QVar(..))
-import Insomnia.TypeDefn (TypeDefn(..), ValConName,
-                          InferredValConPath(..),
-                          ValueConstructor(..),
-                          ConstructorDef(..))
+import Insomnia.TypeDefn (TypeDefn(..))
+import Insomnia.ValueConstructor (ValConName,
+                                  InferredValConPath(..),
+                                  ValueConstructor(..),
+                                  ConstructorDef(..))
 import Insomnia.ModuleType (Signature(..),
                             SigV(..),
                             ModuleTypeNF(..),

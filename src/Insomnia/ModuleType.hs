@@ -21,6 +21,7 @@ import {-# SOURCE #-} Insomnia.Types (Type, Kind,
                                       TraverseTypes(..))
 import Insomnia.Expr (Expr)
 import Insomnia.TypeDefn
+import Insomnia.ValueConstructor
 
 import Insomnia.Common.ModuleKind
 import Insomnia.Common.Telescope
