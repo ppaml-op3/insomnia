@@ -12,7 +12,7 @@ import qualified Unbound.Generics.LocallyNameless.Unsafe as UU
 import Insomnia.Pretty
 import Insomnia.Common.SampleParameters
 
-import {-# SOURCE #-} FOmega.Syntax
+import FOmega.Syntax
 
 ppField :: Field -> PM Doc
 ppField FVal = "val"
