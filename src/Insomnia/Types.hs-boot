@@ -1,7 +1,10 @@
-{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE MultiParamTypeClasses, CPP #-}
 module Insomnia.Types where
 
+#if MIN_VERSION_base(4,7,0)
+#else
 import Data.Typeable (Typeable)
+#endif
 
 import Control.Lens (Traversal)
 
@@ -19,7 +22,10 @@ instance Show Kind
 instance Show Type
 instance Show TypePath
 
+#if MIN_VERSION_base(4,7,0)
+#else
 instance Typeable Type
+#endif
 
 instance Alpha Kind
 instance Alpha Type
